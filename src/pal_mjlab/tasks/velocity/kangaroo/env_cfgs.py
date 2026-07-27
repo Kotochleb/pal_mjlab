@@ -494,7 +494,7 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # Terrain
 
   # TODO: review fairness of the curriculum (https://github.com/mujocolab/mjlab/issues/934)
-  cfg.curriculum["terrain_levels"].func = mdp.terrain_levels_vel
+  cfg.curriculum["terrain_levels"].func = mdp.terrain_levels_vel_with_history
 
   assert cfg.scene.terrain is not None
   assert cfg.scene.terrain.terrain_generator is not None
