@@ -111,7 +111,7 @@
             <!-- <camera name="head_realsense_camera" pos="0.0565 -0.168 0" euler="0 -1.57 0" fovy="60"/> -->
           </body>
         </body>
-        
+
         <body name="arm_left_1_link" pos="0.08976 0.15918 -0.092008" quat="0.418942 -0.703926 0.492878 -0.293337">
           <inertial pos="0.0043916 0.016184 0.15576" quat="0.995877 -0.0736287 -0.0165883 0.0503316" mass="1.1325" diaginertia="0.00255401 0.00238017 0.000938535" />
           <joint name="arm_left_1_joint" range="-0.523599 4.71239" actuatorfrcrange="-43 43" frictionloss="1" />
@@ -188,7 +188,7 @@
             </body>
           </body>
         </body>
-       
+
         <body name="arm_right_1_link" pos="0.08976 -0.15918 -0.092008" quat="0.293338 -0.492879 0.703925 -0.418942">
           <inertial pos="0.0043916 0.016184 0.15576" quat="0.995877 -0.0736287 -0.0165883 0.0503316" mass="1.1325" diaginertia="0.00255401 0.00238017 0.000938535" />
           <joint name="arm_right_1_joint" range="-4.71239 0.523599" actuatorfrcrange="-43 43" frictionloss="1" />

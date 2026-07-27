@@ -184,18 +184,18 @@ def lift_env_cfg(
     )
 
     terms["reached_flag"] = ObservationTermCfg(
-    func=manipulation_mdp_pal.reached_flag,
-    params={"command_name": "lift_height"},
+      func=manipulation_mdp_pal.reached_flag,
+      params={"command_name": "lift_height"},
     )
 
     terms["object_both__contact_fingers"] = ObservationTermCfg(
-    func=manipulation_mdp_pal.object_both__contact_fingers,
-    params={
-      "sensor_name": "box_fingertip_contact",
-      "site_names": [robot.fingertip_site_pattern],
-      "false_negative_rate": 0.0,
-    },
-  )
+      func=manipulation_mdp_pal.object_both__contact_fingers,
+      params={
+        "sensor_name": "box_fingertip_contact",
+        "site_names": [robot.fingertip_site_pattern],
+        "false_negative_rate": 0.0,
+      },
+    )
 
   # 2. Noise & Dropout Configuration
   # Ensure all critic observations are completely clean (no noise).

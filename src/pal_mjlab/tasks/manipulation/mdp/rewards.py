@@ -305,7 +305,6 @@ def fingertip_cube_alignment_reward_adaptive(
   return reward
 
 
-
 def post_reached_ee_stability_reward(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -331,6 +330,7 @@ def post_reached_ee_stability_reward(
 
   ee_at_goal = (distance <= threshold).float()
   return reached.float() * ee_at_goal
+
 
 @freeze_on_reached
 def object_contact_both_fingers_adaptive(
