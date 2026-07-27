@@ -59,6 +59,27 @@ class CommandHistory:
     self.lengths[env_ids] += 1
     self._pending[env_ids] = False
 
+  def durations(self, end_time: torch.Tensor | float) -> torch.Tensor:
+    """Return how long each recorded segment lasted, shape (num_envs, capacity).
+
+    A segment ends when the next one starts. The last segment is still open, so the
+    caller decides when it ends: pass the current episode time to measure the episode
+    as it happened, or the full episode length to hold the last command to the end.
+
+    Args:
+      end_time: When the last segment ends, per environment or shared by all of them.
+
+    Returns:
+      Segment durations, zero past :attr:`lengths`.
+    """
+    device = self.start_times.device
+    end_times = torch.zeros_like(self.start_times)
+    end_times[:, :-1] = self.start_times[:, 1:]
+    last_slot = (self.lengths - 1).clamp(min=0)
+    end_times[torch.arange(len(self.lengths), device=device), last_slot] = end_time
+    slots = torch.arange(self.start_times.shape[1], device=device)
+    return (end_times - self.start_times) * (slots < self.lengths.unsqueeze(-1))
+
 
 class DualBandVelocityCommand(UniformVelocityCommand):
   """Uniform velocity command with configurable low-velocity sampling bands."""

@@ -1,7 +1,7 @@
 """Shared test fixtures and utilities."""
 
 import os
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import mujoco
 import pytest
@@ -46,7 +46,7 @@ def make_mock_rl_env(
 
   Returns:
     Mock exposing the ``ManagerBasedRlEnv`` attributes MDP terms read, with a ``robot``
-    entity whose root state is at rest.
+    entity whose root state is at rest at the origin.
   """
   env = Mock()
   env.num_envs = num_envs
@@ -56,9 +56,14 @@ def make_mock_rl_env(
   env.episode_length_buf = torch.zeros(num_envs, dtype=torch.long, device=device)
   robot = Mock()
   robot.data.heading_w = torch.zeros(num_envs, device=device)
+  robot.data.root_link_pos_w = torch.zeros(num_envs, 3, device=device)
   robot.data.root_link_lin_vel_b = torch.zeros(num_envs, 3, device=device)
   robot.data.root_link_ang_vel_b = torch.zeros(num_envs, 3, device=device)
-  env.scene = {"robot": robot}
+  scene = MagicMock()
+  scene.__getitem__.side_effect = {"robot": robot}.__getitem__
+  scene.num_envs = num_envs
+  scene.env_origins = torch.zeros(num_envs, 3, device=device)
+  env.scene = scene
   return env
 
 
