@@ -224,11 +224,11 @@ def pal_kangaroo_grippers_manipulation_rough_env_cfg(
     r"pelvis_1.*": 0.06,
     r"pelvis_2.*": 0.15,
     # Arms.
-    r"arm_.*_1_.*": 0.2,  # pitch
-    r"arm_.*_4_.*": 0.2,  # elbow
-    r"arm_.*_(?![14]_joint)\d+_joint": 0.1,
+    r"arm_.*_1_.*": 0.4,  # pitch
+    r"arm_.*_4_.*": 0.4,  # elbow
+    r"arm_.*_(?![14]_joint)\d+_joint": 0.3,
     # Grippers.
-    r"gripper_.*": 0.05,
+    r"gripper_.*": 0.2,
   }
   cfg.rewards["upright"].params["asset_cfg"].body_names = ("pelvis_2_link",)
   cfg.rewards["upright"].weight = 1.25

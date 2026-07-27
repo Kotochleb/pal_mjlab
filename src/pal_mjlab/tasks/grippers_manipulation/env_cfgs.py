@@ -306,7 +306,7 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     "pose": RewardTermCfg(
       func=mdp.VariablePostureGripperManipulation,
-      weight=1.0,
+      weight=3.0,
       params={
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
         "std_standing": {},  # Set per-robot.
