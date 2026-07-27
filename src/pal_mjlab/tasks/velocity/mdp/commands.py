@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,52 @@ from mjlab.tasks.velocity.mdp.velocity_command import (
 
 if TYPE_CHECKING:
   from mjlab.envs.manager_based_rl_env import ManagerBasedRlEnv
+
+
+class CommandHistory:
+  """Per-episode record of the commands sampled by each environment.
+
+  Entry ``i`` of environment ``e`` holds the command at the start of segment ``i`` and
+  the episode time at which that segment started. Segment ``i`` ends when segment
+  ``i + 1`` starts; the last valid segment is still open.
+
+  The record is a plain container: it owns the buffers and the append bookkeeping, but
+  knows nothing about the environment or about what the commands mean. ``capacity`` is
+  the worst-case number of segments an episode can hold, so appends never overflow.
+  """
+
+  def __init__(
+    self, num_envs: int, capacity: int, command_dim: int, device: str
+  ) -> None:
+    self.commands = torch.zeros(num_envs, capacity, command_dim, device=device)
+    """Command at the start of each segment, shape (num_envs, capacity, command_dim)."""
+    self.start_times = torch.zeros(num_envs, capacity, device=device)
+    """Episode time at the start of each segment, shape (num_envs, capacity)."""
+    self.lengths = torch.zeros(num_envs, dtype=torch.long, device=device)
+    """Number of valid segments per environment, shape (num_envs,)."""
+    self._pending = torch.zeros(num_envs, dtype=torch.bool, device=device)
+
+  def clear(self, env_ids: torch.Tensor) -> None:
+    """Drop the record of the given environments and cancel any pending append."""
+    self.commands[env_ids] = 0.0
+    self.start_times[env_ids] = 0.0
+    self.lengths[env_ids] = 0
+    self._pending[env_ids] = False
+
+  def mark_pending(self, env_ids: torch.Tensor) -> None:
+    """Mark the given environments for an append by the next :meth:`flush`."""
+    self._pending[env_ids] = True
+
+  def flush(self, commands: torch.Tensor, times: torch.Tensor) -> None:
+    """Append the current command and time for every environment marked pending."""
+    env_ids = self._pending.nonzero(as_tuple=False).flatten()
+    if len(env_ids) == 0:
+      return
+    slots = self.lengths[env_ids]
+    self.commands[env_ids, slots] = commands[env_ids]
+    self.start_times[env_ids, slots] = times[env_ids]
+    self.lengths[env_ids] += 1
+    self._pending[env_ids] = False
 
 
 class DualBandVelocityCommand(UniformVelocityCommand):
@@ -30,6 +77,19 @@ class DualBandVelocityCommand(UniformVelocityCommand):
       cfg.ranges.lin_vel_y,
       cfg.ranges.ang_vel_z,
     )
+    self.command_history = CommandHistory(
+      num_envs=self.num_envs,
+      # Worst case one command per shortest resampling interval, plus the one sampled
+      # on episode reset.
+      capacity=math.ceil(env.max_episode_length_s / cfg.resampling_time_range[0]) + 1,
+      command_dim=self.command.shape[-1],
+      device=self.device,
+    )
+
+  @property
+  def episode_time(self) -> torch.Tensor:
+    """Time elapsed in the current episode per environment, shape (num_envs,)."""
+    return self._env.episode_length_buf * self._env.step_dt
 
   @staticmethod
   def _sample_uniform_interval(
@@ -134,6 +194,21 @@ class DualBandVelocityCommand(UniformVelocityCommand):
 
     world_ids = moving_ids[self.is_world_env[moving_ids]]
     self.vel_command_w[world_ids] = self.vel_command_b[world_ids]
+
+    # The sampled command is not the tracked one yet: standing environments are zeroed,
+    # heading environments get a closed-loop yaw rate and world-frame environments get
+    # rotated, all in `_update_command`. Record only once the command has settled.
+    self.command_history.mark_pending(env_ids)
+
+  def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:
+    assert isinstance(env_ids, torch.Tensor)
+    # Clear first: the parent then resamples, marking the new episode's first append.
+    self.command_history.clear(env_ids)
+    return super().reset(env_ids)
+
+  def compute(self, dt: float) -> None:
+    super().compute(dt)
+    self.command_history.flush(self.command, self.episode_time)
 
 
 @dataclass(kw_only=True)

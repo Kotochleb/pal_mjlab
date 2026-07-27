@@ -1,9 +1,8 @@
 """Tests for dual-band velocity command sampling."""
 
-from unittest.mock import Mock
-
 import pytest
 import torch
+from conftest import make_mock_rl_env
 from pal_mjlab.tasks.velocity.mdp.commands import (
   DualBandVelocityCommand,
   DualBandVelocityCommandCfg,
@@ -17,18 +16,16 @@ def make_command(
   lin_vel_y: tuple[float, float] = (0.0, 0.0),
   ang_vel_z: tuple[float, float] = (0.0, 0.0),
   heading: tuple[float, float] | None = None,
+  resampling_time_range: tuple[float, float] = (1.0, 1.0),
+  env=None,
   **kwargs,
 ) -> DualBandVelocityCommand:
-  env = Mock()
-  env.num_envs = num_envs
-  env.device = "cpu"
-  robot = Mock()
-  robot.data.heading_w = torch.zeros(num_envs)
-  env.scene = {"robot": robot}
+  if env is None:
+    env = make_mock_rl_env(num_envs)
 
   cfg = DualBandVelocityCommandCfg(
     entity_name="robot",
-    resampling_time_range=(1.0, 1.0),
+    resampling_time_range=resampling_time_range,
     heading_command=heading is not None,
     ranges=DualBandVelocityCommandCfg.Ranges(
       lin_vel_x=lin_vel_x,
