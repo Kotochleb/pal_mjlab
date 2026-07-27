@@ -535,7 +535,7 @@ def pal_kangaroo_leg_control_only_flat_env_cfg(play: bool = False) -> ManagerBas
     func=mdp.reset_static_joints_by_offset,
     mode="reset",
     params={
-      "position_range": (-0.1, 0.1),
+      "position_range": (-0.05, 0.05),
       "velocity_range": (0.0, 0.0),
       "asset_cfg": SceneEntityCfg("robot", joint_names=(r"pelvis_1.*",)),
     },
@@ -545,7 +545,7 @@ def pal_kangaroo_leg_control_only_flat_env_cfg(play: bool = False) -> ManagerBas
     func=mdp.reset_static_joints_by_offset,
     mode="reset",
     params={
-      "position_range": (-1.0, 1.0),
+      "position_range": (-0.7, 0.7),
       "velocity_range": (0.0, 0.0),
       "asset_cfg": SceneEntityCfg("robot", joint_names=(r"pelvis_2.*",)),
     },
