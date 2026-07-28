@@ -8,7 +8,7 @@ import torch
 from conftest import make_mock_rl_env
 from pal_mjlab.tasks.velocity.mdp.curriculums import (
   commanded_displacement,
-  terrain_levels_vel,
+  terrain_levels_vel_with_history,
 )
 from test_command_history import advance
 from test_dual_band_velocity_command import make_command
@@ -122,7 +122,7 @@ def test_meeting_the_commanded_distance_promotes():
   # half a sub-terrain (1.5 m).
   run_episode(env, command, walked_distance=1.6, num_steps=16)
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert torch.all(move_up)
@@ -134,7 +134,7 @@ def test_falling_well_short_demotes():
   # Demotion sits at half the 1.5 m promotion distance.
   run_episode(env, command, walked_distance=0.5, num_steps=16)
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert not torch.any(move_up)
@@ -145,7 +145,7 @@ def test_landing_between_the_thresholds_keeps_the_level():
   env, command, terrain = make_curriculum_env(2, lin_vel_x=(0.5, 0.5))
   run_episode(env, command, walked_distance=1.0, num_steps=16)
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert not torch.any(move_up)
@@ -157,7 +157,7 @@ def test_standing_commands_keep_the_level():
   # Drifting past half a sub-terrain must not promote an env asked to stand still.
   run_episode(env, command, walked_distance=2.0, num_steps=16)
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert not torch.any(move_up)
@@ -170,7 +170,7 @@ def test_early_termination_is_judged_against_a_full_episode():
   # to the end of the episode, so 2 m is still asked for and 0.2 m is a failure.
   run_episode(env, command, walked_distance=0.2, num_steps=4)
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert not torch.any(move_up)
@@ -183,7 +183,7 @@ def test_empty_record_freezes_levels_on_the_initial_reset():
   # the record is still empty.
   env.scene["robot"].data.root_link_pos_w[:, 0] = 5.0
 
-  terrain_levels_vel(env, torch.arange(2), "twist")
+  terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   move_up, move_down = moves(terrain)
   assert not torch.any(move_up)
@@ -194,7 +194,7 @@ def test_reports_distance_statistics():
   env, command, terrain = make_curriculum_env(2, lin_vel_x=(0.5, 0.5))
   run_episode(env, command, walked_distance=1.6, num_steps=16)
 
-  result = terrain_levels_vel(env, torch.arange(2), "twist")
+  result = terrain_levels_vel_with_history(env, torch.arange(2), "twist")
 
   assert result["walked_distance"].item() == pytest.approx(1.6)
   assert result["expected_distance"].item() == pytest.approx(2.0)
