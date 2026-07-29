@@ -170,9 +170,6 @@ class LiftingCommand(CommandTerm):
     self.at_goal_time[env_ids] = 0.0
     self.reached_time[env_ids] = 0.0
     self.grasped_distance[env_ids] = 0.0
-    if hasattr(self, "frozen_rewards"):
-      for key in self.frozen_rewards:
-        self.frozen_rewards[key][env_ids] = 0.0
     table_surface_z = self.table_surface_z[env_ids]
 
     r = self.cfg.target_position_range

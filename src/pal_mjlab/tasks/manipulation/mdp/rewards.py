@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import functools
-
 import torch
 from mjlab.entity import Entity
 from mjlab.envs import ManagerBasedRlEnv
@@ -18,38 +16,6 @@ from pal_mjlab.tasks.manipulation.mdp.terminations import object_released_on_flo
 _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
-def freeze_on_reached(fn):
-  """Decorator to freeze a reward term when the command.reached status is True.
-
-  The reward will be locked to the value it had at the moment reached became True,
-  preventing changes or decay during the post-reached phases (e.g. releasing/falling).
-  """
-
-  @functools.wraps(fn)
-  def wrapper(env: ManagerBasedRlEnv, *args, **kwargs):
-    command_name = kwargs.get("command_name", None)
-    if command_name is None and len(args) > 0 and isinstance(args[0], str):
-      command_name = args[0]
-    if command_name is None:
-      command_name = "lift_height"
-
-    command = env.command_manager.get_term(command_name)
-    current_reward = fn(env, *args, **kwargs)
-
-    if not hasattr(command, "frozen_rewards"):
-      command.frozen_rewards = {}
-
-    func_name = fn.__name__
-    if func_name not in command.frozen_rewards:
-      command.frozen_rewards[func_name] = torch.zeros(env.num_envs, device=env.device)
-
-    frozen_val = torch.where(
-      command.reached, command.frozen_rewards[func_name], current_reward
-    )
-    command.frozen_rewards[func_name] = frozen_val
-    return frozen_val
-
-  return wrapper
 
 
 def contact_penalty(env: ManagerBasedRlEnv, sensor_names: list[str]) -> torch.Tensor:
@@ -143,7 +109,6 @@ def fingertip_cube_alignment_reward(
   return reward * (1.0 - contact)
 
 
-@freeze_on_reached
 def gripper_open_during_approach_reward(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -207,7 +172,6 @@ def task_success_reward(
   return object_released_on_floor_term(env, command_name, floor_z).float()
 
 
-@freeze_on_reached
 def object_goal_distance_adaptive(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -232,7 +196,6 @@ def object_goal_distance_adaptive(
   return (~command.object_on_table & contact_both) * (1.0 - torch.tanh(distance / std))
 
 
-@freeze_on_reached
 def object_is_lifted_adaptive(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -262,7 +225,6 @@ def object_is_lifted_adaptive(
   return is_lifted * scale
 
 
-@freeze_on_reached
 def object_ee_distance_adaptive(
   env: ManagerBasedRlEnv,
   std: float,
@@ -279,7 +241,6 @@ def object_ee_distance_adaptive(
   return 1.0 - torch.tanh(distance / std)
 
 
-@freeze_on_reached
 def fingertip_cube_alignment_reward_adaptive(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -332,7 +293,6 @@ def post_reached_ee_stability_reward(
   return reached.float() * ee_at_goal
 
 
-@freeze_on_reached
 def object_contact_both_fingers_adaptive(
   env: ManagerBasedRlEnv,
   sensor_name: str,
@@ -345,7 +305,6 @@ def object_contact_both_fingers_adaptive(
   return contact
 
 
-@freeze_on_reached
 def object_table_sliding_penalty_adaptive(
   env: ManagerBasedRlEnv,
   command_name: str,

@@ -230,9 +230,9 @@ def lift_env_cfg(
     func=manipulation_mdp_pal.nan_safe(
       manipulation_mdp_pal.object_ee_distance_adaptive
     ),
-    weight=5.0,
+    weight=3.0,
     params={
-      "std": 0.30,
+      "std": 0.15,
       "command_name": "lift_height",
       "asset_cfg": _grasp_cfg,
     },
@@ -262,7 +262,7 @@ def lift_env_cfg(
     func=manipulation_mdp_pal.nan_safe(
       manipulation_mdp_pal.object_goal_distance_adaptive
     ),
-    weight=10.0,
+    weight=5.0,
     params={
       "command_name": "lift_height",
       "std": 0.5,
@@ -349,10 +349,10 @@ def lift_env_cfg(
   #   },
   # )
 
-  # cfg.rewards["action_rate_l2"] = RewardTermCfg(
-  #   func=manipulation_mdp_pal.nan_safe(mjlab_rewards.action_rate_l2),
-  #   weight=-0.1,
-  # )
+  cfg.rewards["action_rate_l2"] = RewardTermCfg(
+    func=manipulation_mdp_pal.nan_safe(mjlab_rewards.action_rate_l2),
+    weight=-0.01,
+  )
 
   cfg.rewards["arm_right_1_joint_limit_penalty"] = RewardTermCfg(
     func=manipulation_mdp_pal.nan_safe(
