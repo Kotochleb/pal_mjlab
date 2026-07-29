@@ -16,8 +16,6 @@ from pal_mjlab.tasks.manipulation.mdp.terminations import object_released_on_flo
 _DEFAULT_ASSET_CFG = SceneEntityCfg("robot")
 
 
-
-
 def contact_penalty(env: ManagerBasedRlEnv, sensor_names: list[str]) -> torch.Tensor:
   contact = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
   for name in sensor_names:
