@@ -99,3 +99,4 @@ Tasks:
 
 - :ref:`Kangaroo task_velocity`
 - :ref:`Kangaroo task_motion_imitation`
+- :ref:`Kangaroo task_box_lifting`
