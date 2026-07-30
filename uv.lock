@@ -1389,7 +1389,7 @@ wheels = [
 [[package]]
 name = "mjlab"
 version = "1.5.3"
-source = { git = "https://github.com/pal-robotics-forks/mjlab.git?rev=MultiCriciRunnerEnv#bbb6110db53e6ac409e3dc4f5937180eb3c46e13" }
+source = { git = "https://github.com/pal-robotics-forks/mjlab.git?rev=780cdd76c71a58bc1f41fa521b2cea14e3b664a8#780cdd76c71a58bc1f41fa521b2cea14e3b664a8" }
 dependencies = [
     { name = "imageio-ffmpeg" },
     { name = "mediapy" },
@@ -2095,7 +2095,7 @@ docs = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mjlab", git = "https://github.com/pal-robotics-forks/mjlab.git?rev=MultiCriciRunnerEnv" },
+    { name = "mjlab", git = "https://github.com/pal-robotics-forks/mjlab.git?rev=780cdd76c71a58bc1f41fa521b2cea14e3b664a8" },
     { name = "moviepy", specifier = ">=2.0" },
     { name = "torch", marker = "extra == 'cpu'", specifier = ">=2.7.0" },
     { name = "torch", marker = "extra == 'cu128'", specifier = ">=2.7.0" },
@@ -2654,7 +2654,7 @@ wheels = [
 [[package]]
 name = "rsl-rl-lib"
 version = "5.4.2"
-source = { git = "https://github.com/ManuelActisCassa/rsl_rl.git?rev=Muli_critic_PPO#4b467321f19e664d12aa24ad42a0842a733869b5" }
+source = { git = "https://github.com/ManuelActisCassa/rsl_rl.git?rev=18bccf56ab17de932f17804bc8af34ccaa7579bc#18bccf56ab17de932f17804bc8af34ccaa7579bc" }
 dependencies = [
     { name = "gitpython" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' or (extra == 'extra-9-pal-mjlab-cpu' and extra == 'extra-9-pal-mjlab-cu128')" },
