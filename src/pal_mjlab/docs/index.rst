@@ -16,6 +16,7 @@ pal_mjlab Documentation
 
    rl/ppo
    rl/training_env_building
+   rl/gui
 
 .. toctree::
    :maxdepth: 1
