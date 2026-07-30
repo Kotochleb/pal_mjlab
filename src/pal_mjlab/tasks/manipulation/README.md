@@ -1,6 +1,6 @@
 # TIAGo Pro Manipulation Implementation
 
-This directory contains the reinforcement learning (RL) manipulation environment setup for the **PAL TIAGo Pro** robot in `mjlab`. 
+This directory contains the reinforcement learning (RL) manipulation environment setup for the **PAL TIAGo Pro** robot in `mjlab`.
 
 The primary registered task is:
 - **Task ID**: `Mjlab-Manipulation-Lift-Cube-Pal-Tiago-Pro-v0`
@@ -17,7 +17,7 @@ src/pal_mjlab/tasks/manipulation/
 │   ├── __init__.py         # Registers task with mjlab registry
 │   ├── env_cfgs.py         # Full environment configuration (scene, actions, obs, rewards, events, terminations)
 │   └── rl_cfg.py           # PPO runner and neural network architecture config (RSL-RL)
-└── mdp/                    
+└── mdp/
     ├── __init__.py         # Exports all MDP modules
     ├── commands.py         # Lifting command generator, procedural table/box XML specs, metric tracking
     ├── contact_sensor.py   # Fingertip proximity and contact helper functions
