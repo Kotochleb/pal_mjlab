@@ -99,3 +99,6 @@ Tasks:
 
 - :ref:`Kangaroo task_velocity`
 - :ref:`Kangaroo task_motion_imitation`
+
+Tools:
+- :ref:`Kangaroo adversarial_motion_prior`
