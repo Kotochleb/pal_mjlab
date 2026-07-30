@@ -154,6 +154,7 @@ def pal_kangaroo_grippers_manipulation_rough_env_cfg(
 
   cfg.observations["actor"].terms["height_scan"] = None
   cfg.observations["critic_0"].terms["height_scan"] = None
+  cfg.observations["critic_1"].terms["height_scan"] = None
   cfg.observations["actor"].terms["base_lin_vel"] = None
   cfg.observations["actor"].terms["projected_gravity"] = None
   cfg.observations["actor"].terms["imu_projected_gravity"] = ObservationTermCfg(
@@ -166,14 +167,16 @@ def pal_kangaroo_grippers_manipulation_rough_env_cfg(
     params={"sensor_name": "robot/imu_lin_acc"},
     noise=Unoise(n_min=-0.5, n_max=0.5),
   )
-  cfg.observations["critic_0"].terms["imu_projected_gravity"] = ObservationTermCfg(
-    func=mdp.imu_projected_gravity,
-    params={"sensor_name": "robot/imu_quat"},
-  )
-  cfg.observations["critic_0"].terms["base_lin_acc"] = ObservationTermCfg(
-    func=mdp.builtin_sensor,
-    params={"sensor_name": "robot/imu_lin_acc"},
-  )
+
+  for critic in ["critic_0", "critic_1"] :
+    cfg.observations[critic].terms["imu_projected_gravity"] = ObservationTermCfg(
+      func=mdp.imu_projected_gravity,
+      params={"sensor_name": "robot/imu_quat"},
+    )
+    cfg.observations[critic].terms["base_lin_acc"] = ObservationTermCfg(
+      func=mdp.builtin_sensor,
+      params={"sensor_name": "robot/imu_lin_acc"},
+    )
   cfg.observations["actor"].terms["joint_vel"].noise = Unoise(n_min=-0.5, n_max=0.5)
 
   ### Disabling the use of history length as we haven't seen much improvements with it

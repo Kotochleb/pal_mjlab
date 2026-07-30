@@ -159,6 +159,11 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
       concatenate_terms=True,
       enable_corruption=False,
     ),
+    "critic_1": ObservationGroupCfg(
+      terms=critic_terms,
+      concatenate_terms=True,
+      enable_corruption=False,
+    ),
   }
 
   ##
@@ -303,6 +308,7 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
         "std": math.sqrt(0.2),
         "asset_cfg": SceneEntityCfg("robot", body_names=()),  # Set per-robot.
       },
+      group="critic_1",
     ),
     "pose": RewardTermCfg(
       func=mdp.VariablePostureGripperManipulation,
@@ -311,9 +317,10 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
         "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
         "std_standing": {},  # Set per-robot.
       },
+      group="critic_1",
     ),
-    "dof_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0),
-    "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.1),
+    "dof_pos_limits": RewardTermCfg(func=mdp.joint_pos_limits, weight=-1.0, group="critic_1"),
+    "action_rate_l2": RewardTermCfg(func=mdp.action_rate_l2, weight=-0.1, group="critic_1"),
     "hands_to_box": RewardTermCfg(
       func=mdp.hands_to_box,
       weight=1.5,
