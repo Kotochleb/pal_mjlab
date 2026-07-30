@@ -118,8 +118,8 @@ class LiftingCommand(CommandTerm):
       torch.zeros_like(self.at_goal_time),
     )
 
-    # Reached becomes True once the object is inside the success threshold for at least 0.1s.
-    newly_reached = ~self.reached & (self.at_goal_time >= 0.1)
+    # Reached becomes True once the object is inside the success threshold for at least holding_time (default 0.1s).
+    newly_reached = ~self.reached & (self.at_goal_time >= self.cfg.holding_time)
     self.reached = self.reached | newly_reached
 
     # Increment reached_time for all envs that are already (or just became) reached
@@ -225,6 +225,7 @@ class LiftingCommandCfg(CommandTermCfg):
   table_height: float
   contact_sensor_name: str
   success_threshold: float = 0.05
+  holding_time: float = 0.1
   fingertip_contact_sensor_name: str = "box_fingertip_contact"
   fingertip_site_pattern: str = "gripper_right_fingertip_.*_site"
 
