@@ -4,10 +4,10 @@ from mjlab.rl.exporter_utils import (
   attach_metadata_to_onnx,
   get_base_metadata,
 )
-from mjlab.rl.runner import MjlabOnPolicyRunner
+from mjlab.rl.multi_critic_runner import MjlabMultiCriticOnPolicyRunner
 
 
-class HandManipulationOnPolicyRunner(MjlabOnPolicyRunner):
+class HandManipulationOnPolicyRunner(MjlabMultiCriticOnPolicyRunner):
   env: RslRlVecEnvWrapper
 
   def save(self, path: str, infos=None):

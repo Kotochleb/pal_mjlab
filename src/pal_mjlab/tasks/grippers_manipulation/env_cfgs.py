@@ -154,7 +154,7 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
       concatenate_terms=True,
       enable_corruption=True,
     ),
-    "critic": ObservationGroupCfg(
+    "critic_0": ObservationGroupCfg(
       terms=critic_terms,
       concatenate_terms=True,
       enable_corruption=False,
@@ -417,4 +417,5 @@ def make_grippers_manipulation_env_cfg() -> ManagerBasedRlEnvCfg:
     ),
     decimation=4,
     episode_length_s=20.0,
+    multiple_critics=True
   )

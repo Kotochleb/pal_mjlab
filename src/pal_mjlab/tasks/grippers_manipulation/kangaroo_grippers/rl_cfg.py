@@ -4,12 +4,13 @@ from mjlab.rl import (
   RslRlModelCfg,
   RslRlOnPolicyRunnerCfg,
   RslRlPpoAlgorithmCfg,
+  RslRlMultiCriticOnPolicyRunnerCfg,
 )
 
 
-def pal_kangaroo_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
+def pal_kangaroo_ppo_runner_cfg() -> RslRlMultiCriticOnPolicyRunnerCfg:
   """Create RL runner configuration for PAL Kangaroo grippers manipulation task."""
-  return RslRlOnPolicyRunnerCfg(
+  return RslRlMultiCriticOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
       hidden_dims=(512, 256, 128),
       activation="elu",
@@ -38,6 +39,8 @@ def pal_kangaroo_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       lam=0.95,
       desired_kl=0.01,
       max_grad_norm=1.0,
+      class_name="MultiCriticPPO",
+      num_critics=1,
     ),
     experiment_name="kangaroo_gripper_manipulation",
     save_interval=500,
