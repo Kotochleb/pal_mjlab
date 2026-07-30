@@ -54,28 +54,28 @@ Actions
 -------
 
 +-------------------------+------------------------------------------------+
-| Button                  | What it does                                    |
-+=========================+==================================================+
-| List tasks              | Runs ``uv run list-envs`` and parses the         |
-|                          | resulting table into the list of tasks used by  |
-|                          | the Train and Deploy dialogs.                   |
+| Button                  | What it does                                   |
++=========================+================================================+
+| List tasks              | Runs ``uv run list-envs`` and parses the       |
+|                         | resulting table into the list of tasks used by |
+|                         | the Train and Deploy dialogs.                  |
 +-------------------------+------------------------------------------------+
-| Train Policy            | Opens the training dialog (see below).          |
+| Train Policy            | Opens the training dialog (see below).         |
 +-------------------------+------------------------------------------------+
-| Deploy                  | Opens the deploy dialog to run a policy from a  |
-|                          | saved checkpoint, or a scripted agent.          |
+| Deploy                  | Opens the deploy dialog to run a policy from a |
+|                         | saved checkpoint, or a scripted agent.         |
 +-------------------------+------------------------------------------------+
-| Sync Checkpoints        | ``rsync``'s the ``logs/`` folder from the       |
-|                          | configured remote machine into the local        |
-|                          | ``./logs`` directory.                           |
+| Sync Checkpoints        | ``rsync``'s the ``logs/`` folder from the      |
+|                         | configured remote machine into the local       |
+|                         | ``./logs`` directory.                          |
 +-------------------------+------------------------------------------------+
-| Setup Remote Folder     | Configures the SSH user / host / remote path    |
-|                          | used by the Remote checkbox and Sync            |
-|                          | Checkpoints.                                    |
+| Setup Remote Folder     | Configures the SSH user / host / remote path   |
+|                         | used by the Remote checkbox and Sync           |
+|                         | Checkpoints.                                   |
 +-------------------------+------------------------------------------------+
-| Remote (checkbox)       | When checked, the *next* launched command runs  |
-|                          | over SSH on the configured remote machine       |
-|                          | instead of locally.                             |
+| Remote (checkbox)       | When checked, the *next* launched command runs |
+|                         | over SSH on the configured remote machine      |
+|                         | instead of locally.                            |
 +-------------------------+------------------------------------------------+
 
 You must click **List tasks** at least once before **Train Policy** or
