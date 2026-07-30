@@ -169,6 +169,24 @@ robot's body and the table. *Regularization* terms (``pose``,
 ``action_rate_l2``) smooth the resulting motion. As with the other tasks, these
 baseline weights are a starting point, not a guaranteed optimum.
 
+Multi critic setup
+------------------
+
+A setup to use multiple critics has been implemented. It uses an extension of 
+rsl-rl that has a multi-critic PPO runner. The idea is to have multiple critics
+learning different value functions. You may setup different observations for each critic, and
+reward terms now have a "group" attribute, that point to the critic it is assigned to.
+
+A basic setup would be :
+
+"critic_0" : All observations, only locomotion rewards
+
+"critic_1" : All observations, only manipulation rewards
+
+This makes it so value function estimations are better.
+
+This is still in testing.
+
 Terminations
 ------------
 
