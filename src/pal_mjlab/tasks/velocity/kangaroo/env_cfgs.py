@@ -413,14 +413,12 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # Noise
   cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
-    n_min=-0.02, n_max=0.02
+    n_min=-0.025, n_max=0.025
   )
   cfg.observations["actor"].terms["base_ang_vel"].noise = Unoise(
     n_min=-0.02, n_max=0.02
   )
-  cfg.observations["actor"].terms["base_lin_acc"].noise = Unoise(
-    n_min=-0.05, n_max=0.05
-  )
+  cfg.observations["actor"].terms["base_lin_acc"].noise = Unoise(n_min=-1.0, n_max=1.0)
   cfg.observations["actor"].terms["joint_vel"].noise = Unoise(n_min=-0.15, n_max=0.15)
 
   # History
@@ -463,7 +461,7 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.rewards["air_time"].params["command_threshold"] = 0.1
 
   # More upright = safer torso stance
-  cfg.rewards["upright"].weight = 2.0
+  cfg.rewards["upright"].weight = 1.5
 
   # Use the improved ang vel z-xy reward / penalties
   cfg.rewards["track_angular_velocity"].func = mdp.track_body_ang_vel_z_exp
