@@ -10,6 +10,7 @@ from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.sensor import (
+  CameraSensorCfg,
   ContactMatch,
   ContactSensorCfg,
   GridPatternCfg,
@@ -48,6 +49,13 @@ from pal_mjlab.robots import (
   get_kangaroo_robot_cfg,
 )
 from pal_mjlab.tasks.velocity import mdp
+
+# Resolution of the front-down depth image the policy sees, and the range beyond which it
+# is told nothing is there. The front_down_depth camera in kangaroo.xml carries the field
+# of view matching this resolution.
+LOW_RES_DEPTH_ROWS = 12
+LOW_RES_DEPTH_COLS = 16
+CLIPPED_DEPTH_MAX = 2.0
 
 
 def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -388,7 +396,21 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     debug_vis=True,
   )
 
-  cfg.scene.sensors = (cfg.scene.sensors or ()) + (terrain_scan,)
+  # Front-down depth camera, rendered directly at the resolution the policy consumes.
+  low_res_depth_cam = CameraSensorCfg(
+    name="low_res_depth_cam",
+    camera_name="robot/front_down_depth",  # carries pose and field of view
+    width=LOW_RES_DEPTH_COLS,
+    height=LOW_RES_DEPTH_ROWS,
+    data_types=("depth",),
+    # Terrain and robot visual meshes: the real camera sees the robot's own legs, so the
+    # policy should learn to read a self-occluded image rather than a clean one.
+    enabled_geom_groups=(0, 2),
+    use_textures=False,  # nothing shades a depth-only render
+    use_shadows=False,
+  )
+
+  cfg.scene.sensors = (cfg.scene.sensors or ()) + (terrain_scan, low_res_depth_cam)
 
   ### OBSERVATIONS
 
@@ -397,6 +419,18 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     func=mdp.height_scan,
     params={"sensor_name": "terrain_scan"},
     scale=1 / terrain_scan.max_distance,
+  )
+
+  # The exteroception the robot really has, for both actor and critic.
+  cfg.observations["actor"].terms["clipped_depth"] = ObservationTermCfg(
+    func=mdp.clipped_depth,
+    params={"sensor_name": low_res_depth_cam.name, "max_depth": CLIPPED_DEPTH_MAX},
+    scale=1 / CLIPPED_DEPTH_MAX,
+  )
+  cfg.observations["critic"].terms["clipped_depth"] = ObservationTermCfg(
+    func=mdp.clipped_depth,
+    params={"sensor_name": low_res_depth_cam.name, "max_depth": CLIPPED_DEPTH_MAX},
+    scale=1 / CLIPPED_DEPTH_MAX,
   )
 
   # Lag
@@ -410,6 +444,8 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.observations["actor"].terms["joint_pos"].delay_max_lag = 1
   cfg.observations["actor"].terms["joint_vel"].delay_min_lag = 0
   cfg.observations["actor"].terms["joint_vel"].delay_max_lag = 1
+  cfg.observations["actor"].terms["clipped_depth"].delay_min_lag = 0
+  cfg.observations["actor"].terms["clipped_depth"].delay_max_lag = 5
 
   # Noise
   cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
@@ -577,6 +613,11 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     assert isinstance(twist_cmd, mdp.DualBandVelocityCommandCfg)
     twist_cmd.ranges.lin_vel_x = (-0.5, 0.5)
     twist_cmd.ranges.ang_vel_z = (-0.5, 0.5)
+    # The viser joystick builds a "Max lin_vel_y" slider with a hardcoded min of 0.1 and
+    # asserts the initial value is in range, so a zero-width lateral range crashes the
+    # viewer (mjlab velocity_command.py create_gui). 0.1 is the smallest value it
+    # accepts. Play only -- training keeps lin_vel_y at (0.0, 0.0).
+    twist_cmd.ranges.lin_vel_y = (0.0, 0.1)
 
     # Disable terrain curriculum.
     assert cfg.curriculum is not None
