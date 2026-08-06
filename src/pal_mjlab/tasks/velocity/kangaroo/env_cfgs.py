@@ -53,8 +53,8 @@ from pal_mjlab.tasks.velocity import mdp
 # Resolution of the front-down depth image the policy sees, and the range beyond which it
 # is told nothing is there. The front_down_depth camera in kangaroo.xml carries the field
 # of view matching this resolution.
-LOW_RES_DEPTH_ROWS = 12
-LOW_RES_DEPTH_COLS = 16
+LOW_RES_DEPTH_HEIGHT = 12
+LOW_RES_DEPTH_WIDTH = 16
 CLIPPED_DEPTH_MAX = 2.0
 # Floor for the actor's noisy depth. `clipped_depth` never emits anything this small on
 # its own, so this only catches jitter that would otherwise push a near pixel to zero or
@@ -405,8 +405,8 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   low_res_depth_cam = CameraSensorCfg(
     name="low_res_depth_cam",
     camera_name="robot/front_down_depth",  # carries pose and field of view
-    width=LOW_RES_DEPTH_COLS,
-    height=LOW_RES_DEPTH_ROWS,
+    width=LOW_RES_DEPTH_WIDTH,
+    height=LOW_RES_DEPTH_HEIGHT,
     data_types=("depth",),
     # Terrain and robot visual meshes: the real camera sees the robot's own legs, so the
     # policy should learn to read a self-occluded image rather than a clean one.
@@ -433,11 +433,7 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     # The real D435i flickers: stereo matching drops pixels frame to frame, and the axial
     # error grows with range. Both are expressed post-filter -- a dropped pixel reads as
     # far, not as a hole. Actor only; the critic below keeps the clean image.
-    noise=mdp.DepthFlickerNoiseCfg(
-      max_depth=CLIPPED_DEPTH_MAX,
-      dropout_prob=0.05,
-      range_noise_coeff=0.007,
-    ),
+    noise=Unoise(-0.02, 0.02),
     # Manager order is noise -> clip -> scale, so the jitter above is in metres and this
     # bounds it in metres, before normalising.
     clip=(CLIPPED_DEPTH_MIN, CLIPPED_DEPTH_MAX),
