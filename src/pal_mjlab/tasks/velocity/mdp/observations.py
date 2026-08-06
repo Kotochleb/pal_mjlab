@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers.scene_entity_config import SceneEntityCfg
-from mjlab.sensor import BuiltinSensor
+from mjlab.sensor import BuiltinSensor, CameraSensor
 from mjlab.utils.lab_api.math import quat_apply_inverse
 
 if TYPE_CHECKING:
@@ -40,3 +40,30 @@ def imu_projected_gravity(
   # print(f"proj{asset.data.projected_gravity_b}")
   # Project to IMU frame (same as your C++ code)
   return quat_apply_inverse(imu_quat, gravity_w)
+
+
+##
+# Exteroception.
+##
+
+
+def clipped_depth(
+  env: ManagerBasedRlEnv, sensor_name: str, max_depth: float
+) -> torch.Tensor:
+  """Depth image from a `CameraSensor`, flattened row-major with row 0 at the top.
+
+  mujoco_warp already renders planar depth in metres, so no conversion is needed. The
+  two guards are the renderer's conventions rather than ours:
+
+  - A ray that hits nothing writes ``0.0``, which raw would tell the policy there is a
+    surface against the lens. Filling with ``max_depth`` makes "nothing there" and "far
+    away" the same number, which is what they mean for locomotion.
+  - A hit is unbounded -- there is no far clip -- so over a gap or a downslope the value
+    grows without limit and the caller's ``1 / max_depth`` scaling stops normalising.
+  """
+  sensor = env.scene[sensor_name]
+  assert isinstance(sensor, CameraSensor)
+  depth = sensor.data.depth
+  assert depth is not None, f"sensor '{sensor_name}' has no depth data type enabled"
+  depth = depth.squeeze(-1).flatten(1)  # [B, height * width]
+  return torch.where((depth > 0.0) & (depth < max_depth), depth, max_depth)
