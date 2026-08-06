@@ -56,6 +56,11 @@ from pal_mjlab.tasks.velocity import mdp
 LOW_RES_DEPTH_ROWS = 12
 LOW_RES_DEPTH_COLS = 16
 CLIPPED_DEPTH_MAX = 2.0
+# Floor for the actor's noisy depth. `clipped_depth` never emits anything this small on
+# its own, so this only catches jitter that would otherwise push a near pixel to zero or
+# below -- and zero is the one value the policy must not see, since it reads as a surface
+# against the lens.
+CLIPPED_DEPTH_MIN = 0.05
 
 
 def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
@@ -425,6 +430,17 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.observations["actor"].terms["clipped_depth"] = ObservationTermCfg(
     func=mdp.clipped_depth,
     params={"sensor_name": low_res_depth_cam.name, "max_depth": CLIPPED_DEPTH_MAX},
+    # The real D435i flickers: stereo matching drops pixels frame to frame, and the axial
+    # error grows with range. Both are expressed post-filter -- a dropped pixel reads as
+    # far, not as a hole. Actor only; the critic below keeps the clean image.
+    noise=mdp.DepthFlickerNoiseCfg(
+      max_depth=CLIPPED_DEPTH_MAX,
+      dropout_prob=0.05,
+      range_noise_coeff=0.007,
+    ),
+    # Manager order is noise -> clip -> scale, so the jitter above is in metres and this
+    # bounds it in metres, before normalising.
+    clip=(CLIPPED_DEPTH_MIN, CLIPPED_DEPTH_MAX),
     scale=1 / CLIPPED_DEPTH_MAX,
   )
   cfg.observations["critic"].terms["clipped_depth"] = ObservationTermCfg(
