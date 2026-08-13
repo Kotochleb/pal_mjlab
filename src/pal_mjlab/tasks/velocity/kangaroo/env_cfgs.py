@@ -1,5 +1,7 @@
 """PAL Robotics KANGAROO velocity tracking environment configurations."""
 
+import math
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -399,18 +401,6 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     scale=1 / terrain_scan.max_distance,
   )
 
-  # Lag
-  cfg.observations["actor"].terms["base_ang_vel"].delay_min_lag = 0
-  cfg.observations["actor"].terms["base_ang_vel"].delay_max_lag = 2
-  cfg.observations["actor"].terms["base_lin_acc"].delay_min_lag = 0
-  cfg.observations["actor"].terms["base_lin_acc"].delay_max_lag = 1
-  cfg.observations["actor"].terms["imu_projected_gravity"].delay_min_lag = 0
-  cfg.observations["actor"].terms["imu_projected_gravity"].delay_max_lag = 2
-  cfg.observations["actor"].terms["joint_pos"].delay_min_lag = 0
-  cfg.observations["actor"].terms["joint_pos"].delay_max_lag = 1
-  cfg.observations["actor"].terms["joint_vel"].delay_min_lag = 0
-  cfg.observations["actor"].terms["joint_vel"].delay_max_lag = 1
-
   # Noise
   cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
     n_min=-0.02, n_max=0.02
@@ -472,10 +462,12 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # Gaussian kernel r=exp(-‖v_cmd-v‖²/std²): r=0.5 at error=std·√ln2≈0.12.
   # Tightened from default so the reward stays discriminative at low command speeds
   # instead of flattening into a dead-zone.
-  cfg.rewards["track_linear_velocity"].params["std"] = math.sqrt(0.0225)  # r=0.5 at ~0.12 m/s error
-  cfg.rewards["track_angular_velocity"].params["std"] = (
-    math.sqrt(0.0225)  # r=0.5 at ~0.12 rad/s error
-  )
+  cfg.rewards["track_linear_velocity"].params["std"] = math.sqrt(
+    0.0225
+  )  # r=0.5 at ~0.12 m/s error
+  cfg.rewards["track_angular_velocity"].params["std"] = math.sqrt(
+    0.0225
+  )  # r=0.5 at ~0.12 rad/s error
 
   ### EVENTS
 
