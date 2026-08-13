@@ -401,10 +401,23 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     debug_vis=True,
   )
 
+  # <!-- This camera has the optical frame already in ROS 2 convention-->
+  # <camera fovy="63.4211" mode="fixed" name="torso_front_down_rgbd_camera_low_res"
+  # pos="0.11116631037258327 0.0175 0.18965709123216126"
+  # quat="-0.6830129259727709 -0.18301186561016813 0.18301186561016808 0.6830129259727709" resolution="16 12"/>
+
   # Front-down depth camera, rendered directly at the resolution the policy consumes.
-  low_res_depth_cam = CameraSensorCfg(
-    name="low_res_depth_cam",
-    camera_name="robot/front_down_depth",  # carries pose and field of view
+  front_down_depth_camera_low_res = CameraSensorCfg(
+    name="front_down_depth_camera_low_res",
+    parent_body="robot/pelvis_2_link",
+    pos=(0.11116631037258327, 0.0175, 0.18965709123216126),
+    quat=(
+      -0.6830129259727709,
+      -0.18301186561016813,
+      0.18301186561016808,
+      0.6830129259727709,
+    ),
+    fovy=63.42,
     width=LOW_RES_DEPTH_WIDTH,
     height=LOW_RES_DEPTH_HEIGHT,
     data_types=("depth",),
@@ -415,7 +428,10 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     use_shadows=False,
   )
 
-  cfg.scene.sensors = (cfg.scene.sensors or ()) + (terrain_scan, low_res_depth_cam)
+  cfg.scene.sensors = (cfg.scene.sensors or ()) + (
+    terrain_scan,
+    front_down_depth_camera_low_res,
+  )
 
   ### OBSERVATIONS
 
@@ -429,10 +445,10 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # The exteroception the robot really has, for both actor and critic.
   cfg.observations["actor"].terms["clipped_depth"] = ObservationTermCfg(
     func=mdp.clipped_depth,
-    params={"sensor_name": low_res_depth_cam.name, "max_depth": CLIPPED_DEPTH_MAX},
-    # The real D435i flickers: stereo matching drops pixels frame to frame, and the axial
-    # error grows with range. Both are expressed post-filter -- a dropped pixel reads as
-    # far, not as a hole. Actor only; the critic below keeps the clean image.
+    params={
+      "sensor_name": front_down_depth_camera_low_res.name,
+      "max_depth": CLIPPED_DEPTH_MAX,
+    },
     noise=Unoise(-0.02, 0.02),
     # Manager order is noise -> clip -> scale, so the jitter above is in metres and this
     # bounds it in metres, before normalising.
@@ -441,7 +457,10 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
   cfg.observations["critic"].terms["clipped_depth"] = ObservationTermCfg(
     func=mdp.clipped_depth,
-    params={"sensor_name": low_res_depth_cam.name, "max_depth": CLIPPED_DEPTH_MAX},
+    params={
+      "sensor_name": front_down_depth_camera_low_res.name,
+      "max_depth": CLIPPED_DEPTH_MAX,
+    },
     scale=1 / CLIPPED_DEPTH_MAX,
   )
 
