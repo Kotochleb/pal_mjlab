@@ -401,12 +401,8 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     debug_vis=True,
   )
 
-  # <!-- This camera has the optical frame already in ROS 2 convention-->
-  # <camera fovy="63.4211" mode="fixed" name="torso_front_down_rgbd_camera_low_res"
-  # pos="0.11116631037258327 0.0175 0.18965709123216126"
-  # quat="-0.6830129259727709 -0.18301186561016813 0.18301186561016808 0.6830129259727709" resolution="16 12"/>
-
   # Front-down depth camera, rendered directly at the resolution the policy consumes.
+  # The camera has the optical frame already in ROS 2 convention
   front_down_depth_camera_low_res = CameraSensorCfg(
     name="front_down_depth_camera_low_res",
     parent_body="robot/pelvis_2_link",
@@ -465,16 +461,16 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # Lag
-  cfg.observations["actor"].terms["base_ang_vel"].delay_min_lag = 0
-  cfg.observations["actor"].terms["base_ang_vel"].delay_max_lag = 2
-  cfg.observations["actor"].terms["base_lin_acc"].delay_min_lag = 0
-  cfg.observations["actor"].terms["base_lin_acc"].delay_max_lag = 1
-  cfg.observations["actor"].terms["imu_projected_gravity"].delay_min_lag = 0
-  cfg.observations["actor"].terms["imu_projected_gravity"].delay_max_lag = 2
-  cfg.observations["actor"].terms["joint_pos"].delay_min_lag = 0
-  cfg.observations["actor"].terms["joint_pos"].delay_max_lag = 1
-  cfg.observations["actor"].terms["joint_vel"].delay_min_lag = 0
-  cfg.observations["actor"].terms["joint_vel"].delay_max_lag = 1
+  # cfg.observations["actor"].terms["base_ang_vel"].delay_min_lag = 0
+  # cfg.observations["actor"].terms["base_ang_vel"].delay_max_lag = 2
+  # cfg.observations["actor"].terms["base_lin_acc"].delay_min_lag = 0
+  # cfg.observations["actor"].terms["base_lin_acc"].delay_max_lag = 1
+  # cfg.observations["actor"].terms["imu_projected_gravity"].delay_min_lag = 0
+  # cfg.observations["actor"].terms["imu_projected_gravity"].delay_max_lag = 2
+  # cfg.observations["actor"].terms["joint_pos"].delay_min_lag = 0
+  # cfg.observations["actor"].terms["joint_pos"].delay_max_lag = 1
+  # cfg.observations["actor"].terms["joint_vel"].delay_min_lag = 0
+  # cfg.observations["actor"].terms["joint_vel"].delay_max_lag = 1
   cfg.observations["actor"].terms["clipped_depth"].delay_min_lag = 0
   cfg.observations["actor"].terms["clipped_depth"].delay_max_lag = 5
 
@@ -516,18 +512,18 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   ### REWARDS
 
   # Swing height: stronger to avoid dragging the feet
-  cfg.rewards["foot_swing_height"].weight = -0.5
-  cfg.rewards["foot_swing_height"].params["target_height"] = 0.15
+  # cfg.rewards["foot_swing_height"].weight = -0.5
+  # cfg.rewards["foot_swing_height"].params["target_height"] = 0.15
 
   # Target clearance when moving: conservatively high to avoid stumbling
   # Experimentally, increasing its weight makes the robot unstable
-  cfg.rewards["foot_clearance"].params["target_height"] = 0.15
+  # cfg.rewards["foot_clearance"].params["target_height"] = 0.15
 
   # More human-like air time and stronger, specially important with obstacles
-  cfg.rewards["air_time"].weight = 1.0
-  cfg.rewards["air_time"].params["threshold_min"] = 0.2
-  cfg.rewards["air_time"].params["threshold_max"] = 0.45
-  cfg.rewards["air_time"].params["command_threshold"] = 0.1
+  # cfg.rewards["air_time"].weight = 1.0
+  # cfg.rewards["air_time"].params["threshold_min"] = 0.2
+  # cfg.rewards["air_time"].params["threshold_max"] = 0.45
+  # cfg.rewards["air_time"].params["command_threshold"] = 0.1
 
   # More upright = safer torso stance
   cfg.rewards["upright"].weight = 2.0
