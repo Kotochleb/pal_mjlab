@@ -7,7 +7,7 @@ from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
-  FEET_ONLY_COLLISION,
+  FULL_COLLISION,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   _build_action_scales,
@@ -172,7 +172,7 @@ _ROBOT_CONFIGS = {
   "kangaroo_full": (
     get_kangaroo_full_spec,
     KANGAROO_FULL_ARTICULATION,
-    FEET_ONLY_COLLISION,
+    FULL_COLLISION,
   ),
 }
 
