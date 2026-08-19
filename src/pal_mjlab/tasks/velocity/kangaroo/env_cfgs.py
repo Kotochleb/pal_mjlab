@@ -402,20 +402,20 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   )
 
   # Noise
-  cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
-    n_min=-0.02, n_max=0.02
-  )
-  cfg.observations["actor"].terms["base_ang_vel"].noise = Unoise(
-    n_min=-0.02, n_max=0.02
-  )
-  cfg.observations["actor"].terms["base_lin_acc"].noise = Unoise(
-    n_min=-0.05, n_max=0.05
-  )
-  cfg.observations["actor"].terms["joint_vel"].noise = Unoise(n_min=-0.15, n_max=0.15)
+  # cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
+  #   n_min=-0.02, n_max=0.02
+  # )
+  # cfg.observations["actor"].terms["base_ang_vel"].noise = Unoise(
+  #   n_min=-0.02, n_max=0.02
+  # )
+  # cfg.observations["actor"].terms["base_lin_acc"].noise = Unoise(
+  #   n_min=-0.05, n_max=0.05
+  # )
+  # cfg.observations["actor"].terms["joint_vel"].noise = Unoise(n_min=-0.15, n_max=0.15)
 
   # History
-  cfg.observations["actor"].history_length = 3
-  cfg.observations["critic"].history_length = 3
+  # cfg.observations["actor"].history_length = 3
+  # cfg.observations["critic"].history_length = 3
 
   ### COMMANDS
 
@@ -565,10 +565,10 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
   # PLAY
   if play:
-    twist_cmd = cfg.commands["twist"]
-    assert isinstance(twist_cmd, mdp.DualBandVelocityCommandCfg)
-    twist_cmd.ranges.lin_vel_x = (-0.5, 0.5)
-    twist_cmd.ranges.ang_vel_z = (-0.5, 0.5)
+    # twist_cmd = cfg.commands["twist"]
+    # assert isinstance(twist_cmd, mdp.DualBandVelocityCommandCfg)
+    # twist_cmd.ranges.lin_vel_x = (-0.5, 0.5)
+    # twist_cmd.ranges.ang_vel_z = (-0.5, 0.5)
 
     # Disable terrain curriculum.
     assert cfg.curriculum is not None
