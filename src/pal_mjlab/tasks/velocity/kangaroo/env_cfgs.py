@@ -414,8 +414,9 @@ def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   # cfg.observations["actor"].terms["joint_vel"].noise = Unoise(n_min=-0.15, n_max=0.15)
 
   # History
-  # cfg.observations["actor"].history_length = 3
-  # cfg.observations["critic"].history_length = 3
+  cfg.observations["actor"].history_length = 5
+  cfg.observations["critic"].history_length = 5
+  cfg.observations["critic"].terms["height_scan"].history_length = 0
 
   ### COMMANDS
 
