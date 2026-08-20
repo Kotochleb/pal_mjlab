@@ -163,18 +163,18 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   cfg.events["foot_friction"].params["asset_cfg"].geom_names = geom_names
 
   cfg.events["base_com"] = EventTermCfg(
-      mode="startup",
-      func=dr.body_com_offset,
-      params={
-        "asset_cfg": SceneEntityCfg("robot", body_names=("pelvis_2_link",)),
-        "operation": "add",
-        "ranges": {
-          0: (-0.005, 0.005),
-          1: (-0.005, 0.005),
-          2: (-0.01, 0.01),
-        },
+    mode="startup",
+    func=dr.body_com_offset,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", body_names=("pelvis_2_link",)),
+      "operation": "add",
+      "ranges": {
+        0: (-0.005, 0.005),
+        1: (-0.005, 0.005),
+        2: (-0.01, 0.01),
       },
-    )
+    },
+  )
   # cfg.events["base_com"].params["asset_cfg"].body_names = ("pelvis_2_link",)
 
   # Domain Randomization for joint friction
@@ -425,6 +425,10 @@ def pal_kangaroo_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   assert cfg.curriculum is not None
   assert "terrain_levels" in cfg.curriculum
   del cfg.curriculum["terrain_levels"]
+
+  joint_pos_obs = cfg.observations["actor"].terms["joint_pos"]
+  assert isinstance(joint_pos_obs, ObservationTermCfg)
+  joint_pos_obs.params = {"biased": False}
 
   if play:
     # Disable command curriculum.
