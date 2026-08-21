@@ -394,6 +394,10 @@ def pal_kangaroo_flat_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   assert "terrain_levels" in cfg.curriculum
   del cfg.curriculum["terrain_levels"]
 
+  # More realistic cone and impratio to prevent sliding (the default is already soft)
+  # cfg.sim.mujoco.cone = "elliptic"
+  # cfg.sim.mujoco.impratio = 100.0
+
   if play:
     # Disable command curriculum.
     assert "command_vel" in cfg.curriculum

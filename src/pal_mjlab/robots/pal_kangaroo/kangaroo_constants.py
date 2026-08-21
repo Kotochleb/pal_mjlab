@@ -265,6 +265,10 @@ FEET_ONLY_COLLISION = CollisionCfg(
   priority=1,
   friction=(0.6,),
 )
+
+CALC_SOLIMP = (0.56, 0.99, 0.005)
+UNITREE_SOLIMP = (0.015, 0.99, 0.022)
+
 FULL_COLLISION = CollisionCfg(
   geom_names_expr=(".*_collision",),
   contype=1,
@@ -272,6 +276,7 @@ FULL_COLLISION = CollisionCfg(
   condim={_FOOT_REGEX: 3, ".*_collision": 1},
   priority={_FOOT_REGEX: 1, ".*_collision": 0},
   friction={_FOOT_REGEX: (0.6,)},
+  solimp={_FOOT_REGEX: UNITREE_SOLIMP},
 )
 
 ##
