@@ -266,8 +266,12 @@ FEET_ONLY_COLLISION = CollisionCfg(
   friction=(0.6,),
 )
 
-CALC_SOLIMP = (0.56, 0.99, 0.005)
-UNITREE_SOLIMP = (0.015, 0.99, 0.022)
+UNITREE_SOLIMP = (0.015, 0.99, 0.022)  # Around 5mm avg penetration
+SOLIMP_1MM = (0.882, 0.99, 0.025)
+SOLIMP_2MM = (0.720, 0.99, 0.025)
+SOLIMP_3MM = (0.573, 0.99, 0.025)
+SOLIMP_4MM = (0.422, 0.99, 0.025)
+SOLIMP_5MM = (0.226, 0.99, 0.025)
 
 FULL_COLLISION = CollisionCfg(
   geom_names_expr=(".*_collision",),
