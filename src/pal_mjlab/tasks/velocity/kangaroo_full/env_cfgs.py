@@ -4,6 +4,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
@@ -107,12 +108,24 @@ def pal_kangaroo_full_rough_env_cfg(
 
   # -- Metrics
 
-  cfg.metrics["knee_rods_eq_violation"] = MetricsTermCfg(
-    func=mdp.tendon_equality_constraint_violation,
+  # cfg.metrics["knee_rods_eq_violation"] = MetricsTermCfg(
+  #   func=mdp.tendon_equality_constraint_violation,
+  #   params={
+  #     "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
+  #     "mode": "violation",
+  #     "reduction": "mean",
+  #   },
+  # )
+
+  # -- Rewards
+
+  cfg.rewards["knee_rods_eq_violation"] = RewardTermCfg(
+    func=mdp.tendon_equality_violation_exp,
+    weight=-20.0,
     params={
       "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
-      "mode": "violation",
-      "reduction": "mean",
+      "deadzone": 0.05,
+      "scale": 0.01,
     },
   )
 
