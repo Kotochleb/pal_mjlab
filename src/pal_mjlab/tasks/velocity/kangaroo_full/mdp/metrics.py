@@ -13,37 +13,63 @@ if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
 
+def resolve_tendon_eq_targets(
+  env: ManagerBasedRlEnv, asset_cfg: SceneEntityCfg
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  asset = env.scene[asset_cfg.name]
+  model = env.sim.model
+
+  eq_type = model.eq_type
+  eq_obj1id = model.eq_obj1id
+
+  tendon_ids: list[int] = []
+  eq_ids: list[int] = []
+  for local_id, tendon_name in enumerate(asset.tendon_names):
+    if tendon_name not in asset_cfg.tendon_names:
+      continue
+
+    tendon_id = int(asset.indexing.tendon_ids[local_id])
+    eq_rows = [
+      i
+      for i in range(model.neq)
+      if int(eq_type[i]) == int(mujoco.mjtEq.mjEQ_TENDON)
+      and int(eq_obj1id[i]) == tendon_id
+    ]
+    if not eq_rows:
+      continue
+
+    tendon_ids.append(local_id)
+    eq_ids.append(eq_rows[0])
+
+  local_tendon_ids = torch.as_tensor(tendon_ids, device=env.device, dtype=torch.long)
+  global_tendon_ids = asset.indexing.tendon_ids[local_tendon_ids]
+  eq_row_ids = torch.as_tensor(eq_ids, device=env.device, dtype=torch.long)
+  return local_tendon_ids, global_tendon_ids, eq_row_ids
+
+
+def tendon_length_violation(
+  env: ManagerBasedRlEnv,
+  asset_cfg: SceneEntityCfg,
+  tendon_ids: torch.Tensor,
+  global_tendon_ids: torch.Tensor,
+  eq_ids: torch.Tensor,
+) -> torch.Tensor:
+  asset = env.scene[asset_cfg.name]
+  tendon_len = asset.data.tendon_len[:, tendon_ids]
+
+  model = env.sim.model
+  tendon_len0 = model.tendon_length0[:, global_tendon_ids]
+  target_offset = model.eq_data[:, eq_ids, 0]
+
+  return (tendon_len - tendon_len0) - target_offset
+
+
 class tendon_equality_constraint_violation:
   def __init__(self, cfg: MetricsTermCfg, env: ManagerBasedRlEnv):
     asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
-    asset = env.scene[asset_cfg.name]
-    model = env.sim.model
-
-    eq_type = model.eq_type
-    eq_obj1id = model.eq_obj1id
-
-    tendon_ids: list[int] = []
-    eq_ids: list[int] = []
-    for local_id, tendon_name in enumerate(asset.tendon_names):
-      if tendon_name not in asset_cfg.tendon_names:
-        continue
-
-      tendon_id = int(asset.indexing.tendon_ids[local_id])
-      eq_rows = [
-        i
-        for i in range(model.neq)
-        if int(eq_type[i]) == int(mujoco.mjtEq.mjEQ_TENDON)
-        and int(eq_obj1id[i]) == tendon_id
-      ]
-      if not eq_rows:
-        continue
-
-      tendon_ids.append(local_id)
-      eq_ids.append(eq_rows[0])
-
-    self.tendon_ids = torch.as_tensor(tendon_ids, device=env.device, dtype=torch.long)
-    self.global_tendon_ids = asset.indexing.tendon_ids[self.tendon_ids]
-    self.eq_ids = torch.as_tensor(eq_ids, device=env.device, dtype=torch.long)
+    self.tendon_ids, self.global_tendon_ids, self.eq_ids = resolve_tendon_eq_targets(
+      env, asset_cfg
+    )
 
   def __call__(
     self,
@@ -53,16 +79,14 @@ class tendon_equality_constraint_violation:
     reduction: Literal["sum", "mean", "max"] = "sum",
   ) -> torch.Tensor:
     asset = env.scene[asset_cfg.name]
-    tendon_len = asset.data.tendon_len[:, self.tendon_ids]
 
     if mode == "length":
+      tendon_len = asset.data.tendon_len[:, self.tendon_ids]
       return self._reduce(tendon_len, reduction)  # (num_envs,)
 
-    model = env.sim.model
-    tendon_len0 = model.tendon_length0[:, self.global_tendon_ids]
-    target_offset = model.eq_data[:, self.eq_ids, 0]
-
-    violation = (tendon_len - tendon_len0) - target_offset
+    violation = tendon_length_violation(
+      env, asset_cfg, self.tendon_ids, self.global_tendon_ids, self.eq_ids
+    )
     return self._reduce(violation.abs(), reduction)  # (num_envs,)
 
   @staticmethod

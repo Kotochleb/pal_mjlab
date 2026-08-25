@@ -4,7 +4,10 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.entity import Entity
+from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+
+from .metrics import resolve_tendon_eq_targets, tendon_length_violation
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -59,3 +62,31 @@ def joint_vel_limit(
     over_limit_squared_2, dim=1
   )
   return penalty  # Positive, scaled to negative with weight
+
+
+class tendon_equality_violation_exp:
+  def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
+    asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
+    self.tendon_ids, self.global_tendon_ids, self.eq_ids = resolve_tendon_eq_targets(
+      env, asset_cfg
+    )
+
+  def __call__(
+    self,
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    deadzone: float,
+    scale: float,
+  ) -> torch.Tensor:
+    violation = tendon_length_violation(
+      env, asset_cfg, self.tendon_ids, self.global_tendon_ids, self.eq_ids
+    ).abs()  # (num_envs, num_tendons)
+
+    max_violation = violation.max(dim=-1).values  # (num_envs,)
+    excess = torch.relu(max_violation - deadzone)
+    penalty = torch.expm1(excess / scale)  # exp(excess / scale) - 1
+
+    env.extras["log"]["Metrics/tendon_eq_violation_max"] = torch.max(violation)
+    env.extras["log"]["Metrics/tendon_eq_violation_median"] = torch.median(violation)
+
+    return penalty  # Positive, scaled to negative with weight
