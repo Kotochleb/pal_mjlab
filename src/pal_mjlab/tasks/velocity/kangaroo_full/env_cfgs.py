@@ -11,7 +11,6 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots import (
-  REGEX_SIMPLE_MODEL_JOINTS_ONLY,
   REGEX_ACTUATED_JOINTS_ONLY,
   REGEX_ALL_OBSERVABLE_JOINTS,
   REGEX_POSE_REVEOLUTE_JOINTS_ONLY,
@@ -21,7 +20,8 @@ from pal_mjlab.robots import (
   KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN,
   KANGAROO_FULL_JOINT_ACTION_SCALE_LOW,
   KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL,
-  KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
+  REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+  REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   get_kangaroo_full_robot_cfg,
   get_kangaroo_full_robot_low_pd_cfg,
   get_kangaroo_full_robot_semi_serial_cfg,
@@ -40,20 +40,18 @@ def pal_kangaroo_full_rough_env_cfg(
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
-  actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES
   if pd_mapping == "jacobian":
     cfg.scene.entities = {"robot": get_kangaroo_full_robot_cfg()}
     action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE
+    actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES
   elif pd_mapping == "lowest":
     cfg.scene.entities = {"robot": get_kangaroo_full_robot_low_pd_cfg()}
     action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE_LOW
+    actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES
   elif pd_mapping == "semi_serial":
-    # The semi-serial actuator servoes leg_length_joint, not leg_length_actuator
-    # (see TransmitedIdealPdActuatorCfg), so the action must target a different
-    # joint name here than the other two mappings.
     cfg.scene.entities = {"robot": get_kangaroo_full_robot_semi_serial_cfg()}
     action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL
-    actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL
+    actuator_names = REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
@@ -73,7 +71,7 @@ def pal_kangaroo_full_rough_env_cfg(
   # -- Observations
 
   observarion_space = {
-    "simple_model": REGEX_SIMPLE_MODEL_JOINTS_ONLY,
+    "simple_model": REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
     "actuator_space": REGEX_ACTUATED_JOINTS_ONLY,
     "full_state": REGEX_ALL_OBSERVABLE_JOINTS,
   }
@@ -102,14 +100,15 @@ def pal_kangaroo_full_rough_env_cfg(
     func=mdp.joint_pos_limits,
     weight=-1.0,
     params={
-      "asset_cfg": SceneEntityCfg("robot", joint_names=REGEX_SIMPLE_MODEL_JOINTS_ONLY)
+      "asset_cfg": SceneEntityCfg(
+        "robot",
+        joint_names=REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+      )
     },
   )
 
-  if pose_in_actuator_space:
-    simple_model_joints = (
-      REGEX_SIMPLE_MODEL_JOINTS_ONLY  # Exclude femur and knee joints.
-    )
+  if not pose_in_actuator_space:
+    simple_model_joints = REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY
     cfg.rewards["pose"].params["asset_cfg"].joint_names = (simple_model_joints,)
     cfg.rewards["pose"].params["std_standing"] = {simple_model_joints: 0.05}
   else:
@@ -122,11 +121,11 @@ def pal_kangaroo_full_rough_env_cfg(
       r"leg_.*_length_actuator": 0.05 * math.sqrt(leg_length_J),
     }
     # Remap simple model std to sull model std
+    scale = math.sqrt(leg_length_J)
     for param in ("std_walking", "std_running"):
-      cfg.rewards["pose"].params[param][r"leg_.*_length_actuator"] = cfg.rewards[
-        "pose"
-      ].params[param][r"leg_.*_length_.*"] * math.sqrt(leg_length_J)
-      del cfg.rewards["pose"].params[param][r"leg_.*_length_.*"]
+      pose_rew = cfg.rewards["pose"].params[param]
+      pose_rew[r"leg_.*_length_actuator"] = pose_rew[r"leg_.*_length_.*"] * scale
+      del pose_rew[r"leg_.*_length_.*"]
 
   # -- Metrics
 

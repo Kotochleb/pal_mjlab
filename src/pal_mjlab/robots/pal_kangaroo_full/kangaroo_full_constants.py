@@ -1,7 +1,5 @@
 """Pal Robotics KANGAROO FULL constants."""
 
-from sympy.abc import w
-
 import re
 from pathlib import Path
 
@@ -22,9 +20,12 @@ from pal_mjlab.robots.pal_kangaroo_full.actuator import (
 )
 
 
-REGEX_SIMPLE_MODEL_JOINTS_ONLY = r"^(?!leg_.*_length_actuator$).*$"
+REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY = r"^(?!leg_.*_length_actuator$).*$"
+REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY = (
+  r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$).*$"
+)
 REGEX_ACTUATED_JOINTS_ONLY = r"^(?!leg_.*_(femur|knee|length)_joint$).*$"
-REGEX_ALL_OBSERVABLE_JOINTS = r"^(?!leg_.*_(femur|knee)_joint$).*$"
+REGEX_ALL_OBSERVABLE_JOINTS = r".*"
 
 
 REGEX_POSE_REVEOLUTE_JOINTS_ONLY = (
@@ -169,9 +170,6 @@ KANGAROO_LEG_ACTUATORS_LOW = KANGAROO_SERIAL_JOINTS + (
 
 KANGAROO_LEG_ACTUATORS_SEMI_SERIAL = KANGAROO_SERIAL_JOINTS + (
   TransmitedIdealPdActuatorCfg(
-    # Servoes leg_length_joint (the overall-leg-length DOF the CSV table and
-    # these gains are calibrated against); joint_to_actuator_map tells
-    # edit_spec which physical joint the resulting torque actually drives.
     target_names_expr=(r"leg_(left|right)_length_joint$",),
     joint_to_actuator_map={
       "leg_right_length_joint": "leg_right_length_actuator",

@@ -18,7 +18,8 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (  # noqa: F401
   get_kangaroo_robot_cfg,
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa: F401
-  REGEX_SIMPLE_MODEL_JOINTS_ONLY,
+  REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+  REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_ACTUATED_JOINTS_ONLY,
   REGEX_ALL_OBSERVABLE_JOINTS,
   REGEX_POSE_REVEOLUTE_JOINTS_ONLY,
