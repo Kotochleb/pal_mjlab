@@ -20,8 +20,11 @@ from pal_mjlab.robots import (
   KANGAROO_TENDON_LENGTHS,
   KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN,
   KANGAROO_FULL_JOINT_ACTION_SCALE_LOW,
+  KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL,
+  KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
   get_kangaroo_full_robot_cfg,
   get_kangaroo_full_robot_low_pd_cfg,
+  get_kangaroo_full_robot_semi_serial_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_baseline_env_cfg
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
@@ -37,17 +40,25 @@ def pal_kangaroo_full_rough_env_cfg(
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
+  actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES
   if pd_mapping == "jacobian":
     cfg.scene.entities = {"robot": get_kangaroo_full_robot_cfg()}
     action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE
   elif pd_mapping == "lowest":
     cfg.scene.entities = {"robot": get_kangaroo_full_robot_low_pd_cfg()}
     action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE_LOW
+  elif pd_mapping == "semi_serial":
+    # The semi-serial actuator servoes leg_length_joint, not leg_length_actuator
+    # (see TransmitedIdealPdActuatorCfg), so the action must target a different
+    # joint name here than the other two mappings.
+    cfg.scene.entities = {"robot": get_kangaroo_full_robot_semi_serial_cfg()}
+    action_scale = KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL
+    actuator_names = KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
       entity_name="robot",
-      actuator_names=KANGAROO_FULL_ACTUATED_JOINTS_NAMES,
+      actuator_names=actuator_names,
       scale=action_scale,
       use_default_offset=True,
     ),
@@ -150,6 +161,7 @@ def pal_kangaroo_full_flat_env_cfg(
     play=play,
     joint_state_obs=joint_state_obs,
     pose_in_actuator_space=pose_in_actuator_space,
+    pd_mapping=pd_mapping,
   )
 
   cfg.sim.njmax = 300

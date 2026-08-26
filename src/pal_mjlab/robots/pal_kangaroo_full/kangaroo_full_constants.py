@@ -16,11 +16,13 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   _calc_leg_params,
 )
-
-
-REGEX_SIMPLE_MODEL_JOINTS_ONLY = (
-  r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$).*$"
+from pal_mjlab.robots.pal_kangaroo_full.actuator import (
+  TransmitedIdealPdActuatorCfg,
+  load_transmission_table,
 )
+
+
+REGEX_SIMPLE_MODEL_JOINTS_ONLY = r"^(?!leg_.*_length_actuator$).*$"
 REGEX_ACTUATED_JOINTS_ONLY = r"^(?!leg_.*_(femur|knee|length)_joint$).*$"
 REGEX_ALL_OBSERVABLE_JOINTS = r"^(?!leg_.*_(femur|knee)_joint$).*$"
 
@@ -35,8 +37,13 @@ KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls
 # KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_full_tendons.xml"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons.xml"
 
+LEG_LENGHT_TRAMISSION_LOOKUP_PATH = (
+  KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
+)
+
 for p in [
   KANGAROO_FULL_XML,
+  LEG_LENGHT_TRAMISSION_LOOKUP_PATH,
 ]:
   assert p.exists(), f"Missing: {p}"
 
@@ -98,7 +105,25 @@ def get_kangaroo_full_spec() -> mujoco.MjSpec:
 ##
 
 
-KANGAROO_LEG_ACTUATORS = (
+KANGAROO_SERIAL_JOINTS = (
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+  ),
+)
+
+KANGAROO_LEG_ACTUATORS = KANGAROO_SERIAL_JOINTS + (
   # BuiltinPositionActuatorCfg(
   #   transmission_type=TransmissionType.TENDON,
   #   target_names_expr=(r"(left|right)_hip_z_slider$",),
@@ -119,21 +144,6 @@ KANGAROO_LEG_ACTUATORS = (
   #   # saturation_effort=2000.0,
   #   # velocity_limit=0.4,
   # ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
-  ),
   # BuiltinPositionActuatorCfg(
   #   transmission_type=TransmissionType.TENDON,
   #   target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
@@ -149,32 +159,38 @@ KANGAROO_LEG_ACTUATORS = (
   ),
 )
 
-KANGAROO_LEG_ACTUATORS_LOW = (
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
-  ),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
-  ),
+KANGAROO_LEG_ACTUATORS_LOW = KANGAROO_SERIAL_JOINTS + (
   BuiltinPositionActuatorCfg(
     target_names_expr=(r"leg_(left|right)_length_actuator$",),
     **_calc_leg_params(5700.0, 5000.0),
+  ),
+)
+
+
+KANGAROO_LEG_ACTUATORS_SEMI_SERIAL = KANGAROO_SERIAL_JOINTS + (
+  TransmitedIdealPdActuatorCfg(
+    # Servoes leg_length_joint (the overall-leg-length DOF the CSV table and
+    # these gains are calibrated against); joint_to_actuator_map tells
+    # edit_spec which physical joint the resulting torque actually drives.
+    target_names_expr=(r"leg_(left|right)_length_joint$",),
+    joint_to_actuator_map={
+      "leg_right_length_joint": "leg_right_length_actuator",
+      "leg_left_length_joint": "leg_left_length_actuator",
+    },
+    transmission=load_transmission_table(LEG_LENGHT_TRAMISSION_LOOKUP_PATH),
+    actuator_effort_limit=5000.0,
+    **_calc_leg_params(1600.0, 1100.0),
   ),
 )
 COMMON_ACTUATORS = KANGAROO_LEG_ACTUATORS + (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
-COMMON_ACTUATORS_LOW = KANGAROO_LEG_ACTUATORS + (
+COMMON_ACTUATORS_LOW = KANGAROO_LEG_ACTUATORS_LOW + (
+  KANGAROO_S_PLUS_ACTUATOR_CFG,
+  KANGAROO_S_MINUS_ACTUATOR_CFG,
+)
+COMMON_ACTUATORS_SEMI_SERIAL = KANGAROO_LEG_ACTUATORS_SEMI_SERIAL + (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
@@ -223,6 +239,10 @@ KANGAROO_FULL_ARTICULATION_LOW = EntityArticulationInfoCfg(
   soft_joint_pos_limit_factor=0.99,
 )
 
+KANGAROO_FULL_ARTICULATION_SEMI_SERIAL = EntityArticulationInfoCfg(
+  actuators=(COMMON_ACTUATORS_SEMI_SERIAL),
+  soft_joint_pos_limit_factor=0.99,
+)
 
 _ROBOT_CONFIGS = {
   "kangaroo_full": (
@@ -233,6 +253,11 @@ _ROBOT_CONFIGS = {
   "kangaroo_full_low_pd": (
     get_kangaroo_full_spec,
     KANGAROO_FULL_ARTICULATION_LOW,
+    FULL_COLLISION,
+  ),
+  "kangaroo_full_semi_serial": (
+    get_kangaroo_full_spec,
+    KANGAROO_FULL_ARTICULATION_SEMI_SERIAL,
     FULL_COLLISION,
   ),
 }
@@ -254,6 +279,10 @@ def get_kangaroo_full_robot_cfg() -> EntityCfg:
 
 def get_kangaroo_full_robot_low_pd_cfg() -> EntityCfg:
   return _make_robot_cfg("kangaroo_full_low_pd")
+
+
+def get_kangaroo_full_robot_semi_serial_cfg() -> EntityCfg:
+  return _make_robot_cfg("kangaroo_full_semi_serial")
 
 
 ##
@@ -301,16 +330,19 @@ KANGAROO_FULL_ACTUATOR_NAMES = (
 )
 
 
+KANGAROO_FULL_JOINT_ACTION_SCALE_LOW, _ = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_LOW, TransmissionType.JOINT
+)
 (
-  KANGAROO_FULL_JOINT_ACTION_SCALE_LOW,
-  KANGAROO_FULL_ACTUATED_JOINTS_NAMES,
-) = _build_action_scales(KANGAROO_FULL_ARTICULATION_LOW, TransmissionType.JOINT)
+  KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL,
+  KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
+) = _build_action_scales(KANGAROO_FULL_ARTICULATION_SEMI_SERIAL, TransmissionType.JOINT)
 
 if __name__ == "__main__":
   import mujoco.viewer as viewer
   from mjlab.entity.entity import Entity
 
-  robot = Entity(get_kangaroo_full_robot_cfg())
+  robot = Entity(get_kangaroo_full_robot_semi_serial_cfg())
   model = robot.spec.compile()
   data = mujoco.MjData(model)
   _enforce_tendon_lengths(model, data, KANGAROO_TENDON_LENGTHS)
