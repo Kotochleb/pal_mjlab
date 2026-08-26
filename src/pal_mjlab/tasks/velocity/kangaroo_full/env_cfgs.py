@@ -121,11 +121,12 @@ def pal_kangaroo_full_rough_env_cfg(
 
   cfg.rewards["knee_rods_eq_violation"] = RewardTermCfg(
     func=mdp.tendon_equality_violation_exp,
-    weight=-20.0,
+    weight=-10.0,
     params={
       "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
       "deadzone": 0.05,
-      "scale": 0.01,
+      "scale": 0.05,
+      "clip": 0.15,
     },
   )
 
