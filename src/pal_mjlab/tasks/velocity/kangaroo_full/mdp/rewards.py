@@ -77,16 +77,19 @@ class tendon_equality_violation_exp:
     asset_cfg: SceneEntityCfg,
     deadzone: float,
     scale: float,
+    clip: float,
   ) -> torch.Tensor:
     violation = tendon_length_violation(
       env, asset_cfg, self.tendon_ids, self.global_tendon_ids, self.eq_ids
     ).abs()  # (num_envs, num_tendons)
 
-    max_violation = violation.max(dim=-1).values  # (num_envs,)
-    excess = torch.relu(max_violation - deadzone)
-    penalty = torch.expm1(excess / scale)  # exp(excess / scale) - 1
-
     env.extras["log"]["Metrics/tendon_eq_violation_max"] = torch.max(violation)
     env.extras["log"]["Metrics/tendon_eq_violation_median"] = torch.median(violation)
+
+    violation = torch.clamp(violation, max=clip)  # avoid blowups from outliers
+
+    max_violation = violation.max(dim=-1).values  # (num_envs,)
+    excess = torch.relu(max_violation - deadzone)
+    penalty = torch.square(excess / scale)  # L2 cost
 
     return penalty  # Positive, scaled to negative with weight
