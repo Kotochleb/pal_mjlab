@@ -222,7 +222,7 @@
               <geom name="leg_left_femur_collision" size="0.0910718 0.2" pos="0.043456 0.000622273 -0.115825" quat="0.194464 0.00344037 0.980904 2.41185e-06" class="collision"/>
                 <body name="left_femur_slider" pos="0.0665  0 -0.2365" quat="0.078 0.0 0.997 0.0">
                   <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
-                  <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="-1 1.1506"/>
+                  <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0.0 0.1506"/>
                   <site name="left_knee_rods_connect_a"  />
                   <!-- <body name="left_knee_rods"> -->
                   <!-- <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
@@ -331,7 +331,7 @@
               <geom name="leg_right_femur_collision" size="0.0910718 0.20" pos="0.043456 0.000622273 -0.115825" quat="0.194464 0.00344037 0.980904 2.41185e-06" class="collision"/>
                 <body name="right_femur_slider" pos="0.0665  0 -0.2365" quat="0.078 0.0 0.997 0.0">
                   <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
-                <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="-1 1.1506"/>
+                <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0.0 0.1506"/>
                 <site name="right_knee_rods_connect_a"  />
                   <!-- <body name="right_knee_rods"> -->
                   <!-- <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->

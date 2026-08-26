@@ -1,5 +1,7 @@
 """PAL Robotics kangaroo_full velocity tracking environment configurations."""
 
+import math
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.event_manager import EventTermCfg
@@ -58,6 +60,7 @@ def pal_kangaroo_full_rough_env_cfg(
   }
 
   # -- Observations
+
   observarion_space = {
     "simple_model": REGEX_SIMPLE_MODEL_JOINTS_ONLY,
     "actuator_space": REGEX_ACTUATED_JOINTS_ONLY,
@@ -84,6 +87,14 @@ def pal_kangaroo_full_rough_env_cfg(
 
   # -- Rewards
 
+  cfg.rewards["dof_pos_limits"] = RewardTermCfg(
+    func=mdp.joint_pos_limits,
+    weight=-1.0,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=REGEX_SIMPLE_MODEL_JOINTS_ONLY)
+    },
+  )
+
   if pose_in_actuator_space:
     simple_model_joints = (
       REGEX_SIMPLE_MODEL_JOINTS_ONLY  # Exclude femur and knee joints.
@@ -97,36 +108,31 @@ def pal_kangaroo_full_rough_env_cfg(
     cfg.rewards["pose"].params["asset_cfg"].joint_names = (REGEX_ACTUATED_JOINTS_ONLY,)
     cfg.rewards["pose"].params["std_standing"] = {
       REGEX_POSE_REVEOLUTE_JOINTS_ONLY: 0.05,
-      r"leg_.*_length_actuator": 0.05 * leg_length_J,
+      r"leg_.*_length_actuator": 0.05 * math.sqrt(leg_length_J),
     }
     # Remap simple model std to sull model std
     for param in ("std_walking", "std_running"):
-      cfg.rewards["pose"].params[param][r"leg_.*_length_actuator"] = (
-        cfg.rewards["pose"].params[param][r"leg_.*_length_.*"] * leg_length_J
-      )
+      cfg.rewards["pose"].params[param][r"leg_.*_length_actuator"] = cfg.rewards[
+        "pose"
+      ].params[param][r"leg_.*_length_.*"] * math.sqrt(leg_length_J)
       del cfg.rewards["pose"].params[param][r"leg_.*_length_.*"]
 
   # -- Metrics
 
-  # cfg.metrics["knee_rods_eq_violation"] = MetricsTermCfg(
-  #   func=mdp.tendon_equality_constraint_violation,
-  #   params={
-  #     "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
-  #     "mode": "violation",
-  #     "reduction": "mean",
-  #   },
-  # )
-
-  # -- Rewards
-
-  cfg.rewards["knee_rods_eq_violation"] = RewardTermCfg(
-    func=mdp.tendon_equality_violation_exp,
-    weight=-10.0,
+  cfg.metrics["knee_rods_eq_mean_violation"] = MetricsTermCfg(
+    func=mdp.tendon_equality_constraint_violation,
     params={
       "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
-      "deadzone": 0.05,
-      "scale": 0.05,
-      "clip": 0.15,
+      "mode": "violation",
+      "reduction": "mean",
+    },
+  )
+  cfg.metrics["knee_rods_eq_max_violation"] = MetricsTermCfg(
+    func=mdp.tendon_equality_constraint_violation,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
+      "mode": "violation",
+      "reduction": "max",
     },
   )
 
