@@ -27,6 +27,8 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   KANGAROO_FULL_ACTUATED_JOINTS_NAMES,
   KANGAROO_FULL_TENDON_ACTION_SCALE,
   KANGAROO_FULL_JOINT_ACTION_SCALE_LOW,
+  KANGAROO_FULL_JOINT_ACTION_SCALE_SEMI_SERIAL,
+  KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
   KANGAROO_FULL_ACTUATED_TENDONS_NAMES,
   KANGAROO_FULL_ACTUATOR_NAMES,
   KANGAROO_TENDON_LENGTHS,
@@ -34,6 +36,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN,
   get_kangaroo_full_robot_cfg,
   get_kangaroo_full_robot_low_pd_cfg,
+  get_kangaroo_full_robot_semi_serial_cfg,
 )
 from pal_mjlab.robots.pal_talos.talos_constants import (  # noqa: F401
   TALOS_ACTION_SCALE,

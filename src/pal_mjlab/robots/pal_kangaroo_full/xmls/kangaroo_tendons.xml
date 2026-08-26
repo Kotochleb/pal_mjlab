@@ -22,7 +22,7 @@
         <tendon width="0.005" rgba="0.8 0.2 0.2 1" />
       </default>
       <default class="tendon_eq">
-          <equality solimp="0.99 0.99 0.001" solref="0.002 1" />
+          <equality solimp="0.9999 0.9999 0.00001" solref="0.00002 1" />
       </default>
     </default>
   </default>
