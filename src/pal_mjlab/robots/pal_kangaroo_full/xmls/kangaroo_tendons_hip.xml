@@ -381,35 +381,35 @@
 
 
   <tendon>
-    <!-- <spatial name="right_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator"> -->
-    <!--   <site site="right_hip_z_slider_connect_a"/> -->
-    <!--   <site site="right_hip_z_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="right_hip_xy_r_slider_connect_a"/> -->
-    <!--   <site site="right_hip_xy_r_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="right_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="right_hip_xy_l_slider_connect_a"/> -->
-    <!--   <site site="right_hip_xy_l_slider_connect_b"/> -->
-    <!-- </spatial> -->
+    <spatial name="right_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
+      <site site="right_hip_z_slider_connect_a"/>
+      <site site="right_hip_z_slider_connect_b"/>
+    </spatial>
+    <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="right_hip_xy_r_slider_connect_a"/>
+      <site site="right_hip_xy_r_slider_connect_b"/>
+    </spatial>
+    <spatial name="right_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="right_hip_xy_l_slider_connect_a"/>
+      <site site="right_hip_xy_l_slider_connect_b"/>
+    </spatial>
     <spatial name="right_knee_rods" class="tendon_bar">
       <site site="right_knee_rods_connect_a"/>
       <site site="right_knee_rods_connect_b"/>
     </spatial>
 
-    <!-- <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator"> -->
-    <!--   <site site="left_hip_z_slider_connect_a"/> -->
-    <!--   <site site="left_hip_z_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="left_hip_xy_r_slider_connect_a"/> -->
-    <!--   <site site="left_hip_xy_r_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="left_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="left_hip_xy_l_slider_connect_a"/> -->
-    <!--   <site site="left_hip_xy_l_slider_connect_b"/> -->
-    <!-- </spatial> -->
+    <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
+      <site site="left_hip_z_slider_connect_a"/>
+      <site site="left_hip_z_slider_connect_b"/>
+    </spatial>
+    <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="left_hip_xy_r_slider_connect_a"/>
+      <site site="left_hip_xy_r_slider_connect_b"/>
+    </spatial>
+    <spatial name="left_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="left_hip_xy_l_slider_connect_a"/>
+      <site site="left_hip_xy_l_slider_connect_b"/>
+    </spatial>
     <spatial name="left_knee_rods" class="tendon_bar">
       <site site="left_knee_rods_connect_a"/>
       <site site="left_knee_rods_connect_b"/>
