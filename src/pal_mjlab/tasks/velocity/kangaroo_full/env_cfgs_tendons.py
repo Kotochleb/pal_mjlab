@@ -19,7 +19,7 @@ from pal_mjlab.robots import (
   KANGAROO_FULL_TENDON_HIPS_ACTUATED_JOINTS_NAMES,
   KANGAROO_FULL_TENDON_HIPS_TENDON_ACTION_SCALE,
   KANGAROO_FULL_TENDON_HIPS_ACTUATED_TENDONS_NAMES,
-  KANGAROO_TENDON_OFFSETS,
+  KANGAROO_INIT_STATE_TENDONS_OFFSETS,
   get_kangaroo_full_robot_tendon_hips_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_baseline_env_cfg
@@ -44,7 +44,7 @@ def pal_kangaroo_full_tendons_rough_env_cfg(play: bool = False) -> ManagerBasedR
       entity_name="robot",
       actuator_names=KANGAROO_FULL_TENDON_HIPS_ACTUATED_TENDONS_NAMES,
       scale=KANGAROO_FULL_TENDON_HIPS_TENDON_ACTION_SCALE,
-      offset=KANGAROO_TENDON_OFFSETS,
+      offset=KANGAROO_INIT_STATE_TENDONS_OFFSETS,
     ),
   }
 

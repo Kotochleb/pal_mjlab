@@ -58,7 +58,10 @@ KANGAROO_TENDON_LENGTHS: dict[str, float] = {
 
 KANGAROO_TENDON_OFFSETS: dict[str, float] = {
   r"(left|right)_hip_z_slider$": 0.09122257764,
-  r"(left|right)_hip_xy_(l|r)_slider$": 0.09344327156,
+  r"right_hip_xy_r_slider$": 0.09344327156,
+  r"right_hip_xy_l_slider$": 0.09344327156,
+  r"left_hip_xy_r_slider$": 0.09344327156,
+  r"left_hip_xy_l_slider$": 0.09344327156,
   # r"(left|right)_ankle_(l|r)_slider$": 0.07892165485,
 }
 
@@ -243,11 +246,26 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   },
   joint_vel={".*": 0.0},
 )
+INIT_STATE_TENDONS: dict[str, float] = {
+  r"(left|right)_hip_z_slider$": 0.000479,
+  r"left_hip_xy_r_slider$": 0.0042638,
+  r"left_hip_xy_l_slider$": 0.00050345,
+  r"right_hip_xy_r_slider$": 0.00050345,
+  r"right_hip_xy_l_slider$": 0.0042638,
+  # r"(left|right)_ankle_(l|r)_slider$": 0.07892165485,
+}
+
+assert KANGAROO_TENDON_OFFSETS.keys() == INIT_STATE_TENDONS.keys()
+KANGAROO_INIT_STATE_TENDONS_OFFSETS: dict[str, float] = {
+  key: KANGAROO_TENDON_OFFSETS[key] + val for key, val in INIT_STATE_TENDONS.items()
+}
+
 KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN = {
   r"leg_.*_length_actuator": 0.2632150548042582,
   # r"(left|right)_hip_z_slider$": 0.2632150548042582,
   # r"(left|right)_hip_xy_(l|r)_slider$": 0.2632150548042582,
 }
+
 
 KANGAROO_FULL_ARTICULATION = EntityArticulationInfoCfg(
   actuators=(COMMON_ACTUATORS),
@@ -379,7 +397,7 @@ KANGAROO_FULL_JOINT_ACTION_SCALE_LOW, KANGAROO_FULL_JOINT_NAMES = _build_action_
   KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
 ) = _build_action_scales(KANGAROO_FULL_ARTICULATION_SEMI_SERIAL, TransmissionType.JOINT)
 
-
+KANGAROO_TENDON_OFFSETS
 if __name__ == "__main__":
   import mujoco.viewer as viewer
   from mjlab.entity.entity import Entity
