@@ -7,6 +7,7 @@ import mujoco
 from mjlab.actuator import DcMotorActuatorCfg, BuiltinPositionActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import EntityArticulationInfoCfg, EntityCfg
+from mjlab.utils.string import resolve_expr
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   FULL_COLLISION,
@@ -36,6 +37,7 @@ REGEX_LINEAR_JOINTS_ONLY = r"leg_.*_length_actuator"
 KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons.xml"
 KANGAROO_FULL_TENDON_HIP_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_hip.xml"
+KANGAROO_FULL_TENDON_HIP_CL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_cl.xml"
 
 LEG_LENGHT_TRAMISSION_LOOKUP_PATH = (
   KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
@@ -44,6 +46,7 @@ LEG_LENGHT_TRAMISSION_LOOKUP_PATH = (
 for p in [
   KANGAROO_FULL_XML,
   KANGAROO_FULL_TENDON_HIP_XML,
+  KANGAROO_FULL_TENDON_HIP_CL_XML,
   LEG_LENGHT_TRAMISSION_LOOKUP_PATH,
 ]:
   assert p.exists(), f"Missing: {p}"
@@ -55,16 +58,6 @@ KANGAROO_TENDON_LENGTHS: dict[str, float] = {
   r"(left|right)_femur_rod": 0.40427,
   r"(left|right)_ankle_(femur|tibia)_bar_(l|r)": 0.38,
 }
-
-KANGAROO_TENDON_OFFSETS: dict[str, float] = {
-  r"(left|right)_hip_z_slider$": 0.09122257764,
-  r"right_hip_xy_r_slider$": 0.09344327156,
-  r"right_hip_xy_l_slider$": 0.09344327156,
-  r"left_hip_xy_r_slider$": 0.09344327156,
-  r"left_hip_xy_l_slider$": 0.09344327156,
-  # r"(left|right)_ankle_(l|r)_slider$": 0.07892165485,
-}
-
 
 def _enforce_tendon_lengths(
   model: mujoco.MjModel, data: mujoco.MjData, lengths: dict[str, float]
@@ -106,6 +99,10 @@ def get_kangaroo_full_spec() -> mujoco.MjSpec:
 
 def get_kangaroo_full_tendon_hip_spec() -> mujoco.MjSpec:
   return _load_spec(KANGAROO_FULL_TENDON_HIP_XML)
+
+
+def get_kangaroo_full_tendon_hip_cl_spec() -> mujoco.MjSpec:
+  return _load_spec(KANGAROO_FULL_TENDON_HIP_CL_XML)
 
 
 ##
@@ -170,12 +167,18 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
     # saturation_effort=2000.0,
     # velocity_limit=0.4,
   ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
+  #   **_calc_leg_params(730.0, 2000.0),
+  #   # saturation_effort=2000.0,
+  #   # velocity_limit=0.4,
+  # ),
   BuiltinPositionActuatorCfg(
-    transmission_type=TransmissionType.TENDON,
-    target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
-    **_calc_leg_params(730.0, 2000.0),
-    # saturation_effort=2000.0,
-    # velocity_limit=0.4,
+    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
   ),
   BuiltinPositionActuatorCfg(
     target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
@@ -198,6 +201,47 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
   ),
 )
 
+KANGAROO_LEG_ACTUATORS_TENDON_HIPS_CL = (
+  BuiltinPositionActuatorCfg(
+    transmission_type=TransmissionType.JOINT,
+    target_names_expr=(r"leg_(left|right)_1_actuator$",),
+    **_calc_leg_params(2500.0, 2000.0),
+    # saturation_effort=2000.0,
+    # velocity_limit=0.4,
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
+  #   **_calc_leg_params(730.0, 2000.0),
+  #   # saturation_effort=2000.0,
+  #   # velocity_limit=0.4,
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
+  #   saturation_effort=630,
+  #   velocity_limit=0.4,
+  #   **_calc_leg_params(630.0, 2000.0),
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=(r"leg_(left|right)_length_actuator$",),
+    # saturation_effort=5000.0,
+    # velocity_limit=0.625,
+    **_calc_leg_params(6000.0, 5000.0),
+  ),
+)
 
 COMMON_ACTUATORS = KANGAROO_LEG_ACTUATORS + (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
@@ -216,49 +260,171 @@ COMMON_ACTUATORS_TENDON_HIPS = KANGAROO_LEG_ACTUATORS_TENDON_HIPS + (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
+COMMON_ACTUATORS_TENDON_HIPS_CL = KANGAROO_LEG_ACTUATORS_TENDON_HIPS_CL + (
+  KANGAROO_S_PLUS_ACTUATOR_CFG,
+  KANGAROO_S_MINUS_ACTUATOR_CFG,
+)
 ##
 # Keyframes.
 ##
 
-INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.95),
-  rot=(1.0, 0.0, 0.0, 0.0),
-  joint_pos={
-    "leg_left_1_joint": -0.012,
-    "leg_right_1_joint": 0.012,
-    "leg_.*_2_joint": 0.054,
-    "leg_left_3_joint": 0.04,
-    "leg_right_3_joint": -0.04,
-    "leg_.*_length_joint": 0.6,
-    "leg_.*_length_actuator": 0.0284,
-    "leg_.*_4_joint": -0.053,
-    "leg_.*_5_joint": 0.0,
-    "leg_.*_femur_joint": 0.9,
-    "leg_.*_knee_joint": 1.8,
-    "arm_left_1_joint": 0.24,
-    "arm_right_1_joint": -0.24,
-    "arm_.*_2_joint": 1.32,
-    "arm_left_3_joint": 1.57,
-    "arm_right_3_joint": -1.57,
-    "arm_.*_4_joint": 0.8,
-    "pelvis_1_joint": 0.0,
-    "pelvis_2_joint": 0.0,
-  },
-  joint_vel={".*": 0.0},
-)
-INIT_STATE_TENDONS: dict[str, float] = {
-  r"(left|right)_hip_z_slider$": 0.000479,
-  r"left_hip_xy_r_slider$": 0.0042638,
-  r"left_hip_xy_l_slider$": 0.00050345,
-  r"right_hip_xy_r_slider$": 0.00050345,
-  r"right_hip_xy_l_slider$": 0.0042638,
-  # r"(left|right)_ankle_(l|r)_slider$": 0.07892165485,
+_INIT_STATE_JOINT_POS_BASE: dict[str, float] = {
+  "leg_left_1_joint": -0.012,
+  "leg_right_1_joint": 0.012,
+  "leg_.*_2_joint": 0.054,
+  "leg_left_3_joint": 0.04,
+  "leg_right_3_joint": -0.04,
+  "leg_.*_length_joint": 0.6,
+  "leg_.*_length_actuator": 0.0284,
+  "leg_.*_4_joint": -0.053,
+  "leg_.*_5_joint": 0.0,
+  "leg_.*_femur_joint": 0.9,
+  "leg_.*_knee_joint": 1.8,
+  "arm_left_1_joint": 0.24,
+  "arm_right_1_joint": -0.24,
+  "arm_.*_2_joint": 1.32,
+  "arm_left_3_joint": 1.57,
+  "arm_right_3_joint": -1.57,
+  "arm_.*_4_joint": 0.8,
+  "pelvis_1_joint": 0.0,
+  "pelvis_2_joint": 0.0,
 }
 
-assert KANGAROO_TENDON_OFFSETS.keys() == INIT_STATE_TENDONS.keys()
-KANGAROO_INIT_STATE_TENDONS_OFFSETS: dict[str, float] = {
-  key: KANGAROO_TENDON_OFFSETS[key] + val for key, val in INIT_STATE_TENDONS.items()
-}
+_INIT_STATE_BASE = EntityCfg.InitialStateCfg(
+  pos=(0.0, 0.0, 0.95),
+  rot=(1.0, 0.0, 0.0, 0.0),
+  joint_pos=_INIT_STATE_JOINT_POS_BASE,
+  joint_vel={".*": 0.0},
+)
+
+
+def _compute_default_hip_z_actuator_pos(
+  spec_fn, init_state: EntityCfg.InitialStateCfg, n_settle_steps: int = 200
+) -> dict[str, float]:
+  """Settle ``leg_(left|right)_1_actuator`` (the CL hip_z slide joint) into the
+  position that satisfies its ``<connect>`` equality constraint, given every
+  other joint held at its ``init_state`` value.
+
+  The CL hip_z mechanism (motor hinge + slide joint) has no closed-form
+  length like a spatial tendon does -- its rest position is only defined by
+  where the compliant ``<connect>`` constraint pulls it once the rest of the
+  leg is posed. Leaving it unset in ``INIT_STATE.joint_pos`` (falling back to
+  0.0) means the model starts with real constraint violation at reset and
+  needs several simulation steps to settle -- e.g. via
+  :func:`_compute_tendon_length_at_default_pose`'s approach, which works
+  because a tendon's length *is* a closed-form function of the other joints,
+  unlike this constrained sub-mechanism. This instead relaxes only the
+  motor/slide DOFs (holding everything else, including the free/root joint,
+  clamped to its init_state value each step) until the constraint is
+  satisfied, then reads back the settled slide position -- the direct
+  equivalent of a real joint's numeric ``INIT_STATE`` default, just solved
+  for instead of hand-measured.
+  """
+  spec = spec_fn()
+  spec.worldbody.add_body(name="terrain")
+  model = spec.compile()
+  data = mujoco.MjData(model)
+
+  free_dof_pattern = re.compile(r"(leg_(left|right)_1_actuator|(left|right)_hip_z_motor)$")
+  free_joints, other_joints = [], []
+  for j in range(model.njnt):
+    name = model.joint(j).name
+    if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE:
+      continue
+    (free_joints if free_dof_pattern.fullmatch(name) else other_joints).append(name)
+  root_joints = tuple(
+    model.joint(j).name
+    for j in range(model.njnt)
+    if model.jnt_type[j] == mujoco.mjtJoint.mjJNT_FREE
+  )
+
+  other_values = dict(zip(other_joints, resolve_expr(init_state.joint_pos, tuple(other_joints), 0.0)))
+
+  def _clamp_fixed_state() -> None:
+    for name, value in other_values.items():
+      jid = model.joint(name).id
+      data.qpos[model.jnt_qposadr[jid]] = value
+      data.qvel[model.jnt_dofadr[jid]] = 0.0
+    for name in root_joints:
+      jid = model.joint(name).id
+      qadr = model.jnt_qposadr[jid]
+      data.qpos[qadr : qadr + 3] = init_state.pos
+      data.qpos[qadr + 3 : qadr + 7] = init_state.rot
+      dadr = model.jnt_dofadr[jid]
+      data.qvel[dadr : dadr + 6] = 0.0
+
+  _clamp_fixed_state()
+  mujoco.mj_forward(model, data)
+  for _ in range(n_settle_steps):
+    mujoco.mj_step(model, data)
+    _clamp_fixed_state()
+    mujoco.mj_forward(model, data)
+
+  return {
+    name: float(data.qpos[model.jnt_qposadr[model.joint(name).id]])
+    for name in free_joints
+    if name.endswith("_actuator")
+  }
+
+
+_HIP_Z_ACTUATOR_DEFAULT = _compute_default_hip_z_actuator_pos(
+  get_kangaroo_full_tendon_hip_cl_spec, _INIT_STATE_BASE
+)
+
+INIT_STATE = EntityCfg.InitialStateCfg(
+  pos=_INIT_STATE_BASE.pos,
+  rot=_INIT_STATE_BASE.rot,
+  joint_pos={**_INIT_STATE_BASE.joint_pos, **_HIP_Z_ACTUATOR_DEFAULT},
+  joint_vel=_INIT_STATE_BASE.joint_vel,
+)
+
+
+def _compute_tendon_length_at_default_pose(
+  spec_fn, init_state: EntityCfg.InitialStateCfg, tendon_pattern: str
+) -> dict[str, float]:
+  """Tendon length(s) at the compiled default/keyframe pose.
+
+  This is the TENDON-transmission analogue of what ``use_default_offset=True``
+  gives JOINT actuators for free: ``JointPositionAction`` reads
+  ``entity.data.default_joint_pos``, the joint's own value at the compiled
+  default pose, so a raw action of 0 holds the default pose exactly.
+  ``TendonLengthActionCfg`` has no ``use_default_offset`` option, so this
+  computes the equivalent directly -- the tendon's actual length once the
+  model is posed at ``init_state`` -- for use as the action offset, instead of
+  a hand-maintained constant that can silently drift out of sync with the
+  model (as it previously did: the manually-measured offset was off by
+  ~0.3-0.5 mm from the true default-pose length).
+  """
+  spec = spec_fn()
+  # The raw XML references a `terrain` body for foot-collision excludes that
+  # only resolves once attached into a full scene; add a placeholder so this
+  # compiles standalone, matching what Scene assembly would provide.
+  spec.worldbody.add_body(name="terrain")
+  model = spec.compile()
+  data = mujoco.MjData(model)
+
+  joint_names = tuple(
+    model.joint(j).name
+    for j in range(model.njnt)
+    if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
+  )
+  values = resolve_expr(init_state.joint_pos, joint_names, 0.0)
+  for name, value in zip(joint_names, values):
+    data.qpos[model.jnt_qposadr[model.joint(name).id]] = value
+  mujoco.mj_forward(model, data)
+
+  return {
+    model.tendon(i).name: float(data.ten_length[i])
+    for i in range(model.ntendon)
+    if re.fullmatch(tendon_pattern, model.tendon(i).name)
+  }
+
+
+KANGAROO_INIT_STATE_TENDONS_OFFSETS: dict[str, float] = (
+  _compute_tendon_length_at_default_pose(
+    get_kangaroo_full_tendon_hip_spec, INIT_STATE, r"(left|right)_hip_z_slider$"
+  )
+)
 
 KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN = {
   r"leg_.*_length_actuator": 0.2632150548042582,
@@ -286,6 +452,11 @@ KANGAROO_FULL_ARTICULATION_TENDON_HIPS = EntityArticulationInfoCfg(
   soft_joint_pos_limit_factor=0.99,
 )
 
+KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL = EntityArticulationInfoCfg(
+  actuators=(COMMON_ACTUATORS_TENDON_HIPS_CL),
+  soft_joint_pos_limit_factor=0.99,
+)
+
 _ROBOT_CONFIGS = {
   "kangaroo_full": (
     get_kangaroo_full_spec,
@@ -305,6 +476,11 @@ _ROBOT_CONFIGS = {
   "kangaroo_full_tendon_hips": (
     get_kangaroo_full_tendon_hip_spec,
     KANGAROO_FULL_ARTICULATION_TENDON_HIPS,
+    FULL_COLLISION,
+  ),
+  "kangaroo_full_tendon_hips_cl": (
+    get_kangaroo_full_tendon_hip_cl_spec,
+    KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL,
     FULL_COLLISION,
   ),
 }
@@ -334,6 +510,10 @@ def get_kangaroo_full_robot_semi_serial_cfg() -> EntityCfg:
 
 def get_kangaroo_full_robot_tendon_hips_cfg() -> EntityCfg:
   return _make_robot_cfg("kangaroo_full_tendon_hips")
+
+
+def get_kangaroo_full_robot_tendon_hips_cl_cfg() -> EntityCfg:
+  return _make_robot_cfg("kangaroo_full_tendon_hips_cl")
 
 
 ##
@@ -384,6 +564,45 @@ KANGAROO_FULL_TENDON_HIPS_ACTUATOR_NAMES = (
   + KANGAROO_FULL_TENDON_HIPS_ACTUATED_TENDONS_NAMES
 )
 
+(
+  KANGAROO_FULL_TENDON_HIPS_CL_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIPS_CL_ACTUATED_JOINTS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL, TransmissionType.JOINT
+)
+
+# Split the CL joint actuators into "everything but hip_z" and "hip_z only" so the
+# action vector layout matches the tendon-hips variant exactly: a main JOINT term
+# covering the same joint set/order as KANGAROO_FULL_TENDON_HIPS_ACTUATED_JOINTS_NAMES,
+# followed by a 2-dim hip_z term -- mirroring the tendon variant's
+# joint_pos (20) + tendon_pos (2) split, just with JOINT instead of TENDON
+# transmission for the hip_z pair. This keeps both variants' policies observation-
+# and action-compatible: same dims, same ordering, hip_z always the last 2 entries.
+_CL_HIPZ_PATTERN = r"leg_(left|right)_1_actuator$"
+
+(
+  KANGAROO_FULL_TENDON_HIPS_CL_MAIN_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIPS_CL_MAIN_ACTUATED_JOINTS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL,
+  TransmissionType.JOINT,
+  exclude={_CL_HIPZ_PATTERN},
+)
+
+# Derived as the set difference of the full vs. main dicts/tuples above, so the
+# hip_z scale always stays in sync with whatever KANGAROO_LEG_ACTUATORS_TENDON_HIPS_CL
+# actually specifies -- no duplicated/hardcoded stiffness or effort_limit values.
+KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_JOINT_ACTION_SCALE = {
+  k: v
+  for k, v in KANGAROO_FULL_TENDON_HIPS_CL_JOINT_ACTION_SCALE.items()
+  if k not in KANGAROO_FULL_TENDON_HIPS_CL_MAIN_JOINT_ACTION_SCALE
+}
+KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_ACTUATED_JOINTS_NAMES = tuple(
+  n
+  for n in KANGAROO_FULL_TENDON_HIPS_CL_ACTUATED_JOINTS_NAMES
+  if n not in KANGAROO_FULL_TENDON_HIPS_CL_MAIN_ACTUATED_JOINTS_NAMES
+)
+
 
 (
   KANGAROO_FULL_JOINT_ACTION_SCALE,
@@ -397,7 +616,6 @@ KANGAROO_FULL_JOINT_ACTION_SCALE_LOW, KANGAROO_FULL_JOINT_NAMES = _build_action_
   KANGAROO_FULL_ACTUATED_JOINTS_NAMES_SEMI_SERIAL,
 ) = _build_action_scales(KANGAROO_FULL_ARTICULATION_SEMI_SERIAL, TransmissionType.JOINT)
 
-KANGAROO_TENDON_OFFSETS
 if __name__ == "__main__":
   import mujoco.viewer as viewer
   from mjlab.entity.entity import Entity
