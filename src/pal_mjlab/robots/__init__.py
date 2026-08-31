@@ -37,6 +37,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   KANGAROO_FULL_TENDON_HIPS_ACTUATOR_NAMES,
   KANGAROO_FULL_JOINT_ACTION_SCALE,
   KANGAROO_FULL_ACTUATED_JOINTS_NAMES,
+  KANGAROO_INIT_STATE_TENDONS_OFFSETS,
   get_kangaroo_full_robot_cfg,
   get_kangaroo_full_robot_low_pd_cfg,
   get_kangaroo_full_robot_semi_serial_cfg,
