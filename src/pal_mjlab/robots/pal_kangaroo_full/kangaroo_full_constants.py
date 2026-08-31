@@ -38,6 +38,15 @@ KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons.xml"
 KANGAROO_FULL_TENDON_HIP_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_hip.xml"
 KANGAROO_FULL_TENDON_HIP_CL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_cl.xml"
+# Same hip mechanism geometry as KANGAROO_FULL_TENDON_HIP_XML, but with
+# leg_.*_length_actuator (the LUT-driven "full model" leg-length actuator)
+# removed, so leg_.*_length_joint is actuated directly -- i.e. the "simple
+# model" leg length -- and (for the *_ONLY variants) with one of the two hip
+# tendon mechanisms removed so that axis falls back to its plain revolute
+# joint (leg_.*_1_joint for hip_z, leg_.*_2_joint/leg_.*_3_joint for hip_xy).
+KANGAROO_FULL_TENDON_SIMPLE_KNEE_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_simple_knee.xml"
+KANGAROO_FULL_TENDON_HIP_Z_ONLY_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_only_z.xml"
+KANGAROO_FULL_TENDON_HIP_XY_ONLY_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_only_xy.xml"
 
 LEG_LENGHT_TRAMISSION_LOOKUP_PATH = (
   KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
@@ -47,6 +56,9 @@ for p in [
   KANGAROO_FULL_XML,
   KANGAROO_FULL_TENDON_HIP_XML,
   KANGAROO_FULL_TENDON_HIP_CL_XML,
+  KANGAROO_FULL_TENDON_SIMPLE_KNEE_XML,
+  KANGAROO_FULL_TENDON_HIP_Z_ONLY_XML,
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_XML,
   LEG_LENGHT_TRAMISSION_LOOKUP_PATH,
 ]:
   assert p.exists(), f"Missing: {p}"
@@ -104,6 +116,18 @@ def get_kangaroo_full_tendon_hip_spec() -> mujoco.MjSpec:
 
 def get_kangaroo_full_tendon_hip_cl_spec() -> mujoco.MjSpec:
   return _load_spec(KANGAROO_FULL_TENDON_HIP_CL_XML)
+
+
+def get_kangaroo_full_tendon_simple_knee_spec() -> mujoco.MjSpec:
+  return _load_spec(KANGAROO_FULL_TENDON_SIMPLE_KNEE_XML)
+
+
+def get_kangaroo_full_tendon_hip_z_only_spec() -> mujoco.MjSpec:
+  return _load_spec(KANGAROO_FULL_TENDON_HIP_Z_ONLY_XML)
+
+
+def get_kangaroo_full_tendon_hip_xy_only_spec() -> mujoco.MjSpec:
+  return _load_spec(KANGAROO_FULL_TENDON_HIP_XY_ONLY_XML)
 
 
 ##
@@ -171,7 +195,7 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
   BuiltinPositionActuatorCfg(
     transmission_type=TransmissionType.TENDON,
     target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
-    **_calc_leg_params(10000000.0, 20000.0),
+    **_calc_leg_params(2500.0, 2000.0),
     # saturation_effort=2000.0,
     # velocity_limit=0.4,
   ),
@@ -202,6 +226,141 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
   ),
 )
 
+KANGAROO_LEG_ACTUATORS_TENDON_SIMPLE_KNEE = (
+  BuiltinPositionActuatorCfg(
+    transmission_type=TransmissionType.TENDON,
+    target_names_expr=(r"(left|right)_hip_z_slider$",),
+    **_calc_leg_params(2500.0, 2000.0),
+    # saturation_effort=2000.0,
+    # velocity_limit=0.4,
+  ),
+  BuiltinPositionActuatorCfg(
+    transmission_type=TransmissionType.TENDON,
+    target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
+    **_calc_leg_params(2500.0, 2000.0),
+    # saturation_effort=2000.0,
+    # velocity_limit=0.4,
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  # ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
+  #   saturation_effort=630,
+  #   velocity_limit=0.4,
+  #   **_calc_leg_params(630.0, 2000.0),
+  # ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=(r"leg_(left|right)_length_actuator$",),
+  #   # saturation_effort=5000.0,
+  #   # velocity_limit=0.625,
+  #   **_calc_leg_params(6000.0, 5000.0),
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_length_joint",), **_calc_leg_params(1600.0, 1100.0)
+  ),
+)
+KANGAROO_LEG_ACTUATORS_TENDON_HIP_Z_ONLY = (
+  BuiltinPositionActuatorCfg(
+    transmission_type=TransmissionType.TENDON,
+    target_names_expr=(r"(left|right)_hip_z_slider$",),
+    **_calc_leg_params(2500.0, 2000.0),
+    # saturation_effort=2000.0,
+    # velocity_limit=0.4,
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
+  #   **_calc_leg_params(2500.0, 2000.0),
+  #   # saturation_effort=2000.0,
+  #   # velocity_limit=0.4,
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
+  #   saturation_effort=630,
+  #   velocity_limit=0.4,
+  #   **_calc_leg_params(630.0, 2000.0),
+  # ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=(r"leg_(left|right)_length_actuator$",),
+  #   # saturation_effort=5000.0,
+  #   # velocity_limit=0.625,
+  #   **_calc_leg_params(6000.0, 5000.0),
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_length_joint",), **_calc_leg_params(1600.0, 1100.0)
+  ),
+)
+KANGAROO_LEG_ACTUATORS_TENDON_HIP_XY_ONLY = (
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_hip_z_slider$",),
+  #   **_calc_leg_params(2500.0, 2000.0),
+  #   # saturation_effort=2000.0,
+  #   # velocity_limit=0.4,
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    transmission_type=TransmissionType.TENDON,
+    target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
+    **_calc_leg_params(2500.0, 2000.0),
+    # saturation_effort=2000.0,
+    # velocity_limit=0.4,
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+  # ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+  ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+  ),
+  # BuiltinPositionActuatorCfg(
+  #   transmission_type=TransmissionType.TENDON,
+  #   target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
+  #   saturation_effort=630,
+  #   velocity_limit=0.4,
+  #   **_calc_leg_params(630.0, 2000.0),
+  # ),
+  # BuiltinPositionActuatorCfg(
+  #   target_names_expr=(r"leg_(left|right)_length_actuator$",),
+  #   # saturation_effort=5000.0,
+  #   # velocity_limit=0.625,
+  #   **_calc_leg_params(6000.0, 5000.0),
+  # ),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=("leg_.*_length_joint",), **_calc_leg_params(1600.0, 1100.0)
+  ),
+)
 KANGAROO_LEG_ACTUATORS_TENDON_HIPS_CL = (
   BuiltinPositionActuatorCfg(
     transmission_type=TransmissionType.JOINT,
@@ -262,6 +421,18 @@ COMMON_ACTUATORS_TENDON_HIPS = KANGAROO_LEG_ACTUATORS_TENDON_HIPS + (
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
 COMMON_ACTUATORS_TENDON_HIPS_CL = KANGAROO_LEG_ACTUATORS_TENDON_HIPS_CL + (
+  KANGAROO_S_PLUS_ACTUATOR_CFG,
+  KANGAROO_S_MINUS_ACTUATOR_CFG,
+)
+COMMON_ACTUATORS_TENDON_SIMPLE_KNEE = KANGAROO_LEG_ACTUATORS_TENDON_SIMPLE_KNEE + (
+  KANGAROO_S_PLUS_ACTUATOR_CFG,
+  KANGAROO_S_MINUS_ACTUATOR_CFG,
+)
+COMMON_ACTUATORS_TENDON_HIP_Z_ONLY = KANGAROO_LEG_ACTUATORS_TENDON_HIP_Z_ONLY + (
+  KANGAROO_S_PLUS_ACTUATOR_CFG,
+  KANGAROO_S_MINUS_ACTUATOR_CFG,
+)
+COMMON_ACTUATORS_TENDON_HIP_XY_ONLY = KANGAROO_LEG_ACTUATORS_TENDON_HIP_XY_ONLY + (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
@@ -476,19 +647,40 @@ def _match_tendon_offset(name: str) -> float:
 # Unlike commit d564e7ca's hand-typed INIT_STATE_TENDONS deltas (which drifted
 # ~0.3-0.5 mm out of sync with the model over time), this delta is solved for
 # directly from the compiled model at INIT_STATE, so it can never go stale.
-_KANGAROO_TENDON_LENGTH_AT_INIT_STATE = _compute_tendon_length_at_default_pose(
-  get_kangaroo_full_tendon_hip_spec,
-  INIT_STATE,
-  r"(left|right)_hip_z_slider$|(left|right)_hip_xy_(l|r)_slider$",
-)
-INIT_STATE_TENDONS: dict[str, float] = {
-  name: length - _match_tendon_offset(name)
-  for name, length in _KANGAROO_TENDON_LENGTH_AT_INIT_STATE.items()
-}
+def _compute_hip_tendon_init_offsets(spec_fn) -> dict[str, float]:
+  """INIT_STATE hip_z/hip_xy tendon lengths, keyed by actual tendon name.
 
-KANGAROO_INIT_STATE_TENDONS_OFFSETS: dict[str, float] = {
-  name: _match_tendon_offset(name) + delta for name, delta in INIT_STATE_TENDONS.items()
-}
+  Whichever of the two hip tendons ``spec_fn``'s model doesn't have (the
+  *_ONLY variants only carry one) simply doesn't appear in the result -- the
+  pattern below matches both, but only tendons that exist in the compiled
+  model can be found.
+  """
+  lengths_at_init_state = _compute_tendon_length_at_default_pose(
+    spec_fn,
+    INIT_STATE,
+    r"(left|right)_hip_z_slider$|(left|right)_hip_xy_(l|r)_slider$",
+  )
+  init_state_tendons = {
+    name: length - _match_tendon_offset(name)
+    for name, length in lengths_at_init_state.items()
+  }
+  return {
+    name: _match_tendon_offset(name) + delta for name, delta in init_state_tendons.items()
+  }
+
+
+KANGAROO_INIT_STATE_TENDONS_OFFSETS = _compute_hip_tendon_init_offsets(
+  get_kangaroo_full_tendon_hip_spec
+)
+KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS = _compute_hip_tendon_init_offsets(
+  get_kangaroo_full_tendon_simple_knee_spec
+)
+KANGAROO_INIT_STATE_HIP_Z_ONLY_TENDONS_OFFSETS = _compute_hip_tendon_init_offsets(
+  get_kangaroo_full_tendon_hip_z_only_spec
+)
+KANGAROO_INIT_STATE_HIP_XY_ONLY_TENDONS_OFFSETS = _compute_hip_tendon_init_offsets(
+  get_kangaroo_full_tendon_hip_xy_only_spec
+)
 
 KANGAROO_INIT_STATE_SIMPLE_TO_FULL_JACOBIAN = {
   r"leg_.*_length_actuator": 0.2632150548042582,
@@ -521,6 +713,19 @@ KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL = EntityArticulationInfoCfg(
   soft_joint_pos_limit_factor=0.99,
 )
 
+KANGAROO_FULL_ARTICULATION_TENDON_SIMPLE_KNEE = EntityArticulationInfoCfg(
+  actuators=(COMMON_ACTUATORS_TENDON_SIMPLE_KNEE),
+  soft_joint_pos_limit_factor=0.99,
+)
+KANGAROO_FULL_ARTICULATION_TENDON_HIP_Z_ONLY = EntityArticulationInfoCfg(
+  actuators=(COMMON_ACTUATORS_TENDON_HIP_Z_ONLY),
+  soft_joint_pos_limit_factor=0.99,
+)
+KANGAROO_FULL_ARTICULATION_TENDON_HIP_XY_ONLY = EntityArticulationInfoCfg(
+  actuators=(COMMON_ACTUATORS_TENDON_HIP_XY_ONLY),
+  soft_joint_pos_limit_factor=0.99,
+)
+
 _ROBOT_CONFIGS = {
   "kangaroo_full": (
     get_kangaroo_full_spec,
@@ -545,6 +750,21 @@ _ROBOT_CONFIGS = {
   "kangaroo_full_tendon_hips_cl": (
     get_kangaroo_full_tendon_hip_cl_spec,
     KANGAROO_FULL_ARTICULATION_TENDON_HIPS_CL,
+    FULL_COLLISION,
+  ),
+  "kangaroo_full_tendon_simple_knee": (
+    get_kangaroo_full_tendon_simple_knee_spec,
+    KANGAROO_FULL_ARTICULATION_TENDON_SIMPLE_KNEE,
+    FULL_COLLISION,
+  ),
+  "kangaroo_full_tendon_hip_z_only": (
+    get_kangaroo_full_tendon_hip_z_only_spec,
+    KANGAROO_FULL_ARTICULATION_TENDON_HIP_Z_ONLY,
+    FULL_COLLISION,
+  ),
+  "kangaroo_full_tendon_hip_xy_only": (
+    get_kangaroo_full_tendon_hip_xy_only_spec,
+    KANGAROO_FULL_ARTICULATION_TENDON_HIP_XY_ONLY,
     FULL_COLLISION,
   ),
 }
@@ -578,6 +798,18 @@ def get_kangaroo_full_robot_tendon_hips_cfg() -> EntityCfg:
 
 def get_kangaroo_full_robot_tendon_hips_cl_cfg() -> EntityCfg:
   return _make_robot_cfg("kangaroo_full_tendon_hips_cl")
+
+
+def get_kangaroo_full_robot_tendon_simple_knee_cfg() -> EntityCfg:
+  return _make_robot_cfg("kangaroo_full_tendon_simple_knee")
+
+
+def get_kangaroo_full_robot_tendon_hip_z_only_cfg() -> EntityCfg:
+  return _make_robot_cfg("kangaroo_full_tendon_hip_z_only")
+
+
+def get_kangaroo_full_robot_tendon_hip_xy_only_cfg() -> EntityCfg:
+  return _make_robot_cfg("kangaroo_full_tendon_hip_xy_only")
 
 
 ##
@@ -647,6 +879,68 @@ KANGAROO_INIT_STATE_HIPZ_TENDONS_OFFSETS = {
 KANGAROO_INIT_STATE_HIPXY_TENDONS_OFFSETS = {
   k: v for k, v in KANGAROO_INIT_STATE_TENDONS_OFFSETS.items() if "hip_xy" in k
 }
+
+# Both hip tendons active, but with the "simple model" (LUT-actuator-free) leg
+# length -- same hip_z/hip_xy split as the tendon-hips variant above.
+(
+  KANGAROO_FULL_TENDON_SIMPLE_KNEE_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_SIMPLE_KNEE_ACTUATED_JOINTS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_SIMPLE_KNEE, TransmissionType.JOINT
+)
+(
+  KANGAROO_FULL_TENDON_SIMPLE_KNEE_TENDON_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_SIMPLE_KNEE_ACTUATED_TENDONS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_SIMPLE_KNEE, TransmissionType.TENDON
+)
+KANGAROO_FULL_TENDON_SIMPLE_KNEE_HIPZ_TENDON_ACTION_SCALE = {
+  k: v
+  for k, v in KANGAROO_FULL_TENDON_SIMPLE_KNEE_TENDON_ACTION_SCALE.items()
+  if "hip_z" in k
+}
+KANGAROO_FULL_TENDON_SIMPLE_KNEE_HIPXY_TENDON_ACTION_SCALE = {
+  k: v
+  for k, v in KANGAROO_FULL_TENDON_SIMPLE_KNEE_TENDON_ACTION_SCALE.items()
+  if "hip_xy" in k
+}
+KANGAROO_INIT_STATE_SIMPLE_KNEE_HIPZ_TENDONS_OFFSETS = {
+  k: v for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items() if "hip_z" in k
+}
+KANGAROO_INIT_STATE_SIMPLE_KNEE_HIPXY_TENDONS_OFFSETS = {
+  k: v for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items() if "hip_xy" in k
+}
+
+# Only hip_z is a tendon; hip_xy (leg_.*_2_joint/leg_.*_3_joint) is a plain
+# JOINT actuator, so KANGAROO_FULL_ARTICULATION_TENDON_HIP_Z_ONLY has just one
+# TENDON-transmission actuator -- no hip_z/hip_xy split needed.
+(
+  KANGAROO_FULL_TENDON_HIP_Z_ONLY_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIP_Z_ONLY_ACTUATED_JOINTS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIP_Z_ONLY, TransmissionType.JOINT
+)
+(
+  KANGAROO_FULL_TENDON_HIP_Z_ONLY_TENDON_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIP_Z_ONLY_ACTUATED_TENDONS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIP_Z_ONLY, TransmissionType.TENDON
+)
+
+# Mirror image of hip_z-only: only hip_xy is a tendon, hip_z (leg_.*_1_joint)
+# is a plain JOINT actuator.
+(
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_ACTUATED_JOINTS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIP_XY_ONLY, TransmissionType.JOINT
+)
+(
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_ACTUATED_TENDONS_NAMES,
+) = _build_action_scales(
+  KANGAROO_FULL_ARTICULATION_TENDON_HIP_XY_ONLY, TransmissionType.TENDON
+)
 
 (
   KANGAROO_FULL_TENDON_HIPS_CL_JOINT_ACTION_SCALE,
