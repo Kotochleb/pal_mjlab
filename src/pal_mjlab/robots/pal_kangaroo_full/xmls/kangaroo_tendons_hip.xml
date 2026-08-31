@@ -148,8 +148,8 @@
         <joint name="leg_left_1_joint" range="-0.261799 0.698132" />
         <geom class="visual" mesh="leg_left_1_link" />
         <geom name="leg_left1_1_collision" size="0.04" fromto="0.07 -0.035 -0.03   0.07 -0.035 -0.015" class="collision"/>
-        <site name="left_hip_xy_r_slider_connect_a" pos="0.0628126 -0.035 -0.02495"/>
-        <site name="left_hip_xy_l_slider_connect_a" pos="0.0628126 0.035 -0.02495"/>
+        <site name="left_hip_xy_r_slider_connect_a" pos="0.0625 -0.035 -0.06685"/>
+        <site name="left_hip_xy_l_slider_connect_a" pos="0.0625 0.035 -0.06685"/>
         <site name="left_hip_z_slider_connect_b" pos="-0.010712894 0.038450468 0.0289"/>
         <body name="leg_left_2_link" pos="0.015024 0 -0.1175">
           <inertial pos="-0.004242 -1.3e-05 9.1e-05" quat="0.5 0.5 0.5 0.5" mass="0.105669" diaginertia="9.9e-05 9.6e-05 8e-06"/>
@@ -257,8 +257,8 @@
         <joint name="leg_right_1_joint" range="-0.698132 0.261799" />
         <geom class="visual" mesh="leg_right_1_link" />
         <geom name="leg_right1_1_collision" size="0.04" fromto="0.07 0.035 -0.03   0.07 0.035 -0.015" class="collision"/>
-        <site name="right_hip_xy_r_slider_connect_a" pos="0.0628126 -0.035 -0.02495"/>
-        <site name="right_hip_xy_l_slider_connect_a" pos="0.0628126 0.035 -0.02495"/>
+        <site name="right_hip_xy_r_slider_connect_a" pos="0.0625 -0.035 -0.06685"/>
+        <site name="right_hip_xy_l_slider_connect_a" pos="0.0625 0.035 -0.06685"/>
         <site name="right_hip_z_slider_connect_b" pos="-0.010712894 -0.038450468 0.0289"/>
         <body name="leg_right_2_link" pos="0.015024 0 -0.1175">
           <inertial pos="-0.004242 -1.3e-05 9.1e-05" quat="0.5 0.5 0.5 0.5" mass="0.105669" diaginertia="9.9e-05 9.6e-05 8e-06"/>
@@ -385,14 +385,14 @@
       <site site="right_hip_z_slider_connect_a"/>
       <site site="right_hip_z_slider_connect_b"/>
     </spatial>
-    <!-- <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="right_hip_xy_r_slider_connect_a"/> -->
-    <!--   <site site="right_hip_xy_r_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="right_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="right_hip_xy_l_slider_connect_a"/> -->
-    <!--   <site site="right_hip_xy_l_slider_connect_b"/> -->
-    <!-- </spatial> -->
+    <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="right_hip_xy_r_slider_connect_a"/>
+      <site site="right_hip_xy_r_slider_connect_b"/>
+    </spatial>
+    <spatial name="right_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="right_hip_xy_l_slider_connect_a"/>
+      <site site="right_hip_xy_l_slider_connect_b"/>
+    </spatial>
     <spatial name="right_knee_rods" class="tendon_bar">
       <site site="right_knee_rods_connect_a"/>
       <site site="right_knee_rods_connect_b"/>
@@ -402,14 +402,14 @@
       <site site="left_hip_z_slider_connect_a"/>
       <site site="left_hip_z_slider_connect_b"/>
     </spatial>
-    <!-- <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="left_hip_xy_r_slider_connect_a"/> -->
-    <!--   <site site="left_hip_xy_r_slider_connect_b"/> -->
-    <!-- </spatial> -->
-    <!-- <spatial name="left_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
-    <!--   <site site="left_hip_xy_l_slider_connect_a"/> -->
-    <!--   <site site="left_hip_xy_l_slider_connect_b"/> -->
-    <!-- </spatial> -->
+    <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="left_hip_xy_r_slider_connect_a"/>
+      <site site="left_hip_xy_r_slider_connect_b"/>
+    </spatial>
+    <spatial name="left_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+      <site site="left_hip_xy_l_slider_connect_a"/>
+      <site site="left_hip_xy_l_slider_connect_b"/>
+    </spatial>
     <spatial name="left_knee_rods" class="tendon_bar">
       <site site="left_knee_rods_connect_a"/>
       <site site="left_knee_rods_connect_b"/>
