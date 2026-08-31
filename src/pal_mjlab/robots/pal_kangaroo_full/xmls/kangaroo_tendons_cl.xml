@@ -133,16 +133,15 @@
           </body>
         </body>
       </body>
-      <site name="left_hip_z_slider_connect_a" pos="-0.1148 0.0988312 -0.0296"/>
-      <!-- <body name="left_hip_z_motor" pos="-0.1148 0.0988312 -0.0296" quat="0.702958 -0.0764878 0.702958 0.0764878"> -->
-      <!--           <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-      <!--   <joint name="left_hip_z_motor" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/> -->
-      <!--   <body name="left_hip_z_slider"> -->
-      <!--           <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-      <!--     <joint name="leg_left_1_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.02609 0.01042"/> -->
-      <!--     <site name="left_hip_z_slider_connect_a" pos="0 0 0.0912225776418345" quat="-0.07648777758438371 0.7029577653601968 -0.07648777758438864 0.7029577653601967"/> -->
-      <!--   </body> -->
-      <!-- </body> -->
+      <body name="left_hip_z_motor" pos="-0.1148 0.0988312 -0.0296" quat="0.702958 -0.0764878 0.702958 0.0764878">
+                <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+        <joint name="left_hip_z_motor" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/>
+        <body name="left_hip_z_slider">
+                <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+          <joint name="leg_left_1_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.02609 0.01042"/>
+          <site name="left_hip_z_slider_connect_a" pos="0 0 0.0912225776418345" quat="-0.07648777758438371 0.7029577653601968 -0.07648777758438864 0.7029577653601967"/>
+        </body>
+      </body>
       <body name="leg_left_1_link" pos="-0.0150026 0.08 -0.0585">
         <inertial pos="0.049076 0.000248 -0.021744" quat="0.990361 -0.0303616 0.135129 0.0016705" mass="2.73393" diaginertia="0.00787848 0.00596731 0.00559821"/>
         <joint name="leg_left_1_joint" range="-0.261799 0.698132" />
@@ -242,16 +241,15 @@
           </body>
         </body>
       </body>
-      <site name="right_hip_z_slider_connect_a" pos="-0.1148 -0.0988312 -0.0296"/>
-      <!-- <body name="right_hip_z_motor" pos="-0.1148 -0.0988312 -0.0296" quat="0.702958 0.0764878 0.702958 -0.0764878"> -->
-      <!--           <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-      <!--   <joint name="right_hip_z_motor" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/> -->
-      <!--   <body name="right_hip_z_slider"> -->
-      <!--           <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-      <!--     <joint name="leg_right_1_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.02609 0.01042"/> -->
-      <!--     <site name="right_hip_z_slider_connect_a" pos="0 0 0.0912225776418345" quat="-0.07648777758438371 0.7029577653601968 -0.07648777758438864 0.7029577653601967"/> -->
-      <!--   </body> -->
-      <!-- </body> -->
+      <body name="right_hip_z_motor" pos="-0.1148 -0.0988312 -0.0296" quat="0.702958 0.0764878 0.702958 -0.0764878">
+                <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+        <joint name="right_hip_z_motor" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/>
+        <body name="right_hip_z_slider">
+                <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+          <joint name="leg_right_1_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.02609 0.01042"/>
+          <site name="right_hip_z_slider_connect_a" pos="0 0 0.0912225776418345" quat="-0.07648777758438371 0.7029577653601968 -0.07648777758438864 0.7029577653601967"/>
+        </body>
+      </body>
       <body name="leg_right_1_link" pos="-0.0150026 -0.08 -0.0585">
         <inertial pos="0.049076 -0.000248 -0.021744" quat="0.990361 0.0303616 0.135129 -0.0016705" mass="2.73393" diaginertia="0.00787848 0.00596731 0.00559821"/>
         <joint name="leg_right_1_joint" range="-0.698132 0.261799" />
@@ -359,8 +357,8 @@
       <connect anchor="0.0 0.0 0.0" body1="leg_right_4_link" body2="leg_right_knee_link" name="leg_right_closed_kin_joint" solref="0.004 1" />
     <tendon tendon1="right_knee_rods" class="tendon_eq"/>
     <tendon tendon1="left_knee_rods" class="tendon_eq"/>
-      <!-- <connect  site1="right_hip_z_slider_connect_a" site2="right_hip_z_slider_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
-      <!-- <connect  site1="left_hip_z_slider_connect_a" site2="left_hip_z_slider_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
+      <connect  site1="right_hip_z_slider_connect_a" site2="right_hip_z_slider_connect_b"  solimp="0.9999 0.9999 0.00001 0.5 2" solref="0.004 1" />
+      <connect  site1="left_hip_z_slider_connect_a" site2="left_hip_z_slider_connect_b"  solimp="0.9999 0.9999 0.00001 0.5 2" solref="0.004 1" />
       <!-- <connect  site1="right_knee_rods_connect_a" site2="right_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
       <!-- <connect  site1="left_knee_rods_connect_a" site2="left_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
   </equality>
@@ -381,10 +379,10 @@
 
 
   <tendon>
-    <spatial name="right_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
-      <site site="right_hip_z_slider_connect_a"/>
-      <site site="right_hip_z_slider_connect_b"/>
-    </spatial>
+    <!-- <spatial name="right_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator"> -->
+    <!--   <site site="right_hip_z_slider_connect_a"/> -->
+    <!--   <site site="right_hip_z_slider_connect_b"/> -->
+    <!-- </spatial> -->
     <!-- <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
     <!--   <site site="right_hip_xy_r_slider_connect_a"/> -->
     <!--   <site site="right_hip_xy_r_slider_connect_b"/> -->
@@ -398,10 +396,10 @@
       <site site="right_knee_rods_connect_b"/>
     </spatial>
 
-    <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
-      <site site="left_hip_z_slider_connect_a"/>
-      <site site="left_hip_z_slider_connect_b"/>
-    </spatial>
+    <!-- <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator"> -->
+    <!--   <site site="left_hip_z_slider_connect_a"/> -->
+    <!--   <site site="left_hip_z_slider_connect_b"/> -->
+    <!-- </spatial> -->
     <!-- <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator"> -->
     <!--   <site site="left_hip_xy_r_slider_connect_a"/> -->
     <!--   <site site="left_hip_xy_r_slider_connect_b"/> -->

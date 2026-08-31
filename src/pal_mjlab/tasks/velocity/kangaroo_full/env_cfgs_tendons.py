@@ -19,8 +19,15 @@ from pal_mjlab.robots import (
   KANGAROO_FULL_TENDON_HIPS_ACTUATED_JOINTS_NAMES,
   KANGAROO_FULL_TENDON_HIPS_TENDON_ACTION_SCALE,
   KANGAROO_FULL_TENDON_HIPS_ACTUATED_TENDONS_NAMES,
+  KANGAROO_FULL_TENDON_HIPS_CL_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIPS_CL_ACTUATED_JOINTS_NAMES,
+  KANGAROO_FULL_TENDON_HIPS_CL_MAIN_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIPS_CL_MAIN_ACTUATED_JOINTS_NAMES,
+  KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_JOINT_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_ACTUATED_JOINTS_NAMES,
   KANGAROO_INIT_STATE_TENDONS_OFFSETS,
   get_kangaroo_full_robot_tendon_hips_cfg,
+  get_kangaroo_full_robot_tendon_hips_cl_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_baseline_env_cfg
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
@@ -42,7 +49,13 @@ def pal_kangaroo_full_tendons_rough_env_cfg(play: bool = False) -> ManagerBasedR
     ),
     "tendon_pos": TendonLengthActionCfg(
       entity_name="robot",
-      actuator_names=KANGAROO_FULL_TENDON_HIPS_ACTUATED_TENDONS_NAMES,
+      # Explicit (left, right) order + preserve_order so this term's target
+      # layout matches the CL variant's "hip_actuator_pos" term (whose JOINT
+      # transmission always resolves in body-tree order, left leg first, and
+      # has no preserve_order knob to override) -- keeps hip_z at the same
+      # action index in both variants.
+      actuator_names=(r"left_hip_z_slider$", r"right_hip_z_slider$"),
+      preserve_order=True,
       scale=KANGAROO_FULL_TENDON_HIPS_TENDON_ACTION_SCALE,
       offset=KANGAROO_INIT_STATE_TENDONS_OFFSETS,
     ),
@@ -103,6 +116,158 @@ def pal_kangaroo_full_tendons_rough_env_cfg(play: bool = False) -> ManagerBasedR
       "reduction": "max",
     },
   )
+
+  return cfg
+
+
+def pal_kangaroo_full_tendons_cl_rough_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration.
+
+  Uses the closed-loop (CL) hip mechanism: the hip_z rod is a real slide joint
+  (``leg_.*_1_actuator``) kinematically closed onto the leg via a ``<connect>``
+  equality constraint, instead of a spatial tendon. All actuated DOFs are JOINT
+  transmission, so a single JointPositionActionCfg covers everything.
+  """
+  cfg = pal_kangaroo_baseline_env_cfg(play)
+
+  cfg.scene.entities = {"robot": get_kangaroo_full_robot_tendon_hips_cl_cfg()}
+
+  # Action layout matches the tendon-hips variant exactly: a 20-dim "joint_pos"
+  # term (same joint set/order as KANGAROO_FULL_TENDON_HIPS_ACTUATED_JOINTS_NAMES),
+  # followed by a 2-dim hip_z term -- so both variants' policies share the same
+  # action_dim (22) with hip_z always the last 2 entries, whether it routes
+  # through a TENDON or a JOINT actuator internally.
+  cfg.actions = {
+    "joint_pos": JointPositionActionCfg(
+      entity_name="robot",
+      actuator_names=KANGAROO_FULL_TENDON_HIPS_CL_MAIN_ACTUATED_JOINTS_NAMES,
+      scale=KANGAROO_FULL_TENDON_HIPS_CL_MAIN_JOINT_ACTION_SCALE,
+      use_default_offset=True,
+    ),
+    "hip_actuator_pos": JointPositionActionCfg(
+      entity_name="robot",
+      actuator_names=KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_ACTUATED_JOINTS_NAMES,
+      scale=KANGAROO_FULL_TENDON_HIPS_CL_HIPZ_JOINT_ACTION_SCALE,
+      use_default_offset=True,
+    ),
+  }
+
+  # -- Observations
+  #
+  # Restrict to exactly the joint set the tendon-hips variant observes: real
+  # output joints only (e.g. leg_.*_1_joint), not the CL mechanism's own input
+  # DOFs (leg_.*_1_actuator, the phantom left/right_hip_z_motor hinges). The
+  # tendon variant has no equivalent way to observe its own tendon length
+  # either, so hiding leg_.*_1_actuator here keeps both variants' observation
+  # vectors identical in shape *and* semantics, not just in dimension.
+  _cl_hidden_from_obs = r"(leg_(left|right)_1_actuator|(left|right)_hip_z_motor)$"
+  cl_observable_joints = rf"^(?!{_cl_hidden_from_obs}).*$"
+
+  for obs in ["actor", "critic"]:
+    for term in ["joint_pos", "joint_vel"]:
+      cfg.observations[obs].terms[term].params["asset_cfg"] = SceneEntityCfg(
+        "robot",
+        joint_names=cl_observable_joints,
+      )
+
+  # -- Events
+
+  cfg.events["tendon_lengths"] = EventTermCfg(
+    mode="reset",
+    func=enforce_tendon_lengths,
+    params={"lengths": KANGAROO_TENDON_LENGTHS},
+  )
+  del cfg.events["encoder_bias"]
+  del cfg.events["leg_length_encoder_bias"]
+
+  # -- Rewards
+  #
+  # Unlike the tendon-hip variant, hip_z is a real joint here, so it is
+  # automatically covered by the *_JOINTS_ONLY regexes below -- no separate
+  # tendon-space limit/posture term is needed.
+  #
+  # The CL mechanism also introduces `left_hip_z_motor`/`right_hip_z_motor`
+  # -- free, unactuated hinge joints that exist only to let the slide-joint
+  # sub-body swing into place; they carry no meaningful pose target. Excluded
+  # here so they don't leak into dof_pos_limits/pose (std_walking/std_running,
+  # inherited from the base kangaroo config, have no entry for `_motor$`
+  # names and would otherwise size-mismatch against std_standing).
+  _cl_exclude_motor = r"(left|right)_hip_z_motor$"
+  cl_simple_model_observable = (
+    rf"^(?!leg_.*_length_actuator$|{_cl_exclude_motor}).*$"
+  )
+  cl_simple_model_actuated = (
+    rf"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$|{_cl_exclude_motor}).*$"
+  )
+
+  cfg.rewards["dof_pos_limits"] = RewardTermCfg(
+    func=mdp.joint_pos_limits,
+    weight=-1.0,
+    params={
+      "asset_cfg": SceneEntityCfg(
+        "robot",
+        joint_names=cl_simple_model_observable,
+      )
+    },
+  )
+
+  cfg.rewards["pose"].params["asset_cfg"].joint_names = (cl_simple_model_actuated,)
+  cfg.rewards["pose"].params["std_standing"] = {cl_simple_model_actuated: 0.05}
+
+  # -- Metrics
+
+  cfg.metrics["knee_rods_eq_mean_violation"] = MetricsTermCfg(
+    func=mdp.tendon_equality_constraint_violation,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
+      "mode": "violation",
+      "reduction": "mean",
+    },
+  )
+  cfg.metrics["knee_rods_eq_max_violation"] = MetricsTermCfg(
+    func=mdp.tendon_equality_constraint_violation,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", tendon_names=(r"(left|right)_knee_rods",)),
+      "mode": "violation",
+      "reduction": "max",
+    },
+  )
+
+  return cfg
+
+
+def pal_kangaroo_full_tendons_cl_flat_env_cfg(
+  play: bool = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create PAL Robotics KANGAROO FULL (CL hip) flat terrain velocity configuration."""
+  cfg = pal_kangaroo_full_tendons_cl_rough_env_cfg(play=play)
+
+  cfg.sim.njmax = 300
+  cfg.sim.mujoco.ccd_iterations = 50
+  cfg.sim.contact_sensor_maxmatch = 64
+  cfg.sim.nconmax = None
+
+  # Switch to flat terrain.
+  assert cfg.scene.terrain is not None
+  cfg.scene.terrain.terrain_type = "plane"
+  cfg.scene.terrain.terrain_generator = None
+
+  # Disable terrain curriculum.
+  assert cfg.curriculum is not None
+  assert "terrain_levels" in cfg.curriculum
+  del cfg.curriculum["terrain_levels"]
+
+  if play:
+    # Disable command curriculum.
+    assert "command_vel" in cfg.curriculum
+    del cfg.curriculum["command_vel"]
+
+    twist_cmd = cfg.commands["twist"]
+    assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+    twist_cmd.ranges.lin_vel_x = (-1.5, 2.0)
+    twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return cfg
 
