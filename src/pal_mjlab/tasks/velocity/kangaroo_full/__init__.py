@@ -62,6 +62,23 @@ register_mjlab_task(
   runner_cls=VelocityOnPolicyRunner,
 )
 
+# Sweep of the hip_xy tendon action-scale multiplier, in place of
+# _build_action_scales's default 0.25x (that default is what the
+# Hip-XY-Only task above uses).
+for hip_xy_tendon_scale_factor in (0.5, 1.0, 2.0):
+  factor_name = f"{hip_xy_tendon_scale_factor:.1f}".replace(".", "-")
+  register_mjlab_task(
+    task_id=f"Mjlab-Velocity-Flat-Pal-Kangaroo-Full-Tendons-Hip-XY-Only-Scale-{factor_name}x",
+    env_cfg=pal_kangaroo_full_tendons_hip_xy_only_flat_env_cfg(
+      hip_xy_tendon_scale_factor=hip_xy_tendon_scale_factor
+    ),
+    play_env_cfg=pal_kangaroo_full_tendons_hip_xy_only_flat_env_cfg(
+      hip_xy_tendon_scale_factor=hip_xy_tendon_scale_factor, play=True
+    ),
+    rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
+    runner_cls=VelocityOnPolicyRunner,
+  )
+
 for state in ("full_state", "actuator_space", "simple_model"):
   for pose_space in (False, True):
     for pd_mapping in ("jacobian", "lowest", "semi_serial"):

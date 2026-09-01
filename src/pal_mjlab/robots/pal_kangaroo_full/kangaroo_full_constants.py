@@ -222,7 +222,7 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
     target_names_expr=(r"leg_(left|right)_length_actuator$",),
     # saturation_effort=5000.0,
     # velocity_limit=0.625,
-    **_calc_leg_params(6000.0, 5000.0),
+    **_calc_leg_params(60000.0, 500000.0),
   ),
 )
 
@@ -942,6 +942,20 @@ KANGAROO_INIT_STATE_SIMPLE_KNEE_HIPXY_TENDONS_OFFSETS = {
   KANGAROO_FULL_ARTICULATION_TENDON_HIP_XY_ONLY, TransmissionType.TENDON
 )
 
+# _build_action_scales always derives its scale as 0.25 * effort_limit /
+# stiffness (see its body above). Rather than duplicate that formula, scale
+# KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE (the 0.25x result)
+# by factor/0.25 to get what the same formula would give at each factor.
+KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE_BY_FACTOR: dict[
+  float, dict[str, float]
+] = {
+  factor: {
+    k: v * (factor / 0.25)
+    for k, v in KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE.items()
+  }
+  for factor in (0.25, 0.5, 1.0, 2.0)
+}
+
 (
   KANGAROO_FULL_TENDON_HIPS_CL_JOINT_ACTION_SCALE,
   KANGAROO_FULL_TENDON_HIPS_CL_ACTUATED_JOINTS_NAMES,
@@ -1012,7 +1026,7 @@ if __name__ == "__main__":
   import mujoco.viewer as viewer
   from mjlab.entity.entity import Entity
 
-  robot = Entity(get_kangaroo_full_robot_tendon_hips_cl_cfg())
+  robot = Entity(get_kangaroo_full_robot_tendon_hips_cfg())
   model = robot.spec.compile()
   data = mujoco.MjData(model)
   _enforce_tendon_lengths(model, data, KANGAROO_TENDON_LENGTHS)

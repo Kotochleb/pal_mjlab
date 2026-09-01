@@ -43,7 +43,7 @@ from pal_mjlab.robots import (
   KANGAROO_INIT_STATE_HIP_Z_ONLY_TENDONS_OFFSETS,
   KANGAROO_FULL_TENDON_HIP_XY_ONLY_JOINT_ACTION_SCALE,
   KANGAROO_FULL_TENDON_HIP_XY_ONLY_ACTUATED_JOINTS_NAMES,
-  KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE,
+  KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE_BY_FACTOR,
   KANGAROO_INIT_STATE_HIP_XY_ONLY_TENDONS_OFFSETS,
   get_kangaroo_full_robot_tendon_hips_cfg,
   get_kangaroo_full_robot_tendon_hips_cl_cfg,
@@ -592,12 +592,20 @@ def pal_kangaroo_full_tendons_hip_z_only_flat_env_cfg(
 
 def pal_kangaroo_full_tendons_hip_xy_only_rough_env_cfg(
   play: bool = False,
+  hip_xy_tendon_scale_factor: float = 0.25,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration.
 
   Only hip_xy is tendon actuated. hip_z (leg_.*_1_joint yaw) and leg length
   (leg_.*_length_joint) stay real joints driven directly, exactly as in the
   simple kangaroo model.
+
+  Args:
+    hip_xy_tendon_scale_factor: multiplier on the hip_xy tendon action scale,
+      in place of _build_action_scales's default 0.25 (i.e. the action scale
+      is factor * effort_limit / stiffness instead of 0.25 * .../...). Must be
+      one of the precomputed keys in
+      KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE_BY_FACTOR.
   """
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
@@ -619,7 +627,9 @@ def pal_kangaroo_full_tendons_hip_xy_only_rough_env_cfg(
         r"right_hip_xy_l_slider$",
       ),
       preserve_order=True,
-      scale=KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE,
+      scale=KANGAROO_FULL_TENDON_HIP_XY_ONLY_TENDON_ACTION_SCALE_BY_FACTOR[
+        hip_xy_tendon_scale_factor
+      ],
       offset=KANGAROO_INIT_STATE_HIP_XY_ONLY_TENDONS_OFFSETS,
     ),
   }
@@ -632,9 +642,12 @@ def pal_kangaroo_full_tendons_hip_xy_only_rough_env_cfg(
 
 def pal_kangaroo_full_tendons_hip_xy_only_flat_env_cfg(
   play: bool = False,
+  hip_xy_tendon_scale_factor: float = 0.25,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL (hip_xy tendon only) flat terrain velocity configuration."""
-  cfg = pal_kangaroo_full_tendons_hip_xy_only_rough_env_cfg(play=play)
+  cfg = pal_kangaroo_full_tendons_hip_xy_only_rough_env_cfg(
+    play=play, hip_xy_tendon_scale_factor=hip_xy_tendon_scale_factor
+  )
 
   cfg.sim.njmax = 300
   cfg.sim.mujoco.ccd_iterations = 50
