@@ -220,15 +220,15 @@
               <joint name="leg_left_femur_joint" axis="0 1 0" range="0.174533 1.22173" />
               <geom class="visual" mesh="leg_femur_link" />
               <geom name="leg_left_femur_collision" size="0.0910718 0.2" pos="0.043456 0.000622273 -0.115825" quat="0.194464 0.00344037 0.980904 2.41185e-06" class="collision"/>
-                <body name="left_femur_slider" pos="0.0665  0 -0.2365" quat="0.078 0.0 0.997 0.0">
+                <body name="left_femur_slider" pos="0.0305074 0 -0.245497" quat="0.07842716 0.0 0.99691985 0.0">
                   <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
                   <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0.0 0.1506"/>
-                  <site name="left_knee_rods_connect_a"  />
-                  <!-- <body name="left_knee_rods"> -->
-                  <!-- <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-                  <!--   <joint name="left_knee_rods" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/> -->
-                  <!--   <site name="left_knee_rods_connect_a" pos="-0.0179533860942924 0 0.214249097845823" quat="-0.2571448418718471 0.25714484187184833 0.6586930471006229 0.6586930471006214"/> -->
-                  <!-- </body> -->
+                  <!-- <site name="left_knee_rods_connect_a"  /> -->
+                  <body name="left_knee_rods">
+                  <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <joint name="left_knee_rods" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
+                    <site name="left_knee_rods_connect_a" pos="-0.0179533860942924 0 0.214249097845823" quat="-0.2571448418718471 0.25714484187184833 0.6586930471006229 0.6586930471006214"/>
+                  </body>
                 </body>
               <body name="leg_left_knee_link" pos="0.129945 0 -0.357092" quat="0.34202 0 0.939693 0">
                 <inertial pos="-0.040771 -4.6e-05 -0.126665" quat="0.689315 0.158663 0.159997 0.688528" mass="0.944388" diaginertia="0.015899 0.0151477 0.00152724"/>
@@ -329,15 +329,15 @@
               <joint name="leg_right_femur_joint" axis="0 1 0" range="0.174533 1.22173" />
               <geom class="visual" mesh="leg_femur_link" />
               <geom name="leg_right_femur_collision" size="0.0910718 0.20" pos="0.043456 0.000622273 -0.115825" quat="0.194464 0.00344037 0.980904 2.41185e-06" class="collision"/>
-                <body name="right_femur_slider" pos="0.0665  0 -0.2365" quat="0.078 0.0 0.997 0.0">
+                <body name="right_femur_slider" pos="0.0305074 0 -0.245497" quat="0.07842716 0.0 0.99691985 0.0">
                   <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
                 <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0.0 0.1506"/>
-                <site name="right_knee_rods_connect_a"  />
-                  <!-- <body name="right_knee_rods"> -->
-                  <!-- <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/> -->
-                  <!--   <joint name="right_knee_rods" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/> -->
-                  <!--   <site name="right_knee_rods_connect_a" pos="-0.0179533860942924 0 0.214249097845823" quat="-0.2571448418718471 0.25714484187184833 0.6586930471006229 0.6586930471006214"/> -->
-                  <!-- </body> -->
+                <!-- <site name="right_knee_rods_connect_a"  /> -->
+                  <body name="right_knee_rods">
+                  <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <joint name="right_knee_rods" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
+                    <site name="right_knee_rods_connect_a" pos="-0.0179533860942924 0 0.214249097845823" quat="-0.2571448418718471 0.25714484187184833 0.6586930471006229 0.6586930471006214"/>
+                  </body>
                 </body>
               <body name="leg_right_knee_link" pos="0.129945 0 -0.357092" quat="0.34202 0 0.939693 0">
                 <inertial pos="-0.040771 -4.6e-05 -0.126665" quat="0.689315 0.158663 0.159997 0.688528" mass="0.944388" diaginertia="0.015899 0.0151477 0.00152724"/>
@@ -355,14 +355,14 @@
   </worldbody>
 
   <equality>
-      <connect anchor="0.0 0.0 0.0" body1="leg_left_4_link" body2="leg_left_knee_link" name="leg_left_closed_kin_joint" solref="0.004 1" />
-      <connect anchor="0.0 0.0 0.0" body1="leg_right_4_link" body2="leg_right_knee_link" name="leg_right_closed_kin_joint" solref="0.004 1" />
-    <tendon tendon1="right_knee_rods" class="tendon_eq"/>
-    <tendon tendon1="left_knee_rods" class="tendon_eq"/>
+      <connect anchor="0.0 0.0 0.0" body1="leg_left_4_link" body2="leg_left_knee_link" name="leg_left_closed_kin_joint" solimp="0.99 0.999 0.001" solref="0.002 1" />
+      <connect anchor="0.0 0.0 0.0" body1="leg_right_4_link" body2="leg_right_knee_link" name="leg_right_closed_kin_joint" solimp="0.99 0.999 0.001" solref="0.002 1" />
+    <!-- <tendon tendon1="right_knee_rods" class="tendon_eq"/> -->
+    <!-- <tendon tendon1="left_knee_rods" class="tendon_eq"/> -->
       <!-- <connect  site1="right_hip_z_slider_connect_a" site2="right_hip_z_slider_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
       <!-- <connect  site1="left_hip_z_slider_connect_a" site2="left_hip_z_slider_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
-      <!-- <connect  site1="right_knee_rods_connect_a" site2="right_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
-      <!-- <connect  site1="left_knee_rods_connect_a" site2="left_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" /> -->
+      <connect  site1="right_knee_rods_connect_a" site2="right_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" />
+      <connect  site1="left_knee_rods_connect_a" site2="left_knee_rods_connect_b"  solimp="0.99 0.999 0.001" solref="0.002 1" />
   </equality>
 
   <contact>
@@ -393,10 +393,10 @@
       <site site="right_hip_xy_l_slider_connect_a"/>
       <site site="right_hip_xy_l_slider_connect_b"/>
     </spatial>
-    <spatial name="right_knee_rods" class="tendon_bar">
-      <site site="right_knee_rods_connect_a"/>
-      <site site="right_knee_rods_connect_b"/>
-    </spatial>
+    <!-- <spatial name="right_knee_rods" class="tendon_bar"> -->
+    <!--   <site site="right_knee_rods_connect_a"/> -->
+    <!--   <site site="right_knee_rods_connect_b"/> -->
+    <!-- </spatial> -->
 
     <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
       <site site="left_hip_z_slider_connect_a"/>
@@ -410,10 +410,10 @@
       <site site="left_hip_xy_l_slider_connect_a"/>
       <site site="left_hip_xy_l_slider_connect_b"/>
     </spatial>
-    <spatial name="left_knee_rods" class="tendon_bar">
-      <site site="left_knee_rods_connect_a"/>
-      <site site="left_knee_rods_connect_b"/>
-    </spatial>
+    <!-- <spatial name="left_knee_rods" class="tendon_bar"> -->
+    <!--   <site site="left_knee_rods_connect_a"/> -->
+    <!--   <site site="left_knee_rods_connect_b"/> -->
+    <!-- </spatial> -->
   </tendon>
 
   <sensor>
