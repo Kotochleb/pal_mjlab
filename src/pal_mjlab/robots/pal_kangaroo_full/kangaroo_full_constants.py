@@ -44,9 +44,13 @@ KANGAROO_FULL_TENDON_HIP_CL_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_cl.xml"
 # model" leg length -- and (for the *_ONLY variants) with one of the two hip
 # tendon mechanisms removed so that axis falls back to its plain revolute
 # joint (leg_.*_1_joint for hip_z, leg_.*_2_joint/leg_.*_3_joint for hip_xy).
-KANGAROO_FULL_TENDON_SIMPLE_KNEE_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_simple_knee.xml"
+KANGAROO_FULL_TENDON_SIMPLE_KNEE_XML = (
+  KANGAROO_FULL_PATH / "kangaroo_tendons_simple_knee.xml"
+)
 KANGAROO_FULL_TENDON_HIP_Z_ONLY_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_only_z.xml"
-KANGAROO_FULL_TENDON_HIP_XY_ONLY_XML = KANGAROO_FULL_PATH / "kangaroo_tendons_only_xy.xml"
+KANGAROO_FULL_TENDON_HIP_XY_ONLY_XML = (
+  KANGAROO_FULL_PATH / "kangaroo_tendons_only_xy.xml"
+)
 
 LEG_LENGHT_TRAMISSION_LOOKUP_PATH = (
   KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
@@ -222,7 +226,7 @@ KANGAROO_LEG_ACTUATORS_TENDON_HIPS = (
     target_names_expr=(r"leg_(left|right)_length_actuator$",),
     # saturation_effort=5000.0,
     # velocity_limit=0.625,
-    **_calc_leg_params(60000.0, 500000.0),
+    **_calc_leg_params(6000.0, 5000.0),
   ),
 )
 
@@ -665,7 +669,8 @@ def _compute_hip_tendon_init_offsets(spec_fn) -> dict[str, float]:
     for name, length in lengths_at_init_state.items()
   }
   return {
-    name: _match_tendon_offset(name) + delta for name, delta in init_state_tendons.items()
+    name: _match_tendon_offset(name) + delta
+    for name, delta in init_state_tendons.items()
   }
 
 
@@ -905,10 +910,14 @@ KANGAROO_FULL_TENDON_SIMPLE_KNEE_HIPXY_TENDON_ACTION_SCALE = {
   if "hip_xy" in k
 }
 KANGAROO_INIT_STATE_SIMPLE_KNEE_HIPZ_TENDONS_OFFSETS = {
-  k: v for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items() if "hip_z" in k
+  k: v
+  for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items()
+  if "hip_z" in k
 }
 KANGAROO_INIT_STATE_SIMPLE_KNEE_HIPXY_TENDONS_OFFSETS = {
-  k: v for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items() if "hip_xy" in k
+  k: v
+  for k, v in KANGAROO_INIT_STATE_SIMPLE_KNEE_TENDONS_OFFSETS.items()
+  if "hip_xy" in k
 }
 
 # Only hip_z is a tendon; hip_xy (leg_.*_2_joint/leg_.*_3_joint) is a plain
