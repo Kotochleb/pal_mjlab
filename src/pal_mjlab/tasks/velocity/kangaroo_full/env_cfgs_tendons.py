@@ -58,7 +58,7 @@ from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_
 
 def pal_kangaroo_full_tendons_rough_env_cfg(
   play: bool = False,
-  joint_state_obs: str = "full_state",
+  joint_state_obs: str = "simple_model",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
@@ -103,12 +103,19 @@ def pal_kangaroo_full_tendons_rough_env_cfg(
 
   # -- Observations
   #
-  # "full_state" observes every joint plus the hip tendon lengths (the only
-  # way this variant can expose hip position, since hip_z/hip_xy have no real
-  # joint here). "simple_model" instead restricts to exactly the joint set
-  # pal_kangaroo_flat_env_cfg observes (REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
-  # no tendon lengths), so a policy trained on the simple kangaroo model sees
-  # an observation vector of the same shape here.
+  # "simple_model" (the default, and what the registered task uses) restricts
+  # to exactly the joint set pal_kangaroo_full_flat_env_cfg observes in its
+  # own "simple_model" mode (REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY, no
+  # tendon lengths). This model carries the same 28 joints as the non-tendon
+  # full model -- hip_z/hip_xy are still real joints (leg_.*_1/2/3_joint),
+  # only their *actuation* routes through a tendon -- so the two tasks see a
+  # byte-identical observation config, not merely a matching shape. That is
+  # the point: the Full-Tendons task must differ from
+  # Full-Simple-Model-PD-Jacobian in actuation only.
+  #
+  # "full_state" additionally observes leg_.*_length_actuator and the six hip
+  # tendon lengths (34 entries instead of 26); it is kept as an opt-in knob
+  # but is no longer what the registered task uses.
   observation_space = {
     "simple_model": SceneEntityCfg(
       "robot",
@@ -134,8 +141,11 @@ def pal_kangaroo_full_tendons_rough_env_cfg(
     func=enforce_tendon_lengths,
     params={"lengths": KANGAROO_TENDON_LENGTHS},
   )
-  # del cfg.events["encoder_bias"]
-  # del cfg.events["leg_length_encoder_bias"]
+  # Deleted to match pal_kangaroo_full_rough_env_cfg: these startup terms bias
+  # the *observed* joint positions, so keeping them here would be an
+  # observation-side difference on top of the intended actuation one.
+  del cfg.events["encoder_bias"]
+  del cfg.events["leg_length_encoder_bias"]
 
   # -- Rewards
 
@@ -356,9 +366,7 @@ def pal_kangaroo_full_tendons_cl_flat_env_cfg(
 
 def pal_kangaroo_full_tendons_flat_env_cfg(
   play: bool = False,
-  joint_state_obs: str = "full_state",
-  pose_in_actuator_space: bool = False,
-  pd_mapping: str = "jacobian",
+  joint_state_obs: str = "simple_model",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_tendons_rough_env_cfg(
