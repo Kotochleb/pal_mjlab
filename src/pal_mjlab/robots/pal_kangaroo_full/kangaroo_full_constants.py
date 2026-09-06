@@ -15,22 +15,34 @@ prismatic joint underneath. That keeps a single geometry source of truth --
 previously each combination was a hand-maintained copy of the same XML, which
 drifted (rod lengths, ``solref``, inertias) between copies.
 
-The three axes are independent, giving eight variants:
+The three axes are independent, giving sixteen variants:
 
-===========  ==========================  ===================================
-axis         value                       actuation
-===========  ==========================  ===================================
-``hip_z``    ``"tendon"``                ``(left|right)_hip_z_slider`` tendon
-             ``"joint"``                 ``leg_.*_1_joint`` revolute motor
-``hip_xy``   ``"tendon"``                ``..._hip_xy_(l|r)_slider`` tendons
-             ``"joint"``                 ``leg_.*_2_joint``/``leg_.*_3_joint``
-``leg_len``  ``"actuator"``              ``leg_.*_length_actuator`` prismatic
-             ``"joint"``                 ``leg_.*_length_joint`` directly
-===========  ==========================  ===================================
+===========  ===========================  ==================================
+axis         value                        actuation
+===========  ===========================  ==================================
+``hip_z``    ``"tendon"``                 ``(left|right)_hip_z_slider``
+             ``"joint"``                  ``leg_.*_1_joint`` revolute motor
+``hip_xy``   ``"tendon"``                 ``..._hip_xy_(l|r)_slider`` tendons
+             ``"joint"``                  ``leg_.*_2_joint``/``leg_.*_3_joint``
+``leg_len``  ``"actuator"``               ``leg_.*_length_actuator`` prismatic
+             ``"semi_serial"``            ``leg_.*_length_joint`` PD, torque
+                                          pushed through the screw's LUT onto
+                                          ``leg_.*_length_actuator``
+             ``"semi_serial_actuator_pd"``  the same, but P only on the joint
+                                          and the PD closes on the screw
+             ``"joint"``                  ``leg_.*_length_joint`` directly
+===========  ===========================  ==================================
 
 With ``leg_length="joint"`` the compiled model has exactly the same joints as
-the simple ``pal_kangaroo`` model; with ``"actuator"`` it adds only the two
-``leg_.*_length_actuator`` screws. Tasks therefore observe and reward the
+the simple ``pal_kangaroo`` model; every other value adds only the two
+``leg_.*_length_actuator`` screws. The two ``semi_serial`` values compile the same
+model as ``"actuator"`` but command it differently: the policy servos
+``leg_.*_length_joint`` (the simple model's DOF) and the resulting joint torque
+is mapped onto the screw through the measured transmission Jacobian in
+``transmission/leg_length.csv``. ``"semi_serial"`` then applies that force
+directly; ``"semi_serial_actuator_pd"`` turns it back into a setpoint for a
+native ``<position>`` element on the screw, so the derivative term is taken on
+the screw's velocity rather than the joint's. Tasks therefore observe and reward the
 simple model's joint set in every variant -- see
 :data:`REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY`.
 """
@@ -43,7 +55,7 @@ from functools import lru_cache
 from typing import Literal
 
 import mujoco
-from mjlab.actuator import BuiltinPositionActuatorCfg
+from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
@@ -53,6 +65,11 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   _calc_leg_params,
+)
+from pal_mjlab.robots.pal_kangaroo_full.actuator import (
+  TransmitedIdealPdActuatorCfg,
+  TransmittedPositionActuatorCfg,
+  load_transmission_table,
 )
 
 ##
@@ -75,7 +92,15 @@ REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY = (
 KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo.xml"
 
-assert KANGAROO_FULL_XML.exists(), f"Missing: {KANGAROO_FULL_XML}"
+# Measured (leg_length_joint -> leg_length_actuator) transmission Jacobian of
+# the knee screw, used by the leg_length="semi_serial" actuator to push a joint
+# torque through the mechanism. Rows are (joint_pos, dF_actuator/dtau_joint).
+LEG_LENGTH_TRANSMISSION_CSV = (
+  KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
+)
+
+for _path in (KANGAROO_FULL_XML, LEG_LENGTH_TRANSMISSION_CSV):
+  assert _path.exists(), f"Missing: {_path}"
 
 HIP_Z_TENDON_NAMES = ("left_hip_z_slider", "right_hip_z_slider")
 # Ordered left-outer, left-inner, right-inner, right-outer, matching the body
@@ -97,7 +122,9 @@ KANGAROO_TENDON_LENGTHS: dict[str, float] = {r"(left|right)_knee_rods": 0.215}
 
 HipZActuation = Literal["tendon", "joint"]
 HipXyActuation = Literal["tendon", "joint"]
-LegLengthActuation = Literal["actuator", "joint"]
+LegLengthActuation = Literal[
+  "actuator", "semi_serial", "semi_serial_actuator_pd", "joint"
+]
 
 
 def _delete_tendons(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
@@ -177,12 +204,46 @@ _ANKLE_ACTUATORS = (
   ),
 )
 
-_LEG_LENGTH_ACTUATORS: dict[
-  LegLengthActuation, tuple[BuiltinPositionActuatorCfg, ...]
-] = {
+_LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
   "actuator": (
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"leg_(left|right)_length_actuator$",),
+      **_calc_leg_params(6000.0, 5000.0),
+    ),
+  ),
+  # The screw is present, as in "actuator", but the PD law runs on the joint
+  # the simple model actuates, at the simple model's gains; only the resulting
+  # torque is transmitted to the screw. So the action means the same thing here
+  # as in "joint", while the mechanism underneath is the full one.
+  "semi_serial": (
+    TransmitedIdealPdActuatorCfg(
+      target_names_expr=(r"leg_(left|right)_length_joint$",),
+      joint_to_actuator_map={
+        "leg_left_length_joint": "leg_left_length_actuator",
+        "leg_right_length_joint": "leg_right_length_actuator",
+      },
+      transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
+      actuator_effort_limit=5000.0,
+      **_calc_leg_params(900.0, 1100.0),
+    ),
+  ),
+  # Same three-stage command as "semi_serial", but only the P term is taken on
+  # the joint; the transmitted force is handed back to the screw as a setpoint
+  # offset (hence the division by the screw's own kp), so the D term is taken
+  # on the screw's velocity by a native <position> element at the screw's own
+  # gains -- the same gains, and the same element, the "actuator" variant uses.
+  # The screw carries the only effort limit in the chain, so this variant also
+  # takes the "actuator" variant's action scale (0.25 * 5000/6000), even though
+  # the action it scales is a leg_.*_length_joint position, as in "semi_serial".
+  "semi_serial_actuator_pd": (
+    TransmittedPositionActuatorCfg(
+      target_names_expr=(r"leg_(left|right)_length_joint$",),
+      joint_to_actuator_map={
+        "leg_left_length_joint": "leg_left_length_actuator",
+        "leg_right_length_joint": "leg_right_length_actuator",
+      },
+      transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
+      joint_stiffness=900.0,
       **_calc_leg_params(6000.0, 5000.0),
     ),
   ),
@@ -205,7 +266,7 @@ _UPPER_BODY_ACTUATORS = (
 
 # leg_.*_length_actuator is absent from the leg_length="joint" variants; a
 # pattern that matches no joint is simply ignored by resolve_expr, so one
-# init state covers all eight variants.
+# init state covers all sixteen variants.
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.95),
   rot=(1.0, 0.0, 0.0, 0.0),
@@ -330,7 +391,7 @@ class KangarooFullModel:
   @property
   def has_knee_rod_tendons(self) -> bool:
     """Whether the ``*_knee_rods`` equality tendons exist in this variant."""
-    return self.leg_length == "actuator"
+    return self.leg_length != "joint"
 
   def make_spec(self) -> mujoco.MjSpec:
     return get_kangaroo_full_spec(
@@ -446,7 +507,10 @@ def main(
     hip_xy: Drive hip pitch/roll through the parallel tendon pair, or through
       the plain leg_.*_2_joint / leg_.*_3_joint revolute motors.
     leg_length: Drive leg length through the leg_.*_length_actuator screw and
-      its knee rod equality tendon, or directly through leg_.*_length_joint.
+      its knee rod equality tendon, through that same screw but commanded in
+      leg_.*_length_joint space via the transmission LUT (the two "semi_serial"
+      values, differing in whether the PD closes on the joint or on the screw),
+      or directly through leg_.*_length_joint.
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_model(hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length)

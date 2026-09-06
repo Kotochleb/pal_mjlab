@@ -11,7 +11,12 @@ from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 # out all three axes so a run is identifiable from its task id alone.
 _HIP_Z_VARIANTS = {"Tendon": "tendon", "Joint": "joint"}
 _HIP_XY_VARIANTS = {"Tendon": "tendon", "Joint": "joint"}
-_LEG_LENGTH_VARIANTS = {"Actuator": "actuator", "Joint": "joint"}
+_LEG_LENGTH_VARIANTS = {
+  "Actuator": "actuator",
+  "SemiSerial": "semi_serial",
+  "SemiSerialActuatorPd": "semi_serial_actuator_pd",
+  "Joint": "joint",
+}
 
 for _terrain, _env_cfg_fn in (
   ("Flat", pal_kangaroo_full_flat_env_cfg),
