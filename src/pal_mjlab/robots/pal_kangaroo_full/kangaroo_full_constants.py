@@ -42,7 +42,8 @@ compiled model keeps. ``"prismatic"`` keeps the straight-line stand-in: the
 ``leg_.*_length_joint`` slider pinned to the knee by the
 ``leg_.*_length_connect`` ``<connect>``, with the ``(left|right)_hip_xy_link``
 and ``(left|right)_femur_rod`` tendons deleted and the now-idle
-``(left|right)_femur_triangle`` crank locked at 0. ``"linkage"`` keeps the real
+``(left|right)_femur_triangle`` crank's joint deleted (welding it to the femur
+at qpos 0). ``"linkage"`` keeps the real
 four-bar those two tendons form and deletes the slider and its ``<connect>``
 instead -- which also removes the DOF three of the four ``leg_length`` values
 actuate, so ``"linkage"`` only combines with ``leg_length="actuator"``.
@@ -67,6 +68,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 import mujoco
@@ -145,6 +147,21 @@ SIMPLE_MODEL_JOINT_ORDER: tuple[str, ...] = (
 
 KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_full_tendons.xml"
+# Same geometry and actuation axes as KANGAROO_FULL_XML -- every hip_z / hip_xy
+# / leg_length / femur_closure / ankle flag above applies identically -- but
+# with extra closed-loop constraints layered on top of the ones the nominal
+# MJCF already carries, for redundancy/over-constraint experiments. The file
+# on disk keeps its typo'd name (kangaroo_full_tendons_over_constarined.xml);
+# only the Python-facing MjcfVariant value below is spelled correctly.
+KANGAROO_FULL_XML_OVER_CONSTRAINED = (
+  KANGAROO_FULL_PATH / "kangaroo_full_tendons_over_constarined.xml"
+)
+
+MjcfVariant = Literal["tendons", "tendons_over_constrained"]
+_MJCF_XML_PATHS: dict[MjcfVariant, Path] = {
+  "tendons": KANGAROO_FULL_XML,
+  "tendons_over_constrained": KANGAROO_FULL_XML_OVER_CONSTRAINED,
+}
 
 # Measured (leg_length_joint -> leg_length_actuator) transmission Jacobian of
 # the knee screw, used by the leg_length="semi_serial" actuator to push a joint
@@ -178,6 +195,7 @@ KNEE_DISTANCE_MAP_LEGS: tuple[tuple[str, str, str], ...] = tuple(
 
 for _path in (
   KANGAROO_FULL_XML,
+  KANGAROO_FULL_XML_OVER_CONSTRAINED,
   LEG_LENGTH_TRANSMISSION_CSV,
   KNEE_DISTANCE_MAP_CSV,
 ):
@@ -221,6 +239,14 @@ _BUTTERFLY_DECOUPLER_EQ_NAMES = (
   "left_butterfly_decoupler_coupling",
   "right_butterfly_decoupler_coupling",
 )
+# The bars each butterfly swings the ankle through -- redundant once the
+# butterflies themselves are deleted for a joint-actuated ankle, with nothing
+# left to drive them.
+_ANKLE_TIBIA_BAR_TENDON_NAMES = tuple(
+  f"{side}_ankle_tibia_bar_{suffix}"
+  for side in ("left", "right")
+  for suffix in ("l", "r")
+)
 # The straight-line stand-in for that four-bar: a prismatic joint whose free
 # end is pinned to the knee link by a <connect>, i.e. the simple model's leg
 # length DOF.
@@ -235,12 +261,6 @@ _LEG_LENGTH_CONNECT_EQ_NAMES = (
 # a reset event (see mdp.dr.tendon.enforce_tendon_lengths) because the value is
 # a physical rod length, not the tendon's length at qpos0.
 KANGAROO_TENDON_LENGTHS: dict[str, float] = {r"(left|right)_knee_rods": 0.215}
-
-# Solver parameters for the joints the "prismatic" femur closure locks, taken
-# from the MJCF's own tendon_eq / decoupler class so every closed-loop
-# constraint in the model is equally stiff.
-_JOINT_LOCK_SOLIMP = (0.99, 0.99, 0.001, 0.5, 2.0)
-_JOINT_LOCK_SOLREF = (0.002, 1.0)
 
 HipZActuation = Literal["tendon", "joint"]
 HipXyActuation = Literal["tendon", "joint"]
@@ -278,31 +298,13 @@ def _delete_joints(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
       spec.delete(joint)
 
 
-def _lock_joints_at_zero(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
-  """Pin joints at qpos 0 with a one-sided ``<joint>`` equality.
-
-  A constraint rather than a deletion so the joint stays in the model and its
-  residual is observable -- see the ``joint_eq_*_violation`` metrics.
-  """
-  for name in names:
-    eq = spec.add_equality()
-    eq.name = f"{name}_lock"
-    eq.type = mujoco.mjtEq.mjEQ_JOINT
-    eq.name1 = name
-    eq.objtype = mujoco.mjtObj.mjOBJ_JOINT
-    # data[0] is the constant term of the polynomial; with no name2 the
-    # constraint reads "qpos(name1) == data[0]".
-    eq.data[:] = 0.0
-    eq.solimp = _JOINT_LOCK_SOLIMP
-    eq.solref = _JOINT_LOCK_SOLREF
-
-
 def get_kangaroo_full_spec(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
   leg_length: LegLengthActuation = "actuator",
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
 ) -> mujoco.MjSpec:
   """Load the MJCF and strip the mechanisms this variant doesn't use."""
   if femur_closure == "linkage" and leg_length != "actuator":
@@ -313,7 +315,7 @@ def get_kangaroo_full_spec(
       f'leg_length="{leg_length}" actuates it. Use leg_length="actuator" '
       'to drive the screw directly, or femur_closure="prismatic".'
     )
-  spec = mujoco.MjSpec.from_file(str(KANGAROO_FULL_XML))
+  spec = mujoco.MjSpec.from_file(str(_MJCF_XML_PATHS[mjcf]))
   if hip_z == "joint":
     _delete_tendons(spec, HIP_Z_TENDON_NAMES)
   if hip_xy == "joint":
@@ -321,27 +323,32 @@ def get_kangaroo_full_spec(
   if leg_length == "joint":
     # Servoing leg_.*_length_joint directly makes the screw redundant. The
     # slider body stays -- its mass and inertia are still on the femur -- but
-    # its joint is pinned at 0 and the knee rod that closed it onto the femur
-    # goes, so nothing drives it and nothing hangs off it.
+    # its joint is deleted (welding it to the femur at qpos 0) and the knee
+    # rod that closed it onto the femur goes, so nothing drives it and
+    # nothing hangs off it.
     _delete_tendons(spec, _KNEE_ROD_TENDON_NAMES)
-    _lock_joints_at_zero(spec, _LEG_LENGTH_ACTUATOR_JOINT_NAMES)
+    _delete_joints(spec, _LEG_LENGTH_ACTUATOR_JOINT_NAMES)
   if femur_closure == "prismatic":
     _delete_tendons(spec, _FEMUR_LINKAGE_TENDON_NAMES)
-    _lock_joints_at_zero(spec, _FEMUR_TRIANGLE_JOINT_NAMES)
+    _delete_joints(spec, _FEMUR_TRIANGLE_JOINT_NAMES)
   else:
     _delete_equalities(spec, _LEG_LENGTH_CONNECT_EQ_NAMES)
     _delete_joints(spec, _LEG_LENGTH_JOINT_NAMES)
   if ankle == "joint":
     # Driving leg_.*_4_joint / leg_.*_5_joint directly makes the butterfly
     # chain redundant, so it is frozen rather than left to swing: the
-    # decoupler's gearing to the knee goes, and every butterfly is pinned at
-    # 0. *_femur_rod stays out of this: under "linkage" it is one of the two
+    # decoupler's gearing to the knee goes, every butterfly joint is deleted
+    # (welding butterfly_l/r to the decoupler, and the decoupler to the femur,
+    # each at qpos 0), and the ankle_tibia_bar tendons they swung go with
+    # them -- with the butterflies gone, nothing drives those bars either.
+    # *_femur_rod stays out of this: under "linkage" it is one of the two
     # tendons actually closing the femur four-bar (with *_hip_xy_link), and
     # deleting it regardless of the ankle axis leaves leg_.*_femur_joint with
     # nothing holding it, so it swings to its limit under gravity. "prismatic"
     # already deleted it above, as part of the four-bar it replaces.
     _delete_equalities(spec, _BUTTERFLY_DECOUPLER_EQ_NAMES)
-    _lock_joints_at_zero(spec, _BUTTERFLY_JOINT_NAMES)
+    _delete_joints(spec, _BUTTERFLY_JOINT_NAMES)
+    _delete_tendons(spec, _ANKLE_TIBIA_BAR_TENDON_NAMES)
     if femur_closure != "linkage":
       _delete_tendons(spec, _FEMUR_ROD_TENDON_NAMES)
   return spec
@@ -474,9 +481,14 @@ _UPPER_BODY_ACTUATORS = (
 
 # leg_.*_length_actuator is absent from the leg_length="joint" variants; a
 # pattern that matches no joint is simply ignored by resolve_expr, so one
-# init state covers all sixteen variants.
+# base init state covers every hip_z / hip_xy / leg_length / femur_closure
+# variant. leg_.*_4_joint and the butterflies are the exception: the two
+# MJCFs describe different ankle geometry, so those two keys rest at a
+# different pose per :data:`MjcfVariant` and are layered on top by
+# get_kangaroo_full_model rather than fixed here -- see
+# :data:`_MJCF_ANKLE_INIT_STATE`.
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.95),
+  pos=(0.0, 0.0, 0.90),
   rot=(1.0, 0.0, 0.0, 0.0),
   joint_pos={
     "leg_left_1_joint": -0.012,
@@ -486,11 +498,9 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "leg_right_3_joint": -0.04,
     "leg_.*_length_joint": -0.125,
     "leg_.*_length_actuator": 0.02766,
-    "leg_.*_4_joint": 0.2953,
-    "leg_.*_5_joint": -2.9185,
+    "leg_.*_5_joint": 0.0,
     "leg_.*_femur_joint": -0.29636,
     "leg_.*_knee_joint": 0.5978,
-    ".*_butterfly_(r|l)": -0.2447,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
     "arm_.*_2_joint": 1.32,
@@ -503,11 +513,24 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   joint_vel={".*": 0.0},
 )
 
+# leg_.*_4_joint / butterfly rest pose, layered onto INIT_STATE.joint_pos by
+# get_kangaroo_full_model -- see the note on INIT_STATE above.
+_MJCF_ANKLE_INIT_STATE: dict[MjcfVariant, dict[str, float]] = {
+  "tendons": {
+    "leg_.*_4_joint": -0.2953,
+    ".*_butterfly_(r|l)": 0.0,
+  },
+  "tendons_over_constrained": {
+    "leg_.*_4_joint": 0.2953,
+    ".*_butterfly_(r|l)": 0.543,
+  },
+}
+
 
 def _compute_tendon_lengths_at_init_state(
-  spec: mujoco.MjSpec, tendon_names: tuple[str, ...]
+  spec: mujoco.MjSpec, tendon_names: tuple[str, ...], joint_pos: dict[str, float]
 ) -> dict[str, float]:
-  """Tendon lengths with the model posed at :data:`INIT_STATE`.
+  """Tendon lengths with the model posed at ``joint_pos``.
 
   This is the TENDON-transmission analogue of what ``use_default_offset=True``
   gives JOINT actuators for free: ``JointPositionAction`` reads the joint's own
@@ -515,7 +538,9 @@ def _compute_tendon_lengths_at_init_state(
   ``TendonLengthActionCfg`` has no ``use_default_offset``, so the equivalent
   offset is solved for here instead of being hand-maintained -- a hardcoded
   constant silently drifts out of sync with the model (it previously did, by
-  ~0.3-0.5 mm).
+  ~0.3-0.5 mm). ``joint_pos`` is a caller's fully-assembled init state (see
+  :data:`INIT_STATE` and :data:`_MJCF_ANKLE_INIT_STATE`), not read off a
+  module-level default, since the rest pose differs by :data:`MjcfVariant`.
   """
   # The raw XML references a `terrain` body for foot-collision excludes that
   # only resolves once attached into a full scene; add a placeholder so this
@@ -530,7 +555,7 @@ def _compute_tendon_lengths_at_init_state(
     if model.jnt_type[j] != mujoco.mjtJoint.mjJNT_FREE
   )
   for name, value in zip(
-    joint_names, resolve_expr(INIT_STATE.joint_pos, joint_names, 0.0), strict=True
+    joint_names, resolve_expr(joint_pos, joint_names, 0.0), strict=True
   ):
     data.qpos[model.jnt_qposadr[model.joint(name).id]] = value
   mujoco.mj_forward(model, data)
@@ -592,8 +617,10 @@ class KangarooFullModel:
   leg_length: LegLengthActuation
   femur_closure: FemurClosure
   ankle: AnkleActuation
+  mjcf: MjcfVariant
 
   articulation: EntityArticulationInfoCfg
+  init_state: EntityCfg.InitialStateCfg
   joint_action_scale: dict[str, float]
   joint_actuator_names: tuple[str, ...]
   hip_z_tendon_action: TendonAction | None
@@ -630,6 +657,16 @@ class KangarooFullModel:
     return self.ankle == "butterfly"
 
   @property
+  def has_ankle_tibia_bar_tendons(self) -> bool:
+    """Whether the ``*_ankle_tibia_bar_(l|r)`` equality tendons exist.
+
+    Same axis as :attr:`has_butterfly_decoupler_coupling`: these are the bars
+    the butterflies swing the ankle through, so a joint-actuated ankle deletes
+    them along with the butterflies that would have driven them.
+    """
+    return self.ankle == "butterfly"
+
+  @property
   def has_joint_equalities(self) -> bool:
     """Whether any ``<joint>`` equality (a geared joint pair) is in the MJCF.
 
@@ -656,11 +693,12 @@ class KangarooFullModel:
       leg_length=self.leg_length,
       femur_closure=self.femur_closure,
       ankle=self.ankle,
+      mjcf=self.mjcf,
     )
 
   def make_robot_cfg(self) -> EntityCfg:
     return EntityCfg(
-      init_state=INIT_STATE,
+      init_state=self.init_state,
       collisions=(FEET_ONLY_COLLISION,),
       spec_fn=self.make_spec,
       articulation=self.articulation,
@@ -674,6 +712,7 @@ def get_kangaroo_full_model(
   leg_length: LegLengthActuation = "actuator",
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
 ) -> KangarooFullModel:
   """Assemble the actuators, action scales and tendon offsets for one variant.
 
@@ -694,6 +733,13 @@ def get_kangaroo_full_model(
     soft_joint_pos_limit_factor=0.99,
   )
 
+  init_state = EntityCfg.InitialStateCfg(
+    pos=INIT_STATE.pos,
+    rot=INIT_STATE.rot,
+    joint_pos={**INIT_STATE.joint_pos, **_MJCF_ANKLE_INIT_STATE[mjcf]},
+    joint_vel=INIT_STATE.joint_vel,
+  )
+
   joint_action_scale, joint_actuator_names = _build_action_scales(
     articulation, TransmissionType.JOINT
   )
@@ -710,8 +756,10 @@ def get_kangaroo_full_model(
         leg_length=leg_length,
         femur_closure=femur_closure,
         ankle=ankle,
+        mjcf=mjcf,
       ),
       tendon_names,
+      init_state.joint_pos,
     )
     if tendon_names
     else {}
@@ -732,7 +780,9 @@ def get_kangaroo_full_model(
     leg_length=leg_length,
     femur_closure=femur_closure,
     ankle=ankle,
+    mjcf=mjcf,
     articulation=articulation,
+    init_state=init_state,
     joint_action_scale=joint_action_scale,
     joint_actuator_names=joint_actuator_names,
     hip_z_tendon_action=(
@@ -769,6 +819,7 @@ def main(
   leg_length: LegLengthActuation = "actuator",
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
   launch_viewer: bool = True,
 ) -> None:
   """Inspect one actuation variant of the full KANGAROO model.
@@ -788,11 +839,15 @@ def main(
       with leg_.*_length_joint and its <connect> deleted -- or through the
       straight-line leg_.*_length_joint slider pinned to the knee by
       leg_.*_length_connect, with the four-bar tendons deleted and
-      (left|right)_femur_triangle locked at 0.
+      (left|right)_femur_triangle's joint deleted (welded at qpos 0).
     ankle: Swing the ankle from the (left|right)_butterfly_(l|r) joints, as the
       hardware does, or servo leg_.*_4_joint / leg_.*_5_joint directly with the
       butterfly chain frozen (femur rods and the decoupler gearing deleted,
-      every butterfly locked at 0).
+      every butterfly joint deleted/welded at qpos 0).
+    mjcf: Which MJCF to compile the variant from -- "tendons"
+      (kangaroo_full_tendons.xml) or "tendons_over_constrained"
+      (kangaroo_full_tendons_over_constarined.xml, same geometry and
+      actuation axes, with extra closed-loop constraints layered on top).
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_model(
@@ -801,6 +856,7 @@ def main(
     leg_length=leg_length,
     femur_closure=femur_closure,
     ankle=ankle,
+    mjcf=mjcf,
   )
 
   # Go through Entity rather than compiling make_spec() directly:
@@ -820,7 +876,7 @@ def main(
 
   print(
     f"hip_z={hip_z} hip_xy={hip_xy} leg_length={leg_length} "
-    f"femur_closure={femur_closure} ankle={ankle}"
+    f"femur_closure={femur_closure} ankle={ankle} mjcf={mjcf}"
   )
   # Called out because it is silent otherwise and changes what you are looking
   # at completely: with the base freejoint commented out in the MJCF, mjlab

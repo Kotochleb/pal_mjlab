@@ -33,6 +33,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   HipZActuation,
   KangarooFullModel,
   LegLengthActuation,
+  MjcfVariant,
   get_kangaroo_full_model,
   get_kangaroo_full_spec,
 )

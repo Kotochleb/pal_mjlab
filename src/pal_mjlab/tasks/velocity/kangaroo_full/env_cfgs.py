@@ -29,6 +29,7 @@ from pal_mjlab.robots import (
   HipXyActuation,
   HipZActuation,
   LegLengthActuation,
+  MjcfVariant,
   get_kangaroo_full_model,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_baseline_env_cfg
@@ -43,6 +44,7 @@ def pal_kangaroo_full_rough_env_cfg(
   leg_length: LegLengthActuation = "actuator",
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
@@ -53,6 +55,7 @@ def pal_kangaroo_full_rough_env_cfg(
     leg_length=leg_length,
     femur_closure=femur_closure,
     ankle=ankle,
+    mjcf=mjcf,
   )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
@@ -200,9 +203,11 @@ def pal_kangaroo_full_rough_env_cfg(
         },
       )
 
-  # The ankle bars are in every variant; the gearing that halves the knee angle
-  # onto the decoupler only survives a butterfly-actuated ankle.
-  _add_tendon_eq_metrics("ankle_tibia_bars", (r"(left|right)_ankle_tibia_bar_(l|r)",))
+  # The ankle bars and the decoupler's gearing to the knee both only survive a
+  # butterfly-actuated ankle -- see KangarooFullModel.has_ankle_tibia_bar_tendons
+  # / has_butterfly_decoupler_coupling.
+  if model.has_ankle_tibia_bar_tendons:
+    _add_tendon_eq_metrics("ankle_tibia_bars", (r"(left|right)_ankle_tibia_bar_(l|r)",))
   if model.has_butterfly_decoupler_coupling:
     _add_joint_eq_metrics(
       "butterfly_decoupler", (r"(left|right)_butterfly_decoupler_coupling",)
@@ -293,6 +298,7 @@ def pal_kangaroo_full_flat_env_cfg(
   leg_length: LegLengthActuation = "actuator",
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_rough_env_cfg(
@@ -302,6 +308,7 @@ def pal_kangaroo_full_flat_env_cfg(
     leg_length=leg_length,
     femur_closure=femur_closure,
     ankle=ankle,
+    mjcf=mjcf,
   )
 
   cfg.sim.njmax = 300
