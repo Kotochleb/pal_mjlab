@@ -18,8 +18,11 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots import (
   KANGAROO_TENDON_LENGTHS,
+  KNEE_DISTANCE_MAP_CSV,
+  KNEE_DISTANCE_MAP_LEGS,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+  AnkleActuation,
   HipXyActuation,
   HipZActuation,
   LegLengthActuation,
@@ -35,11 +38,14 @@ def pal_kangaroo_full_rough_env_cfg(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
   leg_length: LegLengthActuation = "actuator",
+  ankle: AnkleActuation = "joint",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
-  model = get_kangaroo_full_model(hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length)
+  model = get_kangaroo_full_model(
+    hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length, ankle=ankle
+  )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
   # -- Actions
@@ -100,6 +106,120 @@ def pal_kangaroo_full_rough_env_cfg(
     REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.05
   }
 
+  # -- Metrics for the closed-loop constraints.
+  #
+  # One group of terms per mechanism, so a chain that pulls apart can be traced
+  # to the constraint that gave way instead of showing up as one lumped number.
+  # A tendon or joint residual is a scalar in its own units (metres, radians);
+  # a <connect> residual is a displacement, so it also gets per-world-axis
+  # terms saying which way the gap opens.
+
+  entity_cfg = SceneEntityCfg("robot")
+
+  def _add_tendon_eq_metrics(prefix: str, tendon_names: tuple[str, ...]) -> None:
+    asset_cfg = SceneEntityCfg("robot", tendon_names=tendon_names)
+    for reduction in ("mean", "max"):
+      cfg.metrics[f"{prefix}_eq_{reduction}_violation"] = MetricsTermCfg(
+        func=mdp.tendon_equality_constraint_violation,
+        params={
+          "asset_cfg": asset_cfg,
+          "mode": "violation",
+          "reduction": reduction,
+        },
+      )
+
+  def _add_joint_eq_metrics(prefix: str, constraint_names: tuple[str, ...]) -> None:
+    for reduction in ("mean", "max"):
+      cfg.metrics[f"{prefix}_eq_{reduction}_violation"] = MetricsTermCfg(
+        func=mdp.joint_equality_constraint_violation,
+        params={
+          "asset_cfg": entity_cfg,
+          "constraint_names": constraint_names,
+          "reduction": reduction,
+        },
+      )
+
+  def _add_connect_eq_metrics(prefix: str, constraint_names: tuple[str, ...]) -> None:
+    for axis in ("x", "y", "z"):
+      cfg.metrics[f"{prefix}_eq_mean_violation_{axis}"] = MetricsTermCfg(
+        func=mdp.connect_equality_constraint_violation,
+        params={
+          "asset_cfg": entity_cfg,
+          "constraint_names": constraint_names,
+          "axis": axis,
+          "reduction": "mean",
+        },
+      )
+    for reduction in ("mean", "max"):
+      cfg.metrics[f"{prefix}_eq_{reduction}_violation"] = MetricsTermCfg(
+        func=mdp.connect_equality_constraint_violation,
+        params={
+          "asset_cfg": entity_cfg,
+          "constraint_names": constraint_names,
+          "axis": None,
+          "reduction": reduction,
+        },
+      )
+
+  # The ankle bars are in every variant; the gearing that halves the knee angle
+  # onto the decoupler only survives a butterfly-actuated ankle.
+  _add_tendon_eq_metrics("ankle_tibia_bars", (r"(left|right)_ankle_tibia_bar_(l|r)",))
+  if model.has_butterfly_decoupler_coupling:
+    _add_joint_eq_metrics(
+      "butterfly_decoupler", (r"(left|right)_butterfly_decoupler_coupling",)
+    )
+
+  # The femur is closed one of two ways and never both, and the rods that feed
+  # the butterfly chain go with a joint-actuated ankle -- see the matching
+  # KangarooFullModel properties.
+  if model.has_hip_xy_link_tendons:
+    _add_tendon_eq_metrics("hip_xy_link", (r"(left|right)_hip_xy_link",))
+  else:
+    _add_connect_eq_metrics("leg_length_connect", (r"leg_(left|right)_length_connect",))
+  if model.has_femur_rod_tendons:
+    _add_tendon_eq_metrics("femur_rod", (r"(left|right)_femur_rod",))
+
+  # -- Metrics for the knee displacement map.
+  #
+  # Independent of every variant axis: the two joints and the site it reads are
+  # in the MJCF whichever way the femur is closed, so this measures the chain
+  # itself rather than any one constraint holding it together.
+
+  for axis_name, axis in (("_x", "x"), ("_z", "z"), ("", None)):
+    for reduction in ("mean", "max"):
+      cfg.metrics[f"knee_distance_map_{reduction}_error{axis_name}"] = MetricsTermCfg(
+        func=mdp.knee_distance_map_error,
+        params={
+          "asset_cfg": entity_cfg,
+          "csv_path": KNEE_DISTANCE_MAP_CSV,
+          "legs": KNEE_DISTANCE_MAP_LEGS,
+          "axis": axis,
+          "reduction": reduction,
+        },
+      )
+
+  # -- Metrics for geared joint pairs.
+  #
+  # A catch-all over every <joint> equality, so a coupling that gets added to
+  # the MJCF -- or the femur triangle locks the "prismatic" closure adds -- is
+  # logged without a second edit here. The error is in the geared joint's own
+  # units (radians for the revolutes), so it is not comparable with the
+  # displacement terms above and gets its own terms.
+
+  if model.has_joint_equalities:
+    for metric_name, reduction in (
+      ("joint_eq_mean_violation", "mean"),
+      ("joint_eq_max_violation", "max"),
+    ):
+      cfg.metrics[metric_name] = MetricsTermCfg(
+        func=mdp.joint_equality_constraint_violation,
+        params={
+          "asset_cfg": entity_cfg,
+          "constraint_names": (r".*",),
+          "reduction": reduction,
+        },
+      )
+
   # -- Events / metrics for the knee rod equality tendon.
 
   if model.has_knee_rod_tendons:
@@ -130,10 +250,11 @@ def pal_kangaroo_full_flat_env_cfg(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
   leg_length: LegLengthActuation = "actuator",
+  ankle: AnkleActuation = "joint",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_rough_env_cfg(
-    play=play, hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length
+    play=play, hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length, ankle=ankle
   )
 
   cfg.sim.njmax = 300
