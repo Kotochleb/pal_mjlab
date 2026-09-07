@@ -69,7 +69,7 @@ import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, NamedTuple
 
 import mujoco
 from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
@@ -78,7 +78,7 @@ from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
-  FEET_ONLY_COLLISION,
+  FULL_COLLISION,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   _calc_leg_params,
@@ -298,6 +298,135 @@ def _delete_joints(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
       spec.delete(joint)
 
 
+##
+# Collision geometry.
+#
+# Both MJCFs bake the foot and ankle capsules straight into the model (the
+# ``foot_capsule`` / ``collision`` default classes at the top of the file), so
+# those need no help here. What they don't carry is the rest of the capsule
+# set the hand-written ``pal_kangaroo`` model uses: the pelvis, forearms,
+# femurs and tibias, plus the inboard hip-xy motor of each pair (the pair
+# sits 7 cm apart, so one capsule cannot reach both, and the inboard one is
+# what the opposite leg can run into). ``_add_collision_capsules`` fills
+# those in, lifted verbatim from ``pal_kangaroo``'s ``kangaroo.xml`` so both
+# robots present the same contact geometry to a policy.
+##
+
+
+class _Capsule(NamedTuple):
+  """One collision capsule, in the local frame of ``body``.
+
+  Given either by its two endpoints (``fromto``) or, for the capsules that
+  came out of a mesh-fitting tool, by ``pos``/``quat``/``half_length``.
+  """
+
+  body: str
+  name: str
+  radius: float
+  fromto: tuple[float, ...] | None = None
+  pos: tuple[float, float, float] | None = None
+  quat: tuple[float, float, float, float] | None = None
+  half_length: float | None = None
+
+
+def _leg_capsules(side: str) -> tuple[_Capsule, ...]:
+  """The femur/tibia/hip-xy-motor capsules for one leg."""
+  motor = f"{side}_hip_xy_motor_{'r' if side == 'left' else 'l'}"
+  return (
+    _Capsule(
+      motor, f"{motor}_collision", 0.04, fromto=(-0.01, 0.0, -0.015, -0.01, 0.0, 0.0)
+    ),
+    _Capsule(
+      f"leg_{side}_femur_link",
+      f"leg_{side}_femur_collision",
+      0.08,
+      pos=(0.03, 0.2, 0.0),
+      quat=(0.0308436, 0.0308436, 0.7064338, 0.7064338),
+      half_length=0.2,
+    ),
+    _Capsule(
+      f"leg_{side}_knee_link",
+      f"leg_{side}_knee_collision",
+      0.04,
+      fromto=(0.03896, 0.02628, 0.0, -0.16904, 0.24934, 0.0),
+    ),
+    _Capsule(
+      f"leg_{side}_knee_link",
+      f"leg_{side}_knee_bar_collision",
+      0.05,
+      fromto=(-0.063, 0.0, 0.0, -0.184, 0.23889, 0.0),
+    ),
+  )
+
+
+_CAPSULES: tuple[_Capsule, ...] = (
+  _Capsule(
+    "pelvis_2_link",
+    "pelvis_2_collision",
+    0.163724,
+    pos=(4.77798e-07, -1.67441e-06, 0.234507),
+    quat=(1.0, -3.97075e-06, -1.19191e-05, 0.0),
+    half_length=0.162985,
+  ),
+  _Capsule(
+    "arm_left_4_link",
+    "arm_left_4_collision",
+    0.054849,
+    pos=(0.210246, -0.0167497, -0.0171982),
+    quat=(0.733112, 0.0532001, 0.678025, -2.2842e-07),
+    half_length=0.219217,
+  ),
+  _Capsule(
+    "arm_right_4_link",
+    "arm_right_4_collision",
+    0.0559132,
+    pos=(0.210649, -0.0172373, -0.0265895),
+    quat=(0.717524, 0.0513886, 0.694636, -1.38234e-06),
+    half_length=0.220143,
+  ),
+  *_leg_capsules("left"),
+  *_leg_capsules("right"),
+)
+
+
+def _require_body(spec: mujoco.MjSpec, name: str, wanted_by: str) -> mujoco.MjsBody:
+  body = spec.body(name)
+  if body is None:
+    raise ValueError(f"MJCF has no body '{name}' to hang '{wanted_by}' off")
+  return body
+
+
+def _add_collision_capsules(spec: mujoco.MjSpec) -> None:
+  """Add the pelvis/arm/femur/tibia/hip-xy-motor capsules ``_CAPSULES`` lists.
+
+  Capsules get ``density=0``: every body they hang off declares an explicit
+  ``<inertial>``, so geom-derived mass would be ignored anyway, and a
+  collision proxy has no business changing the robot's dynamics if that ever
+  stops being true.
+  """
+  for capsule in _CAPSULES:
+    body = _require_body(spec, capsule.body, capsule.name)
+    shape = (
+      {"fromto": capsule.fromto, "size": [capsule.radius, 0.0, 0.0]}
+      if capsule.fromto is not None
+      else {
+        "pos": capsule.pos,
+        "quat": capsule.quat,
+        "size": [capsule.radius, capsule.half_length, 0.0],
+      }
+    )
+    body.add_geom(
+      name=capsule.name,
+      type=mujoco.mjtGeom.mjGEOM_CAPSULE,
+      group=3,
+      contype=1,
+      conaffinity=1,
+      density=0.0,
+      material="bright_orange",
+      **shape,
+    )
+
+
 def get_kangaroo_full_spec(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
@@ -316,6 +445,7 @@ def get_kangaroo_full_spec(
       'to drive the screw directly, or femur_closure="prismatic".'
     )
   spec = mujoco.MjSpec.from_file(str(_MJCF_XML_PATHS[mjcf]))
+  _add_collision_capsules(spec)
   if hip_z == "joint":
     _delete_tendons(spec, HIP_Z_TENDON_NAMES)
   if hip_xy == "joint":
@@ -699,7 +829,7 @@ class KangarooFullModel:
   def make_robot_cfg(self) -> EntityCfg:
     return EntityCfg(
       init_state=self.init_state,
-      collisions=(FEET_ONLY_COLLISION,),
+      collisions=(FULL_COLLISION,),
       spec_fn=self.make_spec,
       articulation=self.articulation,
     )
