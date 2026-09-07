@@ -8,7 +8,7 @@ from .env_cfgs import (
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
 # One task per actuation variant, on flat and on rough terrain. The name spells
-# out all three axes so a run is identifiable from its task id alone.
+# out all five axes so a run is identifiable from its task id alone.
 _HIP_Z_VARIANTS = {"Tendon": "tendon", "Joint": "joint"}
 _HIP_XY_VARIANTS = {"Tendon": "tendon", "Joint": "joint"}
 _LEG_LENGTH_VARIANTS = {
@@ -17,6 +17,8 @@ _LEG_LENGTH_VARIANTS = {
   "SemiSerialActuatorPd": "semi_serial_actuator_pd",
   "Joint": "joint",
 }
+_FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
+_ANKLE_VARIANTS = {"Butterfly": "butterfly", "Joint": "joint"}
 
 for _terrain, _env_cfg_fn in (
   ("Flat", pal_kangaroo_full_flat_env_cfg),
@@ -25,20 +27,32 @@ for _terrain, _env_cfg_fn in (
   for _hip_z_name, _hip_z in _HIP_Z_VARIANTS.items():
     for _hip_xy_name, _hip_xy in _HIP_XY_VARIANTS.items():
       for _leg_length_name, _leg_length in _LEG_LENGTH_VARIANTS.items():
-        _variant = {
-          "hip_z": _hip_z,
-          "hip_xy": _hip_xy,
-          "leg_length": _leg_length,
-        }
-        register_mjlab_task(
-          task_id=(
-            f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
-            f"-HipZ-{_hip_z_name}"
-            f"-HipXY-{_hip_xy_name}"
-            f"-LegLength-{_leg_length_name}"
-          ),
-          env_cfg=_env_cfg_fn(**_variant),
-          play_env_cfg=_env_cfg_fn(play=True, **_variant),
-          rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
-          runner_cls=VelocityOnPolicyRunner,
-        )
+        for _femur_closure_name, _femur_closure in _FEMUR_CLOSURE_VARIANTS.items():
+          # "linkage" folds the femur through the real four-bar and deletes
+          # the leg_.*_length_joint slider every other leg_length value
+          # actuates -- get_kangaroo_full_spec raises ValueError on any other
+          # pairing, so it only ever combines with "actuator".
+          if _femur_closure == "linkage" and _leg_length != "actuator":
+            continue
+          for _ankle_name, _ankle in _ANKLE_VARIANTS.items():
+            _variant = {
+              "hip_z": _hip_z,
+              "hip_xy": _hip_xy,
+              "leg_length": _leg_length,
+              "femur_closure": _femur_closure,
+              "ankle": _ankle,
+            }
+            register_mjlab_task(
+              task_id=(
+                f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
+                f"-HipZ-{_hip_z_name}"
+                f"-HipXY-{_hip_xy_name}"
+                f"-LegLength-{_leg_length_name}"
+                f"-Femur-{_femur_closure_name}"
+                f"-Ankle-{_ankle_name}"
+              ),
+              env_cfg=_env_cfg_fn(**_variant),
+              play_env_cfg=_env_cfg_fn(play=True, **_variant),
+              rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
+              runner_cls=VelocityOnPolicyRunner,
+            )

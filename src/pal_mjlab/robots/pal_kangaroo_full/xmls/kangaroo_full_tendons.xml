@@ -131,7 +131,7 @@
   </asset>
   <worldbody>
     <body name="base_link" pos="0 0 1.05" childclass="kangaroo">
-      <!-- <freejoint name="floating_base_joint"/> -->
+      <freejoint name="floating_base_joint"/>
       <inertial pos="-0.109747 -5.1e-05 -0.014501" quat="0.524198 0.52286 -0.475695 0.47492" mass="4.95191" diaginertia="0.0512783 0.0358327 0.0254259"/>
       <body name="back_handle">
         <inertial pos="-0.1742 2.256e-05 -0.0026718" quat="0.350797 0.350792 -0.613958 0.613957" mass="0.32489" diaginertia="0.00645011 0.00511549 0.0015135"/>

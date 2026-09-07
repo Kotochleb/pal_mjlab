@@ -47,9 +47,10 @@ four-bar those two tendons form and deletes the slider and its ``<connect>``
 instead -- which also removes the DOF three of the four ``leg_length`` values
 actuate, so ``"linkage"`` only combines with ``leg_length="actuator"``.
 
-With ``leg_length="joint"`` the compiled model has exactly the same joints as
-the simple ``pal_kangaroo`` model; every other value adds only the two
-``leg_.*_length_actuator`` screws. The two ``semi_serial`` values compile the same
+Every value keeps the two ``leg_.*_length_actuator`` screws in the model;
+``"joint"`` simply locks them at 0 rather than driving them, so the joint set
+the tasks observe is the simple ``pal_kangaroo`` model's in every case -- see
+:data:`REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY`. The two ``semi_serial`` values compile the same
 model as ``"actuator"`` but command it differently: the policy servos
 ``leg_.*_length_joint`` (the simple model's DOF) and the resulting joint torque
 is mapped onto the screw through the measured transmission Jacobian in
@@ -90,13 +91,52 @@ from pal_mjlab.robots.pal_kangaroo_full.actuator import (
 # Joint name patterns.
 ##
 
-# The full model differs from the simple pal_kangaroo model by at most the two
-# leg_(left|right)_length_actuator screws. Excluding them yields the simple
-# model's joint set exactly -- which is what every task observes and rewards,
-# so that variants differ in *actuation* only.
-REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY = r"^(?!leg_.*_length_actuator$).*$"
+# The full model carries ten joints the simple pal_kangaroo model does not: the
+# two leg_(left|right)_length_actuator screws, and the eight mechanism DOFs of
+# the femur triangles and butterflies. Every one of the simple model's joints
+# is named pelvis_*, arm_* or leg_*, and of the extras only the screws are, so
+# that prefix plus one exclusion selects the simple model's joint set exactly
+# -- which is what every task observes and rewards, so that variants differ in
+# *actuation* only.
+REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY = (
+  r"^(?!leg_.*_length_actuator$)(pelvis|arm|leg)_.*$"
+)
 REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY = (
-  r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$).*$"
+  r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$)(pelvis|arm|leg)_.*$"
+)
+
+# The same joint set as an ordered list: the order the *simple* model compiles
+# them in, which the full model does not share (it interleaves the mechanism
+# DOFs, and puts leg_.*_femur_joint ahead of leg_.*_4_joint rather than after
+# leg_.*_5_joint). Observation terms select on this with preserve_order=True so
+# the policy reads the same vector layout on either model.
+SIMPLE_MODEL_JOINT_ORDER: tuple[str, ...] = (
+  "pelvis_1_joint",
+  "pelvis_2_joint",
+  "arm_left_1_joint",
+  "arm_left_2_joint",
+  "arm_left_3_joint",
+  "arm_left_4_joint",
+  "arm_right_1_joint",
+  "arm_right_2_joint",
+  "arm_right_3_joint",
+  "arm_right_4_joint",
+  "leg_left_1_joint",
+  "leg_left_2_joint",
+  "leg_left_3_joint",
+  "leg_left_length_joint",
+  "leg_left_4_joint",
+  "leg_left_5_joint",
+  "leg_left_femur_joint",
+  "leg_left_knee_joint",
+  "leg_right_1_joint",
+  "leg_right_2_joint",
+  "leg_right_3_joint",
+  "leg_right_length_joint",
+  "leg_right_4_joint",
+  "leg_right_5_joint",
+  "leg_right_femur_joint",
+  "leg_right_knee_joint",
 )
 
 ##
@@ -118,6 +158,12 @@ LEG_LENGTH_TRANSMISSION_CSV = (
 # displacement_x_m, displacement_z_m, distance_m), world frame.
 KNEE_DISTANCE_MAP_CSV = (
   KANGAROO_FULL_PATH.parent / "transmission" / "knee_distance_map.csv"
+)
+
+# Which knee stands in for which leg length joint, for the variants that have
+# no leg length joint to observe (see mdp.observations).
+LEG_LENGTH_FROM_KNEE_JOINTS: tuple[tuple[str, str], ...] = tuple(
+  (f"leg_{side}_length_joint", f"leg_{side}_knee_joint") for side in ("left", "right")
 )
 
 # The triples that map reads: (femur joint, knee joint, connect site) per leg.
@@ -147,7 +193,10 @@ HIP_XY_TENDON_NAMES = (
   "right_hip_xy_l_slider",
 )
 _KNEE_ROD_TENDON_NAMES = ("left_knee_rods", "right_knee_rods")
-_LEG_LENGTH_BODY_NAMES = ("left_femur_slider", "right_femur_slider")
+_LEG_LENGTH_ACTUATOR_JOINT_NAMES = (
+  "leg_left_length_actuator",
+  "leg_right_length_actuator",
+)
 
 # The femur four-bar: the (left|right)_hip_xy_link tendon ties the hip to the
 # (left|right)_femur_triangle crank, and (left|right)_femur_rod ties that crank
@@ -270,11 +319,12 @@ def get_kangaroo_full_spec(
   if hip_xy == "joint":
     _delete_tendons(spec, HIP_XY_TENDON_NAMES)
   if leg_length == "joint":
-    # The knee rod tendon anchors on a site inside the slider body, so it must
-    # go before the body it hangs off of.
+    # Servoing leg_.*_length_joint directly makes the screw redundant. The
+    # slider body stays -- its mass and inertia are still on the femur -- but
+    # its joint is pinned at 0 and the knee rod that closed it onto the femur
+    # goes, so nothing drives it and nothing hangs off it.
     _delete_tendons(spec, _KNEE_ROD_TENDON_NAMES)
-    for body_name in _LEG_LENGTH_BODY_NAMES:
-      spec.delete(spec.body(body_name))
+    _lock_joints_at_zero(spec, _LEG_LENGTH_ACTUATOR_JOINT_NAMES)
   if femur_closure == "prismatic":
     _delete_tendons(spec, _FEMUR_LINKAGE_TENDON_NAMES)
     _lock_joints_at_zero(spec, _FEMUR_TRIANGLE_JOINT_NAMES)
@@ -282,13 +332,18 @@ def get_kangaroo_full_spec(
     _delete_equalities(spec, _LEG_LENGTH_CONNECT_EQ_NAMES)
     _delete_joints(spec, _LEG_LENGTH_JOINT_NAMES)
   if ankle == "joint":
-    # Driving leg_.*_4_joint / leg_.*_5_joint directly makes the whole
-    # butterfly chain redundant, so it is frozen rather than left to swing:
-    # the femur rods go, the decoupler's gearing to the knee goes with them,
-    # and every butterfly is pinned at 0.
-    _delete_tendons(spec, _FEMUR_ROD_TENDON_NAMES)
+    # Driving leg_.*_4_joint / leg_.*_5_joint directly makes the butterfly
+    # chain redundant, so it is frozen rather than left to swing: the
+    # decoupler's gearing to the knee goes, and every butterfly is pinned at
+    # 0. *_femur_rod stays out of this: under "linkage" it is one of the two
+    # tendons actually closing the femur four-bar (with *_hip_xy_link), and
+    # deleting it regardless of the ankle axis leaves leg_.*_femur_joint with
+    # nothing holding it, so it swings to its limit under gravity. "prismatic"
+    # already deleted it above, as part of the four-bar it replaces.
     _delete_equalities(spec, _BUTTERFLY_DECOUPLER_EQ_NAMES)
     _lock_joints_at_zero(spec, _BUTTERFLY_JOINT_NAMES)
+    if femur_closure != "linkage":
+      _delete_tendons(spec, _FEMUR_ROD_TENDON_NAMES)
   return spec
 
 
@@ -426,15 +481,16 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   joint_pos={
     "leg_left_1_joint": -0.012,
     "leg_right_1_joint": 0.012,
-    "leg_.*_2_joint": 0.054,
+    "leg_.*_2_joint": 0.0522,
     "leg_left_3_joint": 0.04,
     "leg_right_3_joint": -0.04,
-    "leg_.*_length_joint": 0.6,
-    "leg_.*_length_actuator": 0.0284,
-    "leg_.*_4_joint": -0.053,
-    "leg_.*_5_joint": 0.0,
-    "leg_.*_femur_joint": 0.9,
-    "leg_.*_knee_joint": 1.8,
+    "leg_.*_length_joint": -0.125,
+    "leg_.*_length_actuator": 0.02766,
+    "leg_.*_4_joint": 0.2953,
+    "leg_.*_5_joint": -2.9185,
+    "leg_.*_femur_joint": -0.29636,
+    "leg_.*_knee_joint": 0.5978,
+    ".*_butterfly_(r|l)": -0.2447,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
     "arm_.*_2_joint": 1.32,
@@ -549,23 +605,20 @@ class KangarooFullModel:
     return self.leg_length != "joint"
 
   @property
-  def has_hip_xy_link_tendons(self) -> bool:
-    """Whether the ``*_hip_xy_link`` equality tendons exist in this variant.
+  def has_femur_linkage_tendons(self) -> bool:
+    """Whether the ``*_hip_xy_link`` and ``*_femur_rod`` tendons exist.
+
+    The two of them are the real femur four-bar and only ever exist or don't
+    together -- one without the other leaves ``leg_.*_femur_joint`` connected
+    to a linkage that doesn't close, or ``left_femur_triangle`` driven by a
+    rod with nothing on its other end. A single property, checked once,
+    rather than one per tendon, keeps that true by construction instead of by
+    two definitions that happen to agree.
 
     The complement of :attr:`has_leg_length_joint`: a variant closes the femur
     one way or the other, never both.
     """
     return self.femur_closure == "linkage"
-
-  @property
-  def has_femur_rod_tendons(self) -> bool:
-    """Whether the ``*_femur_rod`` equality tendons exist in this variant.
-
-    Two axes can delete them: the "prismatic" femur closure replaces the
-    four-bar they belong to, and a joint-actuated ankle freezes the butterfly
-    chain they feed.
-    """
-    return self.femur_closure == "linkage" and self.ankle == "butterfly"
 
   @property
   def has_butterfly_decoupler_coupling(self) -> bool:

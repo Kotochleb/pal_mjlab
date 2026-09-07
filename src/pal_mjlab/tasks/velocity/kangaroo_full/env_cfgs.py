@@ -20,9 +20,12 @@ from pal_mjlab.robots import (
   KANGAROO_TENDON_LENGTHS,
   KNEE_DISTANCE_MAP_CSV,
   KNEE_DISTANCE_MAP_LEGS,
+  LEG_LENGTH_FROM_KNEE_JOINTS,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+  SIMPLE_MODEL_JOINT_ORDER,
   AnkleActuation,
+  FemurClosure,
   HipXyActuation,
   HipZActuation,
   LegLengthActuation,
@@ -38,13 +41,18 @@ def pal_kangaroo_full_rough_env_cfg(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
   leg_length: LegLengthActuation = "actuator",
+  femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
   model = get_kangaroo_full_model(
-    hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length, ankle=ankle
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    leg_length=leg_length,
+    femur_closure=femur_closure,
+    ankle=ankle,
   )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
@@ -79,15 +87,46 @@ def pal_kangaroo_full_rough_env_cfg(
 
   # -- Observations
   #
-  # Exactly the simple model's joint set: no tendon lengths, and no
-  # leg_.*_length_actuator even when the variant has it. The policy sees the
-  # same 26 joints it would on the simple model.
+  # Exactly what the simple model's policy sees: the same 26 joints, in the
+  # same order. Selecting by name with preserve_order matters as much as the
+  # set does -- the full model both adds the mechanism DOFs and orders the
+  # shared joints differently, so a regex would hand the policy the right
+  # joints shuffled. Every other term is inherited from the baseline config
+  # untouched.
 
   for group in ("actor", "critic"):
-    for term in ("joint_pos", "joint_vel"):
-      cfg.observations[group].terms[term].params["asset_cfg"] = SceneEntityCfg(
-        "robot", joint_names=REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY
-      )
+    for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):
+      term_cfg = cfg.observations[group].terms[term]
+      if model.has_leg_length_joint:
+        term_cfg.params["asset_cfg"] = SceneEntityCfg(
+          "robot",
+          joint_names=SIMPLE_MODEL_JOINT_ORDER,
+          preserve_order=True,
+        )
+        continue
+      # No leg length joint to read in this variant: assemble the same vector
+      # by hand, with those two slots reconstructed from their knee angle
+      # through the displacement map.
+      params = {
+        "asset_cfg": SceneEntityCfg("robot"),
+        "joint_order": SIMPLE_MODEL_JOINT_ORDER,
+        "csv_path": KNEE_DISTANCE_MAP_CSV,
+        "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
+        "mode": mode,
+      }
+      if "biased" in term_cfg.params:
+        params["biased"] = term_cfg.params["biased"]
+      term_cfg.func = mdp.joint_state_with_mapped_leg_length
+      term_cfg.params = params
+
+  if not model.has_leg_length_joint:
+    # The map fills the observation slot, but the baseline terms that act on
+    # the joint itself have nothing left to act on: there is no velocity to
+    # limit, no encoder to bias, and no posture to hold.
+    cfg.rewards.pop("joint_vel_limits", None)
+    cfg.events.pop("leg_length_encoder_bias", None)
+    for pose_type in ("std_walking", "std_running"):
+      cfg.rewards["pose"].params[pose_type].pop(r"leg_.*_length_.*", None)
 
   # -- Rewards
   #
@@ -169,15 +208,17 @@ def pal_kangaroo_full_rough_env_cfg(
       "butterfly_decoupler", (r"(left|right)_butterfly_decoupler_coupling",)
     )
 
-  # The femur is closed one of two ways and never both, and the rods that feed
-  # the butterfly chain go with a joint-actuated ankle -- see the matching
-  # KangarooFullModel properties.
-  if model.has_hip_xy_link_tendons:
+  # The femur is closed one of two ways and never both -- see
+  # KangarooFullModel.has_femur_linkage_tendons. hip_xy_link and femur_rod are
+  # the two tendons of that same four-bar, so they are gated on the one
+  # property together rather than two checks that could drift apart; each
+  # still gets its own metric group so a chain that pulls apart can be traced
+  # to which of the two gave way.
+  if model.has_femur_linkage_tendons:
     _add_tendon_eq_metrics("hip_xy_link", (r"(left|right)_hip_xy_link",))
+    _add_tendon_eq_metrics("femur_rod", (r"(left|right)_femur_rod",))
   else:
     _add_connect_eq_metrics("leg_length_connect", (r"leg_(left|right)_length_connect",))
-  if model.has_femur_rod_tendons:
-    _add_tendon_eq_metrics("femur_rod", (r"(left|right)_femur_rod",))
 
   # -- Metrics for the knee displacement map.
   #
@@ -250,11 +291,17 @@ def pal_kangaroo_full_flat_env_cfg(
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
   leg_length: LegLengthActuation = "actuator",
+  femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_rough_env_cfg(
-    play=play, hip_z=hip_z, hip_xy=hip_xy, leg_length=leg_length, ankle=ankle
+    play=play,
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    leg_length=leg_length,
+    femur_closure=femur_closure,
+    ankle=ankle,
   )
 
   cfg.sim.njmax = 300

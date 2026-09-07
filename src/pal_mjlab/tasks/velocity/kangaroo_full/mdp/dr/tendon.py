@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 import mujoco
 import torch
-
 from mjlab.envs.mdp.events import resolve_env_ids
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
