@@ -21,6 +21,14 @@ The changes below have landed on ``main`` since the ``v1.0.0`` tag
 New Features & Tasks
 ^^^^^^^^^^^^^^^^^^^^^
 
+- **New rough-terrain velocity tasks for the Kangaroo (full and lower
+  body).** Adds ``Mjlab-Velocity-Rough-Pal-Kangaroo`` and
+  ``Mjlab-Velocity-Rough-Pal-Kangaroo-Lower-Body`` on top of the baseline
+  config: a PAL terrain generator (flat, pebbles, random boxes and
+  inverted pyramid stairs at 0.3/0.4/0.5 m step widths), a critic-only
+  1.2x0.6 m height scan. The terrain curriculum is disabled in play mode.
+  (`#109 <https://github.com/pal-robotics/pal_mjlab/pull/109>`_)
+
 - **Lower-body-specific noise and reward-weight tuning.** The IMU
   observation noise (``imu_projected_gravity``, ``base_lin_acc``) and the
   ``upright`` reward weight are now overridden specifically for the
@@ -131,6 +139,12 @@ dependency issue, check which of these bumps might be relevant first.
 
 Breaking Changes
 ^^^^^^^^^^^^^^^^
+
+- **The Hands and Grippers rough tasks are no longer registered.**
+  ``Mjlab-Velocity-Rough-Pal-Kangaroo-Hands`` and
+  ``Mjlab-Velocity-Rough-Pal-Kangaroo-Grippers`` are commented out while
+  the new rough config settles.
+  (`#109 <https://github.com/pal-robotics/pal_mjlab/pull/109>`_)
 
 - **Renamed** ``pal_kangaroo_rough_env_cfg`` **to**
   ``pal_kangaroo_baseline_env_cfg``. If you reference this config directly

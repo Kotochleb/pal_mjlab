@@ -1,5 +1,7 @@
 """PAL Robotics KANGAROO velocity tracking environment configurations."""
 
+import math
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -12,12 +14,20 @@ from mjlab.managers.termination_manager import TerminationTermCfg
 from mjlab.sensor import (
   ContactMatch,
   ContactSensorCfg,
+  GridPatternCfg,
   ObjRef,
+  RayCastSensorCfg,
   RingPatternCfg,
   TerrainHeightSensorCfg,
 )
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
+from mjlab.terrains.config import (
+  flat,
+  pyramid_stairs_inv,
+  random_spread_boxes,
+)
+from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 
 from pal_mjlab.robots import (
@@ -343,6 +353,202 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
         cfg.scene.terrain.terrain_generator.num_cols = 5
         cfg.scene.terrain.terrain_generator.num_rows = 5
         cfg.scene.terrain.terrain_generator.border_width = 10.0
+
+  return cfg
+
+
+def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Create PAL Robotics custom rough terrain velocity configuration."""
+
+  ### GENERAL CONFIGURATION
+
+  cfg = pal_kangaroo_baseline_env_cfg(play=play)
+
+  # nconmax is the max number of contacts that will be generated at runtime
+  # due to https://github.com/google-deepmind/mujoco_warp/blob/c62864ed2bf816c0a724d4cbf153921188f78eae/mujoco_warp/_src/io.py#L649-L660
+  # for collision-rich envs, it is recommended to be manually set through experimentation
+  cfg.sim.nconmax = 200
+
+  ### SENSORS
+
+  # Idealized 1.2x0.6 m elevation map around the robot
+  terrain_scan = RayCastSensorCfg(
+    name="terrain_scan",
+    frame=ObjRef(type="body", name="pelvis_2_link", entity="robot"),
+    ray_alignment="yaw",
+    pattern=GridPatternCfg(size=(1.2, 0.6), resolution=0.1),
+    max_distance=2.0,
+    exclude_parent_body=True,
+    include_geom_groups=(0,),  # Terrain only.
+    debug_vis=True,
+  )
+
+  cfg.scene.sensors = (cfg.scene.sensors or ()) + (terrain_scan,)
+
+  ### OBSERVATIONS
+
+  # The default scan was deleted, we add a custom one, only to the critic
+  cfg.observations["critic"].terms["height_scan"] = ObservationTermCfg(
+    func=mdp.height_scan,
+    params={"sensor_name": "terrain_scan"},
+    scale=1 / terrain_scan.max_distance,
+  )
+
+  ### COMMANDS
+
+  # Delete the speed curriculum altogether
+  del cfg.curriculum["command_vel"]
+
+  # Easier velocity task: no need for high velocities in rough terrain
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, mdp.UniformVelocityCommandCfg)
+  twist_cmd.ranges.lin_vel_x = (-0.5, 0.5)
+  twist_cmd.ranges.lin_vel_y = (-0.4, 0.4)
+  twist_cmd.ranges.ang_vel_z = (-1.0, 1.0)
+
+  ### REWARDS
+
+  # Swing height: stronger to avoid dragging the feet
+  cfg.rewards["foot_swing_height"].weight = -0.5
+  cfg.rewards["foot_swing_height"].params["target_height"] = 0.15
+
+  # Target clearance when moving: conservatively high to avoid stumbling
+  # Experimentally, increasing its weight makes the robot unstable
+  cfg.rewards["foot_clearance"].params["target_height"] = 0.15
+
+  # More human-like air time and stronger, specially important with obstacles
+  cfg.rewards["air_time"].weight = 1.0
+  cfg.rewards["air_time"].params["threshold_min"] = 0.2
+  cfg.rewards["air_time"].params["threshold_max"] = 0.45
+  cfg.rewards["air_time"].params["command_threshold"] = 0.1
+
+  # More upright = safer torso stance
+  cfg.rewards["upright"].weight = 2.0
+  cfg.rewards["upright"].params["std"] = math.sqrt(0.05)
+
+  # Tightened from default so the reward stays discriminative at low command speeds
+  # instead of flattening into a dead-zone.
+  cfg.rewards["track_linear_velocity"].params["std"] = math.sqrt(0.1)
+
+  ### EVENTS
+
+  # Safer spawning close to the center (to avoid directly spawning unbalanced most of the time)
+  cfg.events["reset_base"].params["pose_range"] = {
+    "x": (-0.2, 0.2),
+    "y": (-0.2, 0.2),
+    "z": (0.01, 0.05),
+    "yaw": (-3.14, 3.14),
+  }
+
+  ### CURRICULUM
+
+  # Terrain
+
+  # TODO: review fairness of the curriculum (https://github.com/mujocolab/mjlab/issues/934)
+  cfg.curriculum["terrain_levels"].func = mdp.terrain_levels_vel
+
+  assert cfg.scene.terrain is not None
+  assert cfg.scene.terrain.terrain_generator is not None
+  cfg.scene.terrain.terrain_type = "generator"
+  cfg.scene.terrain.terrain_generator = TerrainGeneratorCfg(
+    size=(3.0, 3.0),
+    num_rows=12,
+    num_cols=10,
+    border_width=20.0,
+    curriculum=True,
+    sub_terrains={
+      "flat": flat(proportion=0.1),
+      "pebbles": random_spread_boxes(
+        proportion=0.1,
+        num_boxes=350,
+        box_width_range=(0.02, 0.05),
+        box_length_range=(0.02, 0.05),
+        box_height_range=(0.02, 0.05),
+        platform_width=0.5,
+        border_width=0.0,
+      ),
+      "random_obstacles": random_spread_boxes(
+        proportion=0.2,
+        num_boxes=30,
+        box_width_range=(0.2, 0.6),
+        box_length_range=(0.2, 0.6),
+        box_height_range=(0.02, 0.06),
+        platform_width=0.5,
+        border_width=0.0,
+      ),
+      "easy_stairs_30": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.05, 0.1),
+        step_width=0.3,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+      "mid_stairs_30": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.1, 0.15),
+        step_width=0.3,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+      "easy_stairs_40": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.05, 0.1),
+        step_width=0.4,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+      "mid_stairs_40": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.1, 0.15),
+        step_width=0.4,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+      "easy_stairs_50": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.05, 0.1),
+        step_width=0.5,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+      "mid_stairs_50": pyramid_stairs_inv(
+        proportion=0.1,
+        step_height_range=(0.1, 0.15),
+        step_width=0.5,
+        platform_width=0.5,
+        border_width=0.1,
+      ),
+    },
+  )
+
+  # PLAY
+  if play:
+    # Disable terrain curriculum.
+    assert cfg.curriculum is not None
+    assert "terrain_levels" in cfg.curriculum
+    del cfg.curriculum["terrain_levels"]
+
+  return cfg
+
+
+def pal_kangaroo_lower_body_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
+  """Create PAL Robotics KANGAROO with lower_body (Legs + Pelvis) rough terrain velocity configuration."""
+  cfg = pal_kangaroo_rough_env_cfg(play=play)
+
+  for pose_type in ("std_walking", "std_running"):
+    del cfg.rewards["pose"].params[pose_type][r"arm_.*_1_.*"]
+    del cfg.rewards["pose"].params[pose_type][r"arm_.*_4_.*"]
+    del cfg.rewards["pose"].params[pose_type][r"arm_.*_(?![14]_joint)\d+_joint"]
+
+  cfg.scene.entities = {"robot": get_kangaroo_lower_body_robot_cfg()}
+
+  # Prevents feet instability
+  cfg.rewards["action_rate_l2"].weight = -0.2
+
+  joint_pos_action = cfg.actions["joint_pos"]
+  assert isinstance(joint_pos_action, JointPositionActionCfg)
+  joint_pos_action.scale = KANGAROO_LOWER_BODY_ACTION_SCALE
+  joint_pos_action.actuator_names = KANGAROO_LOWER_BODY_ACTUATOR_NAMES
 
   return cfg
 
