@@ -272,11 +272,17 @@ _LEG_LENGTH_CONNECT_EQ_NAMES = (
   "leg_right_length_connect",
 )
 
-# Rest length of the knee rod, i.e. the length the *_knee_rods equality tendon
-# holds between the leg_.*_length_actuator screw and the knee link. Applied as
-# a reset event (see mdp.dr.tendon.enforce_tendon_lengths) because the value is
-# a physical rod length, not the tendon's length at qpos0.
-KANGAROO_TENDON_LENGTHS: dict[str, float] = {r"(left|right)_knee_rods": 0.215}
+# Rest lengths of the rigid rods each equality tendon stands in for -- hip_xy
+# link, knee rod, femur rod, ankle tibia bar -- keyed by physical rod length,
+# not the tendon's length at qpos0. Applied as a reset event (see
+# mdp.dr.tendon.enforce_tendon_lengths) since MuJoCo has no way to specify an
+# equality tendon's rest length directly in the XML.
+KANGAROO_TENDON_LENGTHS: dict[str, float] = {
+  r"(left|right)_hip_xy_link": 0.09,
+  r"(left|right)_knee_rods": 0.215,
+  r"(left|right)_femur_rod": 0.40427,
+  r"(left|right)_ankle_(femur|tibia)_bar_(l|r)": 0.38,
+}
 
 HipZActuation = Literal["tendon", "joint"]
 HipXyActuation = Literal["tendon", "joint"]
