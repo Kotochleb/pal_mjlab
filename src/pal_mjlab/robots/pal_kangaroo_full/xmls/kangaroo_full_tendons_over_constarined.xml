@@ -403,9 +403,13 @@
                 <site name="left_ankle_r_slider_connect_b" pos="-0.0116368987741742 0.0330088258942932 0" quat="0.5823824866638635 0 0 0.8129149028202244"/>
                 <geom material="mtl_ankle_crank_r" mesh="ankle_crank_r" class="visual" pos="" quat=""/>
               </body>
+              <body name="left_hip_xy_link" pos="-0.07583 -0.08646 0" quat="0.996385 0 0 0.0849525">
+                <inertial pos="0.011366 0.043541 0" quat="0.56 0.431741 -0.56 0.431741" mass="0.124689" diaginertia="0.000166 0.000163259 4.74093e-06"/>
+                <geom material="mtl_hip_xy_link" mesh="hip_xy_link" class="visual" pos="" quat=""/>
+              </body>
               <site name="left_hip_xy_link_connect_a" pos="-0.07583 -0.08646 0" quat="0.6666418021136001 0 0 0.7453782312857893"/>
               <body name="leg_left_lenght_link" pos="-0.124556481362453 0.714166 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
-                <inertial mass="0.1" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
+                <inertial mass="0.01" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
                 <joint name="leg_left_length_joint" type="slide" range="-0.582193 0.0"/>
                 <site name="leg_left_length_connect_a"/>
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
@@ -462,7 +466,8 @@
                 </body>
               </body>
               <body name="leg_left_femur_link">
-                <inertial pos="0.040023 0.081883 0.000265" quat="0.528917 0.458374 -0.539139 0.468476" mass="2.85287" diaginertia="0.0391432 0.038988 0.00314488"/>
+                <!-- Mass of femur bars is added here plus mass of femur rod -->
+                <inertial pos="0.040023 0.081883 0.000265" quat="0.528917 0.458374 -0.539139 0.468476" mass="3.25387" diaginertia="0.0391432 0.038988 0.00314488"/>
                 <joint name="leg_left_femur_joint" axis="0 0 1" range="-1.22173 0.174533"/>
                 <body name="left_femur_triangle" pos="-0.0365418 -0.0162695 0" quat="0.600911 0 0 0.799316">
                   <inertial pos="0.042539 0.008295 -0.000244" quat="0.0476089 0.709999 -0.0358618 0.701675" mass="0.107984" diaginertia="0.000117013 0.000110186 2.48015e-05"/>
@@ -472,7 +477,7 @@
                   <geom material="mtl_femur_triangle" mesh="femur_triangle" class="visual" pos="" quat=""/>
                 </body>
                 <body name="left_butterfly_decoupler" pos="0.0725074 0.373018 0">
-                  <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
+                  <inertial pos="0.0 0.0 0.0" mass="1e-04" diaginertia="1e-04 1e-04 1e-04"/>
                   <joint name="left_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14"/>
                   <site name="left_ankle_virtual_motor_connect_a" pos="0.007837 -0.086340 0.0"/>
                   <body name="left_butterfly_l">
@@ -492,15 +497,21 @@
                     <site name="left_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
                 </body>
+                <body name="left_femur_slider_nut" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
+                  <!-- Mass of the nut is 0.26 and is stationary in femur, so I am editing the mass -->
+                  <inertial pos="0.0 0.0 0.0" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.26" diaginertia="0.000350609 0.000343893 0.000138497"/>
+                </body>
                 <body name="left_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
-                  <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
+                  <!-- Mass of the nut is 0.26 and is stationary in femur, so it was substracted, but mass of half of knee rods was added -->
+                  <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.47803" diaginertia="0.000350609 0.000343893 0.000138497"/>
                   <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.1506"/>
                   <geom material="mtl_femur_slider" mesh="femur_slider" class="visual" pos="" quat=""/>
                   <site name="left_femur_slider" pos="0 0 0" quat="1.0 0 0 0"/>
                   <site name="left_knee_rods_connect_a"/>
                 </body>
                 <body name="leg_left_knee_link" pos="0.0725074 0.373018 0">
-                  <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="0.766071" diaginertia="0.011253 0.0110503 0.000445683"/>
+                  <!-- Mass of this link is tibia link + two tibia bars plus half of knee rods -->
+                  <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="1.1" diaginertia="0.011253 0.0110503 0.000445683"/>
                   <joint name="leg_left_knee_joint" axis="0 0 1" range="0.0 1.95"/>
                   <geom material="mtl_tibia" mesh="tibia" class="visual" pos="" quat=""/>
                   <site name="left_tibia" pos="0 0 0" quat="1.0 0 0 0"/>
@@ -604,9 +615,13 @@
                 <geom material="mtl_ankle_crank_r" mesh="ankle_crank_r" class="visual" pos="" quat=""/>
                 <site name="right_ankle_crank_r" pos="0 0 0" quat="1.0 0 0 0"/>
               </body>
+              <body name="right_hip_xy_link" pos="-0.07583 -0.08646 0" quat="0.996385 0 0 0.0849525">
+                <inertial pos="0.011366 0.043541 0" quat="0.56 0.431741 -0.56 0.431741" mass="0.124689" diaginertia="0.000166 0.000163259 4.74093e-06"/>
+                <geom material="mtl_hip_xy_link" mesh="hip_xy_link" class="visual" pos="" quat=""/>
+              </body>
               <site name="right_hip_xy_link_connect_a" pos="-0.07583 -0.08646 0" quat="0.6666418021136001 0 0 0.7453782312857893"/>
               <body name="leg_right_lenght_link" pos="-0.124556481362453 0.714166 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
-                <inertial mass="0.1" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
+                <inertial mass="0.01" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
                 <joint name="leg_right_length_joint" type="slide" range="-0.582193 0.0"/>
                 <site name="leg_right_length_connect_a"/>
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
@@ -663,7 +678,8 @@
                 </body>
               </body>
               <body name="leg_right_femur_link">
-                <inertial pos="0.040023 0.081883 0.000265" quat="0.528917 0.458374 -0.539139 0.468476" mass="2.85287" diaginertia="0.0391432 0.038988 0.00314488"/>
+                <!-- Mass of femur bars is added here plus mass of femur rod -->
+                <inertial pos="0.040023 0.081883 0.000265" quat="0.528917 0.458374 -0.539139 0.468476" mass="3.25387" diaginertia="0.0391432 0.038988 0.00314488"/>
                 <joint name="leg_right_femur_joint" axis="0 0 1" range="-1.22173 0.174533"/>
                 <body name="right_femur_triangle" pos="-0.0365418 -0.0162695 0" quat="0.600911 0 0 0.799316">
                   <inertial pos="0.042539 0.008295 -0.000244" quat="0.0476089 0.709999 -0.0358618 0.701675" mass="0.107984" diaginertia="0.000117013 0.000110186 2.48015e-05"/>
@@ -674,7 +690,7 @@
                   <site name="right_femur_rod_connect_a" pos="0.0899944 -0.001 0"/>
                 </body>
                 <body name="right_butterfly_decoupler" pos="0.0725074 0.373018 0">
-                  <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
+                  <inertial pos="0.0 0.0 0.0" mass="1e-04" diaginertia="1e-04 1e-04 1e-04"/>
                   <joint name="right_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14"/>
                   <site name="right_ankle_virtual_motor_connect_a" pos="0.007837 -0.086340 0.0"/>
                   <body name="right_butterfly_l">
@@ -696,15 +712,22 @@
                     <site name="right_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
                 </body>
+                <body name="right_femur_slider_nut" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
+                  <!-- Mass of the nut is 0.26 and is stationary in femur, so I am editing the mass -->
+                  <inertial pos="0.0 0.0 0.0" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.26" diaginertia="0.000350609 0.000343893 0.000138497"/>
+                </body>
                 <body name="right_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
-                  <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
+                  <!-- Mass of the nut is 0.26 and is stationary in femur, so it was substracted, but mass of half of knee rods was added -->
+                  <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.47803" diaginertia="0.000350609 0.000343893 0.000138497"/>
                   <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.1506"/>
                   <site name="right_knee_rods_connect_a"/>
                   <geom material="mtl_femur_slider" mesh="femur_slider" class="visual" pos="" quat=""/>
                   <site name="right_femur_slider" pos="0 0 0" quat="1.0 0 0 0"/>
                 </body>
                 <body name="leg_right_knee_link" pos="0.0725074 0.373018 0">
-                  <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="0.766071" diaginertia="0.011253 0.0110503 0.000445683"/>
+                  <!-- <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="0.766071" diaginertia="0.011253 0.0110503 0.000445683"/> -->
+                  <!-- Mass of this link is tibia link + two tibia bars plus half of knee rods -->
+                  <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="1.1" diaginertia="0.011253 0.0110503 0.000445683"/>
                   <joint name="leg_right_knee_joint" axis="0 0 1" range="0.0 1.95"/>
                   <geom material="mtl_tibia" mesh="tibia" class="visual" pos="" quat=""/>
                   <site name="right_tibia" pos="0 0 0" quat="1.0 0 0 0"/>
@@ -737,7 +760,7 @@
     </body>
   </worldbody>
   <default>
-    <joint armature="0.01" damping="5" frictionloss="1" limited="true"/>
+    <joint armature="0.0" damping="0.0015" frictionloss="0.0" limited="true"/>
     <site group="5" rgba="1 0 0 1" size="0.01"/>
   </default>
   <default>
@@ -749,13 +772,13 @@
     <tendon tendon1="left_knee_rods" class="tendon_eq"/>
     <tendon tendon1="left_ankle_tibia_bar_l" class="tendon_eq"/>
     <tendon tendon1="left_ankle_tibia_bar_r" class="tendon_eq"/>
-    <joint name="left_butterfly_decoupler_coupling" joint1="left_butterfly_decoupler_joint" joint2="leg_left_knee_joint" polycoef="0 0.5 0 0 0" solimp="0.99 0.99 0.001" solref="0.002 1"/>
+    <joint name="left_butterfly_decoupler_coupling" joint1="left_butterfly_decoupler_joint" joint2="leg_left_femur_joint" polycoef="0 -1.0 0 0 0" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="leg_left_length_connect" site1="leg_left_length_connect_a" site2="leg_left_length_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
 
     <tendon tendon1="right_knee_rods" class="tendon_eq"/>
     <tendon tendon1="right_ankle_tibia_bar_l" class="tendon_eq"/>
     <tendon tendon1="right_ankle_tibia_bar_r" class="tendon_eq"/>
-    <joint name="right_butterfly_decoupler_coupling" joint1="right_butterfly_decoupler_joint" joint2="leg_right_knee_joint" polycoef="0 0.5 0 0 0" solimp="0.99 0.99 0.001" solref="0.002 1"/>
+    <joint name="right_butterfly_decoupler_coupling" joint1="right_butterfly_decoupler_joint" joint2="leg_right_femur_joint" polycoef="0 -1.0 0 0 0" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="leg_right_length_connect" site1="leg_right_length_connect_a" site2="leg_right_length_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
   </equality>
 
@@ -784,11 +807,11 @@
       <site site="right_ankle_tibia_bar_r_connect_a"/>
       <site site="right_ankle_tibia_bar_r_connect_b"/>
     </spatial>
-          <spatial name="right_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+    <spatial name="right_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_l_connect_b"/>
     </spatial>
-          <spatial name="right_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+    <spatial name="right_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_r_connect_b"/>
     </spatial>
@@ -817,11 +840,11 @@
       <site site="left_ankle_tibia_bar_r_connect_a"/>
       <site site="left_ankle_tibia_bar_r_connect_b"/>
     </spatial>
-          <spatial name="left_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+    <spatial name="left_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
       <site site="left_ankle_virtual_motor_connect_a"/>
       <site site="left_ankle_virtual_motor_l_connect_b"/>
     </spatial>
-          <spatial name="left_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+    <spatial name="left_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
       <site site="left_ankle_virtual_motor_connect_a"/>
       <site site="left_ankle_virtual_motor_r_connect_b"/>
     </spatial>

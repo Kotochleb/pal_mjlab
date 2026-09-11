@@ -66,13 +66,14 @@ simple model's joint set in every variant -- see
 from __future__ import annotations
 
 import re
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, NamedTuple
 
 import mujoco
-from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
+from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg, DcMotorActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
@@ -81,6 +82,9 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   FULL_COLLISION,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
+  FACTOR,
+  NATURAL_FREQ,
+  DAMPING_RATIO,
   _calc_leg_params,
 )
 from pal_mjlab.robots.pal_kangaroo_full.actuator import (
@@ -504,12 +508,38 @@ def get_kangaroo_full_spec(
 # Actuator configs.
 ##
 
+
+def _calc_linear_leg_params(
+  stiffness: float,
+  effort: float,
+  armature: float,
+) -> dict:
+  """Calculate leg actuator parameters."""
+  stiffness = round(armature * NATURAL_FREQ**2, 3)
+  damping = round(2.0 * DAMPING_RATIO * armature * NATURAL_FREQ, 3)
+  return {
+    "armature": armature,
+    "stiffness": stiffness,
+    "damping": damping,
+    "effort_limit": effort,
+    "viscous_damping": 0.01,
+  }
+
+
 _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = {
   "tendon": (
-    BuiltinPositionActuatorCfg(
+    DcMotorActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_hip_z_slider$",),
-      **_calc_leg_params(2500.0, 2000.0),
+      saturation_effort=4334.0,
+      velocity_limit=0.314,
+      **_calc_linear_leg_params(
+        stiffness=2500.0,
+        effort=2000.0,
+        # Sum of linear inertia of the screw and inertia of nut plus motor rotor
+        # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
+        armature=0.1,
+      ),
     ),
   ),
   "joint": (
@@ -521,10 +551,17 @@ _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = 
 
 _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] = {
   "tendon": (
-    BuiltinPositionActuatorCfg(
+    DcMotorActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
-      **_calc_leg_params(2500.0, 2000.0),
+      saturation_effort=4334.0,
+      velocity_limit=0.314,
+      **_calc_linear_leg_params(
+        stiffness=2500.0,
+        effort=2000.0,
+        # armature=0.178 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
+        armature=0.1,
+      ),
     ),
   ),
   "joint": (
@@ -568,19 +605,37 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
   # actuator on the butterfly itself -- tendon-space gains, so it takes the
   # hip tendons' stiffness/effort rather than the butterfly joint's.
   "tendon": (
-    BuiltinPositionActuatorCfg(
+    DcMotorActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
-      **_calc_leg_params(2500.0, 2000.0),
+      saturation_effort=4334.0,
+      velocity_limit=0.314,
+      **_calc_linear_leg_params(
+        stiffness=2500.0,
+        effort=2000.0,
+        # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
+        armature=0.1,
+      ),
     ),
   ),
 }
 
 _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
   "actuator": (
-    BuiltinPositionActuatorCfg(
+    DcMotorActuatorCfg(
       target_names_expr=(r"leg_(left|right)_length_actuator$",),
-      **_calc_leg_params(6000.0, 5000.0),
+      saturation_effort=10443.0,
+      velocity_limit=0.288,
+      **_calc_linear_leg_params(
+        stiffness=6000.0,
+        effort=5000.0,
+        # Assuming nut is a cylinder of mass 0.26 Kg, hollow shaft of 10 mm and external diameter of 40 mm
+        # Inertia of a screw is still captured by the model
+        # Second value is inertia of motor rotor
+        # Eveyrthing multiplied by pitch to make it a linear inertia
+        # armature=(0.000221 + 0.000098) * (2.0 * math.pi / 0.01) ** 2,
+        armature=1.0,
+      ),
     ),
   ),
   # The screw is present, as in "actuator", but the PD law runs on the joint
@@ -616,7 +671,10 @@ _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
       },
       transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
       joint_stiffness=900.0,
-      **_calc_leg_params(6000.0, 5000.0),
+      **_calc_leg_params(
+        stiffness=6000.0,
+        effort=5000.0,
+      ),
     ),
   ),
   # Same gains the simple pal_kangaroo model uses for this joint.
