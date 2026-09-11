@@ -474,10 +474,12 @@
                 <body name="left_butterfly_decoupler" pos="0.0725074 0.373018 0">
                   <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                   <joint name="left_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14"/>
+                  <site name="left_ankle_virtual_motor_connect_a" pos="0.007837 -0.086340 0.0"/>
                   <body name="left_butterfly_l">
                     <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                     <joint name="left_butterfly_l" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                     <geom material="mtl_butterfly_l" mesh="butterfly_l" class="visual" pos="" quat=""/>
+                    <site name="left_ankle_virtual_motor_l_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
                     <site name="left_ankle_femur_bar_l_connect_b" pos="-0.0517732616638391 0.0303237427882477 0.0660000000000009" quat="0.9999664145182386 0 0 -0.00819572056247199"/>
                     <site name="left_ankle_tibia_bar_l_connect_a" pos="-0.0521478 -0.0296751 0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
@@ -485,6 +487,7 @@
                     <inertial pos="-0.024179 0.002209 -0.047126" quat="0.176413 0.575994 -0.182144 0.777131" mass="0.251901" diaginertia="0.000173396 0.000107843 7.77611e-05"/>
                     <joint name="left_butterfly_r" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                     <geom material="mtl_butterfly_r" mesh="butterfly_r" class="visual" pos="" quat=""/>
+                    <site name="left_ankle_virtual_motor_r_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
                     <site name="left_ankle_femur_bar_r_connect_b" pos="-0.0517732616638391 0.0303237427882477 -0.0660000000000009" quat="0.9999664145182386 0 0 -0.00819572056247199"/>
                     <site name="left_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
@@ -673,11 +676,13 @@
                 <body name="right_butterfly_decoupler" pos="0.0725074 0.373018 0">
                   <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                   <joint name="right_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14"/>
+                  <site name="right_ankle_virtual_motor_connect_a" pos="0.007837 -0.086340 0.0"/>
                   <body name="right_butterfly_l">
                     <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                     <joint name="right_butterfly_l" pos="0 0 0" axis="0 0 1" range="-0.78 1.57"/>
                     <geom material="mtl_butterfly_l" mesh="butterfly_l" class="visual" pos="" quat=""/>
                     <site name="right_butterfly_l" pos="0 0 0" quat="1.0 0 0 0"/>
+                    <site name="right_ankle_virtual_motor_l_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
                     <site name="right_ankle_femur_bar_l_connect_b" pos="-0.0517732616638391 0.0303237427882477 0.0660000000000009" quat="0.9999664145182386 0 0 -0.00819572056247199"/>
                     <site name="right_ankle_tibia_bar_l_connect_a" pos="-0.0521478 -0.0296751 0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
@@ -686,6 +691,7 @@
                     <joint name="right_butterfly_r" pos="0 0 0" axis="0 0 1" range="-0.78 1.57"/>
                     <geom material="mtl_butterfly_r" mesh="butterfly_r" class="visual" pos="" quat=""/>
                     <site name="right_butterfly_r" pos="0 0 0" quat="1.0 0 0 0"/>
+                    <site name="right_ankle_virtual_motor_r_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
                     <site name="right_ankle_femur_bar_r_connect_b" pos="-0.0517732616638391 0.0303237427882477 -0.0660000000000009" quat="0.9999664145182386 0 0 -0.00819572056247199"/>
                     <site name="right_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
@@ -778,6 +784,14 @@
       <site site="right_ankle_tibia_bar_r_connect_a"/>
       <site site="right_ankle_tibia_bar_r_connect_b"/>
     </spatial>
+          <spatial name="right_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+      <site site="right_ankle_virtual_motor_connect_a"/>
+      <site site="right_ankle_virtual_motor_l_connect_b"/>
+    </spatial>
+          <spatial name="right_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+      <site site="right_ankle_virtual_motor_connect_a"/>
+      <site site="right_ankle_virtual_motor_r_connect_b"/>
+    </spatial>
 
     <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
       <site site="left_hip_z_slider_connect_a"/>
@@ -802,6 +816,14 @@
     <spatial name="left_ankle_tibia_bar_r" class="tendon_bar">
       <site site="left_ankle_tibia_bar_r_connect_a"/>
       <site site="left_ankle_tibia_bar_r_connect_b"/>
+    </spatial>
+          <spatial name="left_ankle_l_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+      <site site="left_ankle_virtual_motor_connect_a"/>
+      <site site="left_ankle_virtual_motor_l_connect_b"/>
+    </spatial>
+          <spatial name="left_ankle_r_slider" range="0.04258165485 0.1198916548" class="tendon_actuator">
+      <site site="left_ankle_virtual_motor_connect_a"/>
+      <site site="left_ankle_virtual_motor_r_connect_b"/>
     </spatial>
   </tendon>
 

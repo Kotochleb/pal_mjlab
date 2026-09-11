@@ -77,6 +77,7 @@ def pal_kangaroo_full_rough_env_cfg(
   for name, tendon_action in (
     ("hip_z_pos", model.hip_z_tendon_action),
     ("hip_xy_pos", model.hip_xy_tendon_action),
+    ("ankle_pos", model.ankle_tendon_action),
   ):
     if tendon_action is None:
       continue

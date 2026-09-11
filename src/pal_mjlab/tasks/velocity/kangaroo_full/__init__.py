@@ -18,7 +18,7 @@ _LEG_LENGTH_VARIANTS = {
   "Joint": "joint",
 }
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
-_ANKLE_VARIANTS = {"Butterfly": "butterfly", "Joint": "joint"}
+_ANKLE_VARIANTS = {"Butterfly": "butterfly", "Joint": "joint", "Tendon": "tendon"}
 _MJCF_VARIANTS = {"Tendons": "tendons", "TendonsOverConstrained": "tendons_over_constrained"}
 
 for _terrain, _env_cfg_fn in (

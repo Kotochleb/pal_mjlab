@@ -210,6 +210,18 @@ HIP_XY_TENDON_NAMES = (
   "right_hip_xy_r_slider",
   "right_hip_xy_l_slider",
 )
+# The ankle "virtual motor" tendon pair: each spans from the butterfly
+# decoupler straight to one butterfly, a chord-length stand-in for actuating
+# that butterfly joint directly (the real crank/motor mechanism the meshes
+# suggest -- (left|right)_ankle_crank_(l|r) -- has its joint welded off in the
+# MJCF and isn't modeled). Ordered left_l, left_r, right_r, right_l, matching
+# HIP_XY_TENDON_NAMES's left-outer/left-inner/right-inner/right-outer pattern.
+ANKLE_TENDON_NAMES = (
+  "left_ankle_l_slider",
+  "left_ankle_r_slider",
+  "right_ankle_r_slider",
+  "right_ankle_l_slider",
+)
 _KNEE_ROD_TENDON_NAMES = ("left_knee_rods", "right_knee_rods")
 _LEG_LENGTH_ACTUATOR_JOINT_NAMES = (
   "leg_left_length_actuator",
@@ -268,7 +280,7 @@ LegLengthActuation = Literal[
   "actuator", "semi_serial", "semi_serial_actuator_pd", "joint"
 ]
 FemurClosure = Literal["linkage", "prismatic"]
-AnkleActuation = Literal["butterfly", "joint"]
+AnkleActuation = Literal["butterfly", "joint", "tendon"]
 
 
 def _delete_tendons(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
@@ -464,6 +476,10 @@ def get_kangaroo_full_spec(
   else:
     _delete_equalities(spec, _LEG_LENGTH_CONNECT_EQ_NAMES)
     _delete_joints(spec, _LEG_LENGTH_JOINT_NAMES)
+  if ankle != "tendon":
+    # The virtual-motor tendon pair is only meaningful as an actuator
+    # transmission; with nothing commanding it, leave it out of the model.
+    _delete_tendons(spec, ANKLE_TENDON_NAMES)
   if ankle == "joint":
     # Driving leg_.*_4_joint / leg_.*_5_joint directly makes the butterfly
     # chain redundant, so it is frozen rather than left to swing: the
@@ -545,6 +561,17 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
     ),
     BuiltinPositionActuatorCfg(
       target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+    ),
+  ),
+  # Same hardware topology as "butterfly", but each butterfly is driven
+  # through its virtual-motor tendon (ANKLE_TENDON_NAMES) rather than a joint
+  # actuator on the butterfly itself -- tendon-space gains, so it takes the
+  # hip tendons' stiffness/effort rather than the butterfly joint's.
+  "tendon": (
+    BuiltinPositionActuatorCfg(
+      transmission_type=TransmissionType.TENDON,
+      target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
+      **_calc_leg_params(2500.0, 2000.0),
     ),
   ),
 }
@@ -755,6 +782,7 @@ class KangarooFullModel:
   joint_actuator_names: tuple[str, ...]
   hip_z_tendon_action: TendonAction | None
   hip_xy_tendon_action: TendonAction | None
+  ankle_tendon_action: TendonAction | None
 
   @property
   def has_knee_rod_tendons(self) -> bool:
@@ -781,10 +809,12 @@ class KangarooFullModel:
   def has_butterfly_decoupler_coupling(self) -> bool:
     """Whether the decoupler is still geared to the knee in this variant.
 
-    Only a butterfly-actuated ankle needs that gearing; servoing the ankle
-    joints directly deletes it and locks the butterflies instead.
+    Both "butterfly" and "tendon" keep the butterflies -- they only differ in
+    whether a butterfly is driven by a joint actuator or by its virtual-motor
+    tendon -- so both need that gearing; servoing the ankle joints directly
+    deletes it and locks the butterflies instead.
     """
-    return self.ankle == "butterfly"
+    return self.ankle != "joint"
 
   @property
   def has_ankle_tibia_bar_tendons(self) -> bool:
@@ -794,7 +824,7 @@ class KangarooFullModel:
     the butterflies swing the ankle through, so a joint-actuated ankle deletes
     them along with the butterflies that would have driven them.
     """
-    return self.ankle == "butterfly"
+    return self.ankle != "joint"
 
   @property
   def has_joint_equalities(self) -> bool:
@@ -875,8 +905,10 @@ def get_kangaroo_full_model(
   )
   tendon_scale, _ = _build_action_scales(articulation, TransmissionType.TENDON)
 
-  tendon_names = (HIP_Z_TENDON_NAMES if hip_z == "tendon" else ()) + (
-    HIP_XY_TENDON_NAMES if hip_xy == "tendon" else ()
+  tendon_names = (
+    (HIP_Z_TENDON_NAMES if hip_z == "tendon" else ())
+    + (HIP_XY_TENDON_NAMES if hip_xy == "tendon" else ())
+    + (ANKLE_TENDON_NAMES if ankle == "tendon" else ())
   )
   offsets = (
     _compute_tendon_lengths_at_init_state(
@@ -920,6 +952,9 @@ def get_kangaroo_full_model(
     ),
     hip_xy_tendon_action=(
       _tendon_action(HIP_XY_TENDON_NAMES, "hip_xy") if hip_xy == "tendon" else None
+    ),
+    ankle_tendon_action=(
+      _tendon_action(ANKLE_TENDON_NAMES, "ankle") if ankle == "tendon" else None
     ),
   )
 
@@ -1030,6 +1065,7 @@ def main(
   for label, tendon_action in (
     ("hip_z", model_cfg.hip_z_tendon_action),
     ("hip_xy", model_cfg.hip_xy_tendon_action),
+    ("ankle", model_cfg.ankle_tendon_action),
   ):
     if tendon_action is None:
       print(f"  {label} tendon action: none (driven as a joint)")
