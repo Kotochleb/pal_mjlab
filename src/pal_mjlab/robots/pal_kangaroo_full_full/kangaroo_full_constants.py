@@ -175,7 +175,8 @@ _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = 
   ),
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
+      target_names_expr=("leg_.*_1_joint",),
+      **_calc_leg_params(100.0, 80.0, 0.01, None, None),
     ),
   ),
 }
@@ -189,10 +190,12 @@ _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] 
   ),
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+      target_names_expr=("leg_.*_2_joint",),
+      **_calc_leg_params(100.0, 230.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+      target_names_expr=("leg_.*_3_joint",),
+      **_calc_leg_params(100.0, 139.0, 0.01, None, None),
     ),
   ),
 }
@@ -204,11 +207,11 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[BuiltinPositionActuatorCfg, ...]] =
   "butterfly": (
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"(left|right)_butterfly_l$",),
-      **_calc_leg_params(100.0, 30.0),
+      **_calc_leg_params(100.0, 30.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"(left|right)_butterfly_r$",),
-      **_calc_leg_params(100.0, 30.0),
+      **_calc_leg_params(100.0, 30.0, 0.01, None, None),
     ),
   ),
   # The simple model's topology: servo the ankle pitch and roll joints
@@ -217,10 +220,12 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[BuiltinPositionActuatorCfg, ...]] =
   # with whatever the <connect> equalities force it to.
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+      target_names_expr=("leg_.*_4_joint",),
+      **_calc_leg_params(30.0, 140.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+      target_names_expr=("leg_.*_5_joint",),
+      **_calc_leg_params(30.0, 82.0, 0.01, None, None),
     ),
   ),
   # Same hardware topology as "butterfly", but driven at the linear actuator

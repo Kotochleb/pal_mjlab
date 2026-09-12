@@ -596,7 +596,8 @@ _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = 
   ),
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_1_joint",), **_calc_leg_params(100.0, 80.0)
+      target_names_expr=("leg_.*_1_joint",),
+      **_calc_leg_params(100.0, 80.0, 0.01, None, None),
     ),
   ),
 }
@@ -618,10 +619,12 @@ _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] 
   ),
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_2_joint",), **_calc_leg_params(100.0, 230.0)
+      target_names_expr=("leg_.*_2_joint",),
+      **_calc_leg_params(100.0, 230.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_3_joint",), **_calc_leg_params(100.0, 139.0)
+      target_names_expr=("leg_.*_3_joint",),
+      **_calc_leg_params(100.0, 139.0, 0.01, None, None),
     ),
   ),
 }
@@ -634,11 +637,11 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
   "butterfly": (
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"(left|right)_butterfly_l$",),
-      **_calc_leg_params(100.0, 30.0),
+      **_calc_leg_params(100.0, 30.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"(left|right)_butterfly_r$",),
-      **_calc_leg_params(100.0, 30.0),
+      **_calc_leg_params(100.0, 30.0, 0.01, None, None),
     ),
   ),
   # The simple model's topology: servo the ankle pitch and roll joints
@@ -646,10 +649,12 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
   # edits in get_kangaroo_full_spec.
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_4_joint",), **_calc_leg_params(30.0, 140.0)
+      target_names_expr=("leg_.*_4_joint",),
+      **_calc_leg_params(30.0, 140.0, 0.01, None, None),
     ),
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_5_joint",), **_calc_leg_params(30.0, 82.0)
+      target_names_expr=("leg_.*_5_joint",),
+      **_calc_leg_params(30.0, 82.0, 0.01, None, None),
     ),
   ),
   # Same hardware topology as "butterfly", but each butterfly is driven
@@ -703,7 +708,7 @@ _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
       },
       transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
       actuator_effort_limit=5000.0,
-      **_calc_leg_params(900.0, 1100.0),
+      **_calc_leg_params(900.0, 1100.0, 0.01, None, None),
     ),
   ),
   # Same three-stage command as "semi_serial", but only the P term is taken on
@@ -726,13 +731,17 @@ _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
       **_calc_leg_params(
         stiffness=6000.0,
         effort=5000.0,
+        armature=0.01,
+        frictionloss=None,
+        viscous_damping=None,
       ),
     ),
   ),
   # Same gains the simple pal_kangaroo model uses for this joint.
   "joint": (
     BuiltinPositionActuatorCfg(
-      target_names_expr=("leg_.*_length_joint",), **_calc_leg_params(1600.0, 1100.0)
+      target_names_expr=("leg_.*_length_joint",),
+      **_calc_leg_params(1600.0, 1100.0, 0.01, None, None),
     ),
   ),
 }
