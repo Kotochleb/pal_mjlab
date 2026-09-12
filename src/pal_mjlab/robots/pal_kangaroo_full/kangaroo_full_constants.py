@@ -534,11 +534,11 @@ def _calc_linear_leg_params(
 
 _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = {
   "tendon": (
-    DcMotorActuatorCfg(
+    BuiltinPositionActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_hip_z_slider$",),
-      saturation_effort=4334.0,
-      velocity_limit=0.314,
+      # saturation_effort=4334.0,
+      # velocity_limit=0.314,
       **_calc_linear_leg_params(
         stiffness=2500.0,
         effort=2000.0,
@@ -557,11 +557,11 @@ _HIP_Z_ACTUATORS: dict[HipZActuation, tuple[BuiltinPositionActuatorCfg, ...]] = 
 
 _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] = {
   "tendon": (
-    DcMotorActuatorCfg(
+    BuiltinPositionActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_hip_xy_(l|r)_slider$",),
-      saturation_effort=4334.0,
-      velocity_limit=0.314,
+      # saturation_effort=4334.0,
+      # velocity_limit=0.314,
       **_calc_linear_leg_params(
         stiffness=2500.0,
         effort=2000.0,
@@ -611,11 +611,11 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
   # actuator on the butterfly itself -- tendon-space gains, so it takes the
   # hip tendons' stiffness/effort rather than the butterfly joint's.
   "tendon": (
-    DcMotorActuatorCfg(
+    BuiltinPositionActuatorCfg(
       transmission_type=TransmissionType.TENDON,
       target_names_expr=(r"(left|right)_ankle_(l|r)_slider$",),
-      saturation_effort=4334.0,
-      velocity_limit=0.314,
+      # saturation_effort=4334.0,
+      # velocity_limit=0.314,
       **_calc_linear_leg_params(
         stiffness=2500.0,
         effort=2000.0,
@@ -628,10 +628,10 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
 
 _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
   "actuator": (
-    DcMotorActuatorCfg(
+    BuiltinPositionActuatorCfg(
       target_names_expr=(r"leg_(left|right)_length_actuator$",),
-      saturation_effort=10443.0,
-      velocity_limit=0.288,
+      # saturation_effort=10443.0,
+      # velocity_limit=0.288,
       **_calc_linear_leg_params(
         stiffness=6000.0,
         effort=5000.0,
