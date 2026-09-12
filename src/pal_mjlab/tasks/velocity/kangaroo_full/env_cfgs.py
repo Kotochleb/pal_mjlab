@@ -53,6 +53,7 @@ def pal_kangaroo_full_rough_env_cfg(
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
+  cfg.sim.nconmax = 70
 
   model = get_kangaroo_full_model(
     hip_z=hip_z,

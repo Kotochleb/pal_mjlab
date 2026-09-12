@@ -39,6 +39,11 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   get_kangaroo_full_model,
   get_kangaroo_full_spec,
 )
+from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (  # noqa: F401
+  KangarooFullFullModel,
+  get_kangaroo_full_full_model,
+  get_kangaroo_full_full_spec,
+)
 from pal_mjlab.robots.pal_talos.talos_constants import (  # noqa: F401
   TALOS_ACTION_SCALE,
   get_talos_robot_cfg,
