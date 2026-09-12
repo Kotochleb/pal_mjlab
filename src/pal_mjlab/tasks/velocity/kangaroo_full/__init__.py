@@ -20,6 +20,7 @@ _LEG_LENGTH_VARIANTS = {
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
 _ANKLE_VARIANTS = {"Butterfly": "butterfly", "Joint": "joint", "Tendon": "tendon"}
 _MJCF_VARIANTS = {"Tendons": "tendons", "TendonsOverConstrained": "tendons_over_constrained"}
+_BODY_VARIANTS = {"FullBody": False, "LowerBody": True}
 
 for _terrain, _env_cfg_fn in (
   ("Flat", pal_kangaroo_full_flat_env_cfg),
@@ -37,26 +38,29 @@ for _terrain, _env_cfg_fn in (
             continue
           for _ankle_name, _ankle in _ANKLE_VARIANTS.items():
             for _mjcf_name, _mjcf in _MJCF_VARIANTS.items():
-              _variant = {
-                "hip_z": _hip_z,
-                "hip_xy": _hip_xy,
-                "leg_length": _leg_length,
-                "femur_closure": _femur_closure,
-                "ankle": _ankle,
-                "mjcf": _mjcf,
-              }
-              register_mjlab_task(
-                task_id=(
-                  f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
-                  f"-HipZ-{_hip_z_name}"
-                  f"-HipXY-{_hip_xy_name}"
-                  f"-LegLength-{_leg_length_name}"
-                  f"-Femur-{_femur_closure_name}"
-                  f"-Ankle-{_ankle_name}"
-                  f"-Mjcf-{_mjcf_name}"
-                ),
-                env_cfg=_env_cfg_fn(**_variant),
-                play_env_cfg=_env_cfg_fn(play=True, **_variant),
-                rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
-                runner_cls=VelocityOnPolicyRunner,
-              )
+              for _body_name, _lower_body in _BODY_VARIANTS.items():
+                _variant = {
+                  "hip_z": _hip_z,
+                  "hip_xy": _hip_xy,
+                  "leg_length": _leg_length,
+                  "femur_closure": _femur_closure,
+                  "ankle": _ankle,
+                  "mjcf": _mjcf,
+                  "lower_body": _lower_body,
+                }
+                register_mjlab_task(
+                  task_id=(
+                    f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
+                    f"-HipZ-{_hip_z_name}"
+                    f"-HipXY-{_hip_xy_name}"
+                    f"-LegLength-{_leg_length_name}"
+                    f"-Femur-{_femur_closure_name}"
+                    f"-Ankle-{_ankle_name}"
+                    f"-Mjcf-{_mjcf_name}"
+                    f"-Body-{_body_name}"
+                  ),
+                  env_cfg=_env_cfg_fn(**_variant),
+                  play_env_cfg=_env_cfg_fn(play=True, **_variant),
+                  rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
+                  runner_cls=VelocityOnPolicyRunner,
+                )

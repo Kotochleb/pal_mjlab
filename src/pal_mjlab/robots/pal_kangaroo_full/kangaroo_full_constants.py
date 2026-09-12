@@ -37,6 +37,11 @@ axis         value                        actuation
              ``"linkage"``                actuation one; see below)
 ===========  ===========================  ==================================
 
+A fifth, independent flag, ``lower_body``, deletes both arms -- everything
+from ``arm_(left|right)_base_link`` down -- and servos only the waist where
+the full model would otherwise also drive the arms. It combines with every
+value of the other five axes.
+
 ``femur_closure`` says which of two redundant descriptions of the femur the
 compiled model keeps. ``"prismatic"`` keeps the straight-line stand-in: the
 ``leg_.*_length_joint`` slider pinned to the knee by the
@@ -80,6 +85,7 @@ from mjlab.utils.string import resolve_expr
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   FULL_COLLISION,
+  KANGAROO_PELVIS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   FACTOR,
@@ -143,6 +149,15 @@ SIMPLE_MODEL_JOINT_ORDER: tuple[str, ...] = (
   "leg_right_5_joint",
   "leg_right_femur_joint",
   "leg_right_knee_joint",
+)
+
+# SIMPLE_MODEL_JOINT_ORDER with the arm joints dropped, for the lower_body=True
+# variants: those have no arm_* joints at all (the whole arm subtree is
+# deleted -- see _ARM_BASE_LINK_NAMES / _delete_subtrees), so the policy's
+# joint vector layout drops them too rather than reading zeros for a limb that
+# does not exist.
+LOWER_BODY_JOINT_ORDER: tuple[str, ...] = tuple(
+  name for name in SIMPLE_MODEL_JOINT_ORDER if not name.startswith("arm_")
 )
 
 ##
@@ -272,6 +287,11 @@ _LEG_LENGTH_CONNECT_EQ_NAMES = (
   "leg_right_length_connect",
 )
 
+# Each arm hangs off torso_link as one self-contained subtree -- no tendon,
+# equality, or sensor elsewhere in the MJCF reaches into it -- so deleting
+# these two bodies removes the whole arm (links, joints, geoms) in one call.
+_ARM_BASE_LINK_NAMES = ("arm_left_base_link", "arm_right_base_link")
+
 # Rest lengths of the rigid rods each equality tendon stands in for -- hip_xy
 # link, knee rod, femur rod, ankle tibia bar -- keyed by physical rod length,
 # not the tendon's length at qpos0. Applied as a reset event (see
@@ -291,6 +311,10 @@ LegLengthActuation = Literal[
 ]
 FemurClosure = Literal["linkage", "prismatic"]
 AnkleActuation = Literal["butterfly", "joint", "tendon"]
+# Not an actuation choice like the axes above -- whether the arms exist at
+# all -- but still a `Literal` alongside them rather than a bare `bool` so it
+# reads the same way at every call site and export.
+LowerBody = Literal[True, False]
 
 
 def _delete_tendons(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
@@ -318,6 +342,23 @@ def _delete_joints(spec: mujoco.MjSpec, names: tuple[str, ...]) -> None:
   for joint in list(spec.joints):
     if joint.name in targets:
       spec.delete(joint)
+
+
+def _delete_subtrees(spec: mujoco.MjSpec, body_names: tuple[str, ...]) -> None:
+  """Delete each named body and everything hanging off it.
+
+  ``spec.delete`` on a body removes the whole subtree under it -- descendant
+  bodies, their joints, geoms and sites included -- in one call, so this is
+  the right tool for dropping an entire limb rather than enumerating its
+  joints/tendons the way the per-mechanism ``_delete_*`` helpers above do.
+  A same-named site elsewhere in the model (e.g. a mounting-point marker) is
+  untouched: bodies and sites are separate MuJoCo namespaces.
+  """
+  for name in body_names:
+    body = spec.body(name)
+    if body is None:
+      raise ValueError(f"MJCF has no body '{name}' to delete")
+    spec.delete(body)
 
 
 ##
@@ -456,6 +497,7 @@ def get_kangaroo_full_spec(
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
 ) -> mujoco.MjSpec:
   """Load the MJCF and strip the mechanisms this variant doesn't use."""
   if femur_closure == "linkage" and leg_length != "actuator":
@@ -468,6 +510,10 @@ def get_kangaroo_full_spec(
     )
   spec = mujoco.MjSpec.from_file(str(_MJCF_XML_PATHS[mjcf]))
   _add_collision_capsules(spec)
+  if lower_body:
+    # Whole-arm removal, not one of the leg mechanism axes below: delete
+    # before those run so nothing downstream has to know the arms are gone.
+    _delete_subtrees(spec, _ARM_BASE_LINK_NAMES)
   if hip_z == "joint":
     _delete_tendons(spec, HIP_Z_TENDON_NAMES)
   if hip_xy == "joint":
@@ -695,6 +741,11 @@ _UPPER_BODY_ACTUATORS = (
   KANGAROO_S_PLUS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
 )
+# lower_body=True has no arm_* joints for KANGAROO_S_PLUS_ACTUATOR_CFG /
+# KANGAROO_S_MINUS_ACTUATOR_CFG to target -- the latter's expression matches
+# arm joints only, so it would find zero and raise. Servo the waist alone,
+# exactly as pal_kangaroo's own KANGAROO_LOWER_BODY_ACTUATORS does.
+_LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 
 ##
 # Initial state.
@@ -839,6 +890,7 @@ class KangarooFullModel:
   femur_closure: FemurClosure
   ankle: AnkleActuation
   mjcf: MjcfVariant
+  lower_body: LowerBody
 
   articulation: EntityArticulationInfoCfg
   init_state: EntityCfg.InitialStateCfg
@@ -918,6 +970,7 @@ class KangarooFullModel:
       femur_closure=self.femur_closure,
       ankle=self.ankle,
       mjcf=self.mjcf,
+      lower_body=self.lower_body,
     )
 
   def make_robot_cfg(self) -> EntityCfg:
@@ -937,6 +990,7 @@ def get_kangaroo_full_model(
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
 ) -> KangarooFullModel:
   """Assemble the actuators, action scales and tendon offsets for one variant.
 
@@ -952,7 +1006,7 @@ def get_kangaroo_full_model(
       + _HIP_XY_ACTUATORS[hip_xy]
       + _ANKLE_ACTUATORS[ankle]
       + _LEG_LENGTH_ACTUATORS[leg_length]
-      + _UPPER_BODY_ACTUATORS
+      + (_LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS)
     ),
     soft_joint_pos_limit_factor=0.99,
   )
@@ -983,6 +1037,7 @@ def get_kangaroo_full_model(
         femur_closure=femur_closure,
         ankle=ankle,
         mjcf=mjcf,
+        lower_body=lower_body,
       ),
       tendon_names,
       init_state.joint_pos,
@@ -1007,6 +1062,7 @@ def get_kangaroo_full_model(
     femur_closure=femur_closure,
     ankle=ankle,
     mjcf=mjcf,
+    lower_body=lower_body,
     articulation=articulation,
     init_state=init_state,
     joint_action_scale=joint_action_scale,
@@ -1049,6 +1105,7 @@ def main(
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
   launch_viewer: bool = True,
 ) -> None:
   """Inspect one actuation variant of the full KANGAROO model.
@@ -1077,6 +1134,9 @@ def main(
       (kangaroo_full_tendons.xml) or "tendons_over_constrained"
       (kangaroo_full_tendons_over_constarined.xml, same geometry and
       actuation axes, with extra closed-loop constraints layered on top).
+    lower_body: Delete both arms (everything from arm_(left|right)_base_link
+      down) and servo only the waist where the full model would otherwise
+      also drive the arms.
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_model(
@@ -1086,6 +1146,7 @@ def main(
     femur_closure=femur_closure,
     ankle=ankle,
     mjcf=mjcf,
+    lower_body=lower_body,
   )
 
   # Go through Entity rather than compiling make_spec() directly:
@@ -1105,7 +1166,8 @@ def main(
 
   print(
     f"hip_z={hip_z} hip_xy={hip_xy} leg_length={leg_length} "
-    f"femur_closure={femur_closure} ankle={ankle} mjcf={mjcf}"
+    f"femur_closure={femur_closure} ankle={ankle} mjcf={mjcf} "
+    f"lower_body={lower_body}"
   )
   # Called out because it is silent otherwise and changes what you are looking
   # at completely: with the base freejoint commented out in the MJCF, mjlab

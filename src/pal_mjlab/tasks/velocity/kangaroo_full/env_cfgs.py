@@ -6,7 +6,9 @@ command setup. The only thing a variant changes is *how the legs are actuated*
 -- hip yaw through a tendon or a revolute motor, hip pitch/roll through tendons
 or revolute motors, leg length through the prismatic screw or the leg length
 joint directly. That is deliberate: it is what makes training results across
-variants comparable.
+variants comparable. ``lower_body=True`` is the one axis that isn't just an
+actuation choice: it deletes both arms and makes every arm-related
+observation and reward term drop out along with them.
 """
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -21,6 +23,7 @@ from pal_mjlab.robots import (
   KNEE_DISTANCE_MAP_CSV,
   KNEE_DISTANCE_MAP_LEGS,
   LEG_LENGTH_FROM_KNEE_JOINTS,
+  LOWER_BODY_JOINT_ORDER,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
   SIMPLE_MODEL_JOINT_ORDER,
@@ -29,6 +32,7 @@ from pal_mjlab.robots import (
   HipXyActuation,
   HipZActuation,
   LegLengthActuation,
+  LowerBody,
   MjcfVariant,
   get_kangaroo_full_model,
 )
@@ -45,6 +49,7 @@ def pal_kangaroo_full_rough_env_cfg(
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
@@ -56,6 +61,7 @@ def pal_kangaroo_full_rough_env_cfg(
     femur_closure=femur_closure,
     ankle=ankle,
     mjcf=mjcf,
+    lower_body=lower_body,
   )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
@@ -98,13 +104,18 @@ def pal_kangaroo_full_rough_env_cfg(
   # joints shuffled. Every other term is inherited from the baseline config
   # untouched.
 
+  # lower_body=True has no arm_* joints at all (the whole arm subtree is
+  # deleted), so the policy's joint vector drops those slots too rather than
+  # reading zeros for a limb that doesn't exist.
+  joint_order = LOWER_BODY_JOINT_ORDER if model.lower_body else SIMPLE_MODEL_JOINT_ORDER
+
   for group in ("actor", "critic"):
     for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):
       term_cfg = cfg.observations[group].terms[term]
       if model.has_leg_length_joint:
         term_cfg.params["asset_cfg"] = SceneEntityCfg(
           "robot",
-          joint_names=SIMPLE_MODEL_JOINT_ORDER,
+          joint_names=joint_order,
           preserve_order=True,
         )
         continue
@@ -113,7 +124,7 @@ def pal_kangaroo_full_rough_env_cfg(
       # through the displacement map.
       params = {
         "asset_cfg": SceneEntityCfg("robot"),
-        "joint_order": SIMPLE_MODEL_JOINT_ORDER,
+        "joint_order": joint_order,
         "csv_path": KNEE_DISTANCE_MAP_CSV,
         "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
         "mode": mode,
@@ -131,6 +142,17 @@ def pal_kangaroo_full_rough_env_cfg(
     cfg.events.pop("leg_length_encoder_bias", None)
     for pose_type in ("std_walking", "std_running"):
       cfg.rewards["pose"].params[pose_type].pop(r"leg_.*_length_.*", None)
+
+  if model.lower_body:
+    # No arm_* joints in this variant: the arm-specific keys the baseline
+    # config sets would otherwise match zero joints and
+    # resolve_matching_names_values would raise -- same treatment as
+    # pal_kangaroo_lower_body_flat_env_cfg gives the simple model's pose
+    # reward.
+    for pose_type in ("std_walking", "std_running"):
+      cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_1_.*", None)
+      cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_4_.*", None)
+      cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_(?![14]_joint)\d+_joint", None)
 
   # -- Rewards
   #
@@ -300,6 +322,7 @@ def pal_kangaroo_full_flat_env_cfg(
   femur_closure: FemurClosure = "prismatic",
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_rough_env_cfg(
@@ -310,6 +333,7 @@ def pal_kangaroo_full_flat_env_cfg(
     femur_closure=femur_closure,
     ankle=ankle,
     mjcf=mjcf,
+    lower_body=lower_body,
   )
 
   cfg.sim.njmax = 300
