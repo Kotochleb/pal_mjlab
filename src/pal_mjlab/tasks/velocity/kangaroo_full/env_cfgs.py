@@ -186,7 +186,7 @@ def pal_kangaroo_full_baseline_env_cfg(
   # keys match), so the joints with their own standing tolerance -- waist yaw
   # and hip pitch/roll -- are carved out of the catch-all regex.
   cfg.rewards["pose"].params["std_standing"] = {
-    REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.05
+    REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.15
     # r"pelvis_1_joint$": 0.05,
     # r"leg_.*_(2|3)_joint$": 0.05,
     # r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$"
