@@ -610,7 +610,7 @@ _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] 
       # saturation_effort=4334.0,
       # velocity_limit=0.314,
       **_calc_linear_leg_params(
-        stiffness=2500.0,
+        stiffness=1000.0,
         effort=2000.0,
         # armature=0.178 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
         armature=0.1,
@@ -668,7 +668,7 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
       # saturation_effort=4334.0,
       # velocity_limit=0.314,
       **_calc_linear_leg_params(
-        stiffness=2500.0,
+        stiffness=1000.0,
         effort=2000.0,
         # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
         armature=0.1,
