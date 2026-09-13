@@ -326,7 +326,7 @@
       <site name="left_hip_z_slider_connect_a" pos="-0.1148 0.0988312 -0.0296"/>
       <body name="leg_left_1_link" pos="-0.01469 0.08 -0.0166">
         <inertial pos="0.010057 -0.000187 -0.09373" quat="0.999312 -0.016951 -0.0328248 0.00338385" mass="0.594262" diaginertia="0.00197802 0.00145996 0.000588024"/>
-        <joint name="leg_left_1_joint" range="-0.261799 0.698132"/>
+        <joint name="leg_left_1_joint" range="-0.27658727 0.7335334"/>
         <site name="left_hip_xy_r_slider_connect_a" pos="0.0625 -0.035 -0.06685"/>
         <site name="left_hip_xy_l_slider_connect_a" pos="0.0625 0.035 -0.06685"/>
         <body name="left_hip_xy_bracket_l" pos="0.0625 0.035 -0.06685" quat="0.707107 0 0.707107 0">
@@ -355,10 +355,10 @@
         </body>
         <body name="leg_left_2_link" pos="0.015 0 -0.1595">
           <inertial pos="-0.005561 2e-05 -0.00013" quat="0.5 0.5 0.5 0.5" mass="0.112156" diaginertia="0.000111 0.000108 9e-06"/>
-          <joint name="leg_left_2_joint" axis="0 1 0" range="-0.741765 0.663225"/>
+          <joint name="leg_left_2_joint" axis="0 1 0" range="-0.742 0.772"/>
           <body name="leg_left_3_link">
             <inertial pos="-0.016275 0.046831 -0.035549" quat="0.244308 0.559272 -0.322226 0.72367" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_left_3_joint" axis="-1 0 0" range="-0.471239 0.471239"/>
+            <joint name="leg_left_3_joint" axis="-1 0 0" range="-0.413 0.467"/>
             <site name="left_hip_xy_r_slider_connect_b" pos="0.05965 -0.035 0" quat="1.0 0 0 0"/>
             <site name="left_hip_xy_l_slider_connect_b" pos="0.05965 0.035 0" quat="1.0 0 0 0"/>
             <body name="left_hip_xy_cross_l" pos="0.05965 0.035 0" quat="0 0.707107 -0.707107 0">
@@ -545,7 +545,7 @@
       <site name="right_hip_z_slider_connect_a" pos="-0.1148 -0.0988312 -0.0296"/>
       <body name="leg_right_1_link" pos="-0.01469 -0.08 -0.0166">
         <inertial pos="0.010057 0.000187 -0.09373" quat="0.999312 0.016951 -0.0328248 -0.00338385" mass="0.594262" diaginertia="0.00197802 0.00145996 0.000588024"/>
-        <joint name="leg_right_1_joint" range="-0.698132 0.261799"/>
+        <joint name="leg_right_1_joint" range="-0.7335334 0.27658727"/>
         <site name="right_hip_xy_r_slider_connect_a" pos="0.0625 -0.035 -0.06685"/>
         <site name="right_hip_xy_l_slider_connect_a" pos="0.0625 0.035 -0.06685"/>
 
@@ -576,10 +576,10 @@
 
         <body name="leg_right_2_link" pos="0.015 0 -0.1595">
           <inertial pos="-0.005561 2e-05 -0.00013" quat="0.5 0.5 0.5 0.5" mass="0.112156" diaginertia="0.000111 0.000108 9e-06"/>
-          <joint name="leg_right_2_joint" axis="0 1 0" range="-0.741765 0.663225"/>
+          <joint name="leg_right_2_joint" axis="0 1 0" range="-0.742 0.772"/>
           <body name="leg_right_3_link">
             <inertial pos="-0.016275 -0.046831 -0.035549" quat="0.559272 0.244308 -0.72367 0.322226" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_right_3_joint" axis="-1 0 0" range="-0.471239 0.471239"/>
+            <joint name="leg_right_3_joint" axis="-1 0 0" range="-0.413 0.467"/>
             <site name="right_hip_xy_r_slider_connect_b" pos="0.05965 -0.035 0" quat="1.0 0 0 0"/>
             <site name="right_hip_xy_l_slider_connect_b" pos="0.05965 0.035 0" quat="1.0 0 0 0"/>
             <body name="right_femur_bearing" pos="0 -0.0669 -0.09" quat="0.704553 -0.704549 -0.0600671 -0.0600668">
@@ -783,15 +783,15 @@
   </equality>
 
   <tendon>
-    <spatial name="right_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
+    <spatial name="right_hip_z_slider" range="0.06622257764 0.102222577639" class="tendon_actuator">
       <site site="right_hip_z_slider_connect_a"/>
       <site site="right_hip_z_slider_connect_b"/>
     </spatial>
-    <spatial name="right_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+    <spatial name="right_hip_xy_r_slider" range="0.05344627 0.1344132716" class="tendon_actuator">
       <site site="right_hip_xy_r_slider_connect_a"/>
       <site site="right_hip_xy_r_slider_connect_b"/>
     </spatial>
-    <spatial name="right_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+    <spatial name="right_hip_xy_l_slider" range="0.05344627 0.1344132716" class="tendon_actuator">
       <site site="right_hip_xy_l_slider_connect_a"/>
       <site site="right_hip_xy_l_slider_connect_b"/>
     </spatial>
@@ -816,15 +816,15 @@
       <site site="right_ankle_virtual_motor_r_connect_b"/>
     </spatial>
 
-    <spatial name="left_hip_z_slider" range="0.06513257764 0.1016425776" class="tendon_actuator">
+    <spatial name="left_hip_z_slider" range="0.06622257764 0.102222577639" class="tendon_actuator">
       <site site="left_hip_z_slider_connect_a"/>
       <site site="left_hip_z_slider_connect_b"/>
     </spatial>
-    <spatial name="left_hip_xy_r_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+    <spatial name="left_hip_xy_r_slider" range="0.05344627 0.1344132716" class="tendon_actuator">
       <site site="left_hip_xy_r_slider_connect_a"/>
       <site site="left_hip_xy_r_slider_connect_b"/>
     </spatial>
-    <spatial name="left_hip_xy_l_slider" range="0.05710327156 0.1344132716" class="tendon_actuator">
+    <spatial name="left_hip_xy_l_slider" range="0.05344627 0.1344132716" class="tendon_actuator">
       <site site="left_hip_xy_l_slider_connect_a"/>
       <site site="left_hip_xy_l_slider_connect_b"/>
     </spatial>
