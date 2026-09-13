@@ -854,7 +854,7 @@ ARM_ACTION_SCALE_FACTOR = 0.25
 Applies to every actuator that isn't part of a leg mechanism -- the arms and
 the pelvis alike -- and matches the simple pal_kangaroo model.
 """
-LEG_ACTION_SCALE_FACTOR = 0.05
+LEG_ACTION_SCALE_FACTOR = 0.25
 """Fraction of a leg actuator's effort limit a unit action commands.
 
 Applies to hip yaw, hip pitch/roll, ankle and leg length, whether the mechanism
