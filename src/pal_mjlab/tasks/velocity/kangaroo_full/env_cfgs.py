@@ -10,6 +10,7 @@ entries.
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
+from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -177,11 +178,38 @@ def pal_kangaroo_full_baseline_env_cfg(
   # keys match), so the joints with their own standing tolerance -- waist yaw
   # and hip pitch/roll -- are carved out of the catch-all regex.
   cfg.rewards["pose"].params["std_standing"] = {
-    r"pelvis_1_joint$": 0.015,
-    r"leg_.*_(2|3)_joint$": 0.02,
-    r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$"
-    r"|pelvis_1_joint$|leg_.*_[23]_joint$)(pelvis|arm|leg)_.*$": 0.05,
+    REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.05
+    # r"pelvis_1_joint$": 0.05,
+    # r"leg_.*_(2|3)_joint$": 0.05,
+    # r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$"
+    # r"|pelvis_1_joint$|leg_.*_[23]_joint$)(pelvis|arm|leg)_.*$": 0.05,
   }
+
+  # -- Curriculum
+  #
+  # Hold the posture term at twice its weight for the first 80 episodes so the
+  # policy settles into the nominal pose before the other terms take over,
+  # then drop back to the baseline weight. Stages are keyed on
+  # env.common_step_counter, which advances once per env step across all
+  # parallel envs, so an "episode" here is one full episode_length_s of
+  # training time. Skipped in play mode, where the episode is effectively
+  # endless and the doubled weight would never come off.
+  if not play:
+    assert cfg.curriculum is not None
+    episode_steps = round(
+      cfg.episode_length_s / (cfg.sim.mujoco.timestep * cfg.decimation)
+    )
+    pose_weight = cfg.rewards["pose"].weight
+    cfg.curriculum["pose_weight"] = CurriculumTermCfg(
+      func=mdp.reward_curriculum,
+      params={
+        "reward_name": "pose",
+        "stages": [
+          {"step": 0, "weight": 2.0 * pose_weight},
+          {"step": 50 * episode_steps, "weight": pose_weight},
+        ],
+      },
+    )
 
   # -- Metrics for the closed-loop constraints.
   #
