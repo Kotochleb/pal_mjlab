@@ -187,27 +187,25 @@ def pal_kangaroo_full_baseline_env_cfg(
 
   # -- Curriculum
   #
-  # Hold the posture term at twice its weight for the first 80 episodes so the
-  # policy settles into the nominal pose before the other terms take over,
-  # then drop back to the baseline weight. Stages are keyed on
-  # env.common_step_counter, which advances once per env step across all
-  # parallel envs, so an "episode" here is one full episode_length_s of
-  # training time. Skipped in play mode, where the episode is effectively
-  # endless and the doubled weight would never come off.
+  # Hold the posture term at six times its weight for the first 150 episodes
+  # so the policy settles into the nominal pose before the other terms take
+  # over, then ramp it linearly back to the baseline weight by episode 250.
+  # The ramp is keyed on env.common_step_counter, which advances once per env
+  # step across all parallel envs, so an "episode" here is one full
+  # episode_length_s of training time. Skipped in play mode, where the episode
+  # is effectively endless and the weight would never come back down.
   if not play:
     assert cfg.curriculum is not None
-    episode_steps = round(
-      cfg.episode_length_s / (cfg.sim.mujoco.timestep * cfg.decimation)
-    )
+    episode_steps = round(cfg.sim.mujoco.timestep * cfg.decimation)
     pose_weight = cfg.rewards["pose"].weight
     cfg.curriculum["pose_weight"] = CurriculumTermCfg(
-      func=mdp.reward_curriculum,
+      func=mdp.reward_weight_linear_ramp,
       params={
         "reward_name": "pose",
-        "stages": [
-          {"step": 0, "weight": 2.0 * pose_weight},
-          {"step": 50 * episode_steps, "weight": pose_weight},
-        ],
+        "start_step": 150 * episode_steps,
+        "end_step": 400 * episode_steps,
+        "start_weight": 6.0 * pose_weight,
+        "end_weight": pose_weight,
       },
     )
 
