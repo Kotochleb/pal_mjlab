@@ -189,6 +189,8 @@ def pal_kangaroo_full_baseline_env_cfg(
     # r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$"
     # r"|pelvis_1_joint$|leg_.*_[23]_joint$)(pelvis|arm|leg)_.*$": 0.05,
   }
+  cfg.rewards["track_linear_velocity"].weight = 3.5
+  cfg.rewards["track_angular_velocity"].weight = 3.0
 
   # -- Curriculum
   #
@@ -209,13 +211,13 @@ def pal_kangaroo_full_baseline_env_cfg(
         "reward_name": "pose",
         "start_step": 150 * steps_per_iteration,
         "end_step": 400 * steps_per_iteration,
-        "start_weight": 6.0 * pose_weight,
+        "start_weight": 7.0 * pose_weight,
         "end_weight": pose_weight,
       },
     )
-    # Same window for the clamp on the policy's action std: keep the floor up
-    # so exploration can't collapse while the pose is being learned, then let
-    # it go. The runner cfg's std_range starts from the same value, and the
+    # Clamp on the policy's action std: keep the floor up so exploration can't
+    # collapse while the pose is being learned, then let it go. The runner
+    # cfg's std_range starts from the same value, and the
     # KangarooFullOnPolicyRunner is what exposes the distribution to the term.
     cfg.curriculum["policy_std_range"] = CurriculumTermCfg(
       func=mdp.policy_std_range_linear_ramp,

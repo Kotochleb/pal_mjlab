@@ -1,7 +1,9 @@
 from mjlab.tasks.registry import register_mjlab_task
-from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
 
-from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import pal_kangaroo_full_ppo_runner_cfg
+from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
+  pal_kangaroo_full_ppo_runner_cfg,
+)
+from pal_mjlab.tasks.velocity.kangaroo_full.runner import KangarooFullOnPolicyRunner
 
 from .env_cfgs import (
   pal_kangaroo_full_full_flat_env_cfg,
@@ -45,5 +47,5 @@ for _terrain, _env_cfg_fn in (
             env_cfg=_env_cfg_fn(**_variant),
             play_env_cfg=_env_cfg_fn(play=True, **_variant),
             rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
-            runner_cls=VelocityOnPolicyRunner,
+            runner_cls=KangarooFullOnPolicyRunner,
           )

@@ -21,7 +21,7 @@ def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
       obs_normalization=True,
       distribution_cfg={
         "class_name": "GaussianDistribution",
-        "init_std": 1.0,
+        "init_std": 1.5,
         "std_type": "scalar",
         # Must match the policy_std_range curriculum's start_range in
         # env_cfgs.py: the clamp is this until the curriculum first runs.
