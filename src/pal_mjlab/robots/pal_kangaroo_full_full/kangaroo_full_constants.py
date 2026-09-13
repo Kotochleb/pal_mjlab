@@ -75,6 +75,8 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   INIT_STATE as _SIMPLE_MJCF_INIT_STATE,
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  ARM_ACTION_SCALE_FACTOR,
+  LEG_ACTION_SCALE_FACTOR,
   _add_collision_capsules,
   _ARM_BASE_LINK_NAMES,
   _build_action_scales,
@@ -104,9 +106,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
 REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY = (
   r"^(?!leg_.*_(?:[1-5]|length)_actuator$)(pelvis|arm|leg)_.*$"
 )
-REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY = (
-  r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_(?:[1-5]|length)_actuator$)(pelvis|arm|leg)_.*$"
-)
+REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY = r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_(?:[1-5]|length)_actuator$)(pelvis|arm|leg)_.*$"
 
 ##
 # MJCF.
@@ -273,6 +273,8 @@ class KangarooFullFullModel:
   hip_xy: HipXyActuation
   ankle: AnkleActuation
   lower_body: LowerBody
+  arm_action_scale_factor: float
+  leg_action_scale_factor: float
 
   articulation: EntityArticulationInfoCfg
   init_state: EntityCfg.InitialStateCfg
@@ -297,6 +299,8 @@ def get_kangaroo_full_full_model(
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> KangarooFullFullModel:
   """Assemble the actuators and action scale for one variant.
 
@@ -304,31 +308,48 @@ def get_kangaroo_full_full_model(
   target), so unlike pal_kangaroo_full's get_kangaroo_full_model this needs
   no TENDON-side action term or tendon-length-at-init offset computation --
   the whole action vector is one JointPositionActionCfg.
+
+  The two ``*_action_scale_factor`` values mean the same as pal_kangaroo_full's:
+  what fraction of an actuator's effort limit a unit action commands, expressed
+  as a position offset through its stiffness -- ``leg_action_scale_factor`` for
+  every leg mechanism, ``arm_action_scale_factor`` for the upper body.
   """
+  # Ordered like the simple pal_kangaroo model's actuators (hip yaw, hip
+  # pitch/roll, ankle, leg length, then upper body) so the action vector reads
+  # the same way in every variant, and the same way as pal_kangaroo_full's.
+  leg_actuators = (
+    _HIP_Z_ACTUATORS[hip_z]
+    + _HIP_XY_ACTUATORS[hip_xy]
+    + _ANKLE_ACTUATORS[ankle]
+    + _LEG_LENGTH_ACTUATOR
+  )
+  upper_body_actuators = (
+    _LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS
+  )
   articulation = EntityArticulationInfoCfg(
-    # Ordered like the simple pal_kangaroo model's actuators (hip yaw, hip
-    # pitch/roll, ankle, leg length, then upper body) so the action vector
-    # reads the same way in every variant, and the same way as
-    # pal_kangaroo_full's.
-    actuators=(
-      _HIP_Z_ACTUATORS[hip_z]
-      + _HIP_XY_ACTUATORS[hip_xy]
-      + _ANKLE_ACTUATORS[ankle]
-      + _LEG_LENGTH_ACTUATOR
-      + (_LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS)
-    ),
+    actuators=leg_actuators + upper_body_actuators,
     soft_joint_pos_limit_factor=0.99,
   )
 
-  joint_action_scale, joint_actuator_names = _build_action_scales(
-    articulation, TransmissionType.JOINT
-  )
+  # Legs and upper body get their own factor, so build the action term in two
+  # halves and concatenate them in the same leg-then-upper-body order.
+  joint_action_scale: dict[str, float] = {}
+  joint_actuator_names: tuple[str, ...] = ()
+  for actuators, factor in (
+    (leg_actuators, leg_action_scale_factor),
+    (upper_body_actuators, arm_action_scale_factor),
+  ):
+    scales, names = _build_action_scales(actuators, TransmissionType.JOINT, factor)
+    joint_action_scale.update(scales)
+    joint_actuator_names += names
 
   return KangarooFullFullModel(
     hip_z=hip_z,
     hip_xy=hip_xy,
     ankle=ankle,
     lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
     articulation=articulation,
     init_state=INIT_STATE,
     joint_action_scale=joint_action_scale,

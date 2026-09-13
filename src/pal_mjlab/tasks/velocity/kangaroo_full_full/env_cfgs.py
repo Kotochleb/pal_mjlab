@@ -23,8 +23,10 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  ARM_ACTION_SCALE_FACTOR,
   KNEE_DISTANCE_MAP_CSV,
   KNEE_DISTANCE_MAP_LEGS,
+  LEG_ACTION_SCALE_FACTOR,
   LEG_LENGTH_FROM_KNEE_JOINTS,
   LOWER_BODY_JOINT_ORDER,
   SIMPLE_MODEL_JOINT_ORDER,
@@ -51,12 +53,19 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create the shared PAL Robotics KANGAROO FULL FULL velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
   model = get_kangaroo_full_full_model(
-    hip_z=hip_z, hip_xy=hip_xy, ankle=ankle, lower_body=lower_body
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    ankle=ankle,
+    lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
@@ -211,10 +220,18 @@ def pal_kangaroo_full_full_rough_env_cfg(
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_full_full_baseline_env_cfg(
-    play=play, hip_z=hip_z, hip_xy=hip_xy, ankle=ankle, lower_body=lower_body
+    play=play,
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    ankle=ankle,
+    lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
   return configure_kangaroo_rough_env(cfg, play=play)
 
@@ -225,10 +242,18 @@ def pal_kangaroo_full_full_flat_env_cfg(
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_full_baseline_env_cfg(
-    play=play, hip_z=hip_z, hip_xy=hip_xy, ankle=ankle, lower_body=lower_body
+    play=play,
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    ankle=ankle,
+    lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
 
   cfg.sim.njmax = 300

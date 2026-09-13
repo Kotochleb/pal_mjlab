@@ -16,9 +16,11 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots import (
+  ARM_ACTION_SCALE_FACTOR,
   KANGAROO_TENDON_LENGTHS,
   KNEE_DISTANCE_MAP_CSV,
   KNEE_DISTANCE_MAP_LEGS,
+  LEG_ACTION_SCALE_FACTOR,
   LEG_LENGTH_FROM_KNEE_JOINTS,
   LOWER_BODY_JOINT_ORDER,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
@@ -50,6 +52,8 @@ def pal_kangaroo_full_baseline_env_cfg(
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create the shared PAL Robotics KANGAROO FULL velocity configuration."""
   cfg = pal_kangaroo_baseline_env_cfg(play)
@@ -62,6 +66,8 @@ def pal_kangaroo_full_baseline_env_cfg(
     ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
   cfg.scene.entities = {"robot": model.make_robot_cfg()}
 
@@ -323,6 +329,8 @@ def pal_kangaroo_full_rough_env_cfg(
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_full_baseline_env_cfg(
@@ -334,6 +342,8 @@ def pal_kangaroo_full_rough_env_cfg(
     ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
   return configure_kangaroo_rough_env(cfg, play=play)
 
@@ -347,6 +357,8 @@ def pal_kangaroo_full_flat_env_cfg(
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_baseline_env_cfg(
@@ -358,6 +370,8 @@ def pal_kangaroo_full_flat_env_cfg(
     ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
   )
 
   cfg.sim.njmax = 300

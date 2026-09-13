@@ -610,7 +610,7 @@ _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] 
       # saturation_effort=4334.0,
       # velocity_limit=0.314,
       **_calc_linear_leg_params(
-        stiffness=1000.0,
+        stiffness=1500.0,
         effort=2000.0,
         # armature=0.178 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
         armature=0.1,
@@ -668,7 +668,7 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[ActuatorCfg, ...]] = {
       # saturation_effort=4334.0,
       # velocity_limit=0.314,
       **_calc_linear_leg_params(
-        stiffness=1000.0,
+        stiffness=1500.0,
         effort=2000.0,
         # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
         armature=0.1,
@@ -848,18 +848,33 @@ def _compute_tendon_lengths_at_init_state(
 # Variants.
 ##
 
+ARM_ACTION_SCALE_FACTOR = 0.25
+"""Fraction of an upper-body actuator's effort limit a unit action commands.
+
+Applies to every actuator that isn't part of a leg mechanism -- the arms and
+the pelvis alike -- and matches the simple pal_kangaroo model.
+"""
+LEG_ACTION_SCALE_FACTOR = 0.05
+"""Fraction of a leg actuator's effort limit a unit action commands.
+
+Applies to hip yaw, hip pitch/roll, ankle and leg length, whether the mechanism
+is driven by a joint motor or by its tendon.
+"""
+
 
 def _build_action_scales(
-  articulation: EntityArticulationInfoCfg, transmission_type: TransmissionType
+  actuators: tuple[ActuatorCfg, ...],
+  transmission_type: TransmissionType,
+  action_scale_factor: float,
 ) -> tuple[dict[str, float], tuple[str, ...]]:
   """Action scale dict and target names for one transmission type.
 
-  The scale is a quarter of each actuator's torque-to-stiffness ratio, i.e. the
-  position offset a quarter-effort command corresponds to.
+  The scale is ``action_scale_factor`` times each actuator's torque-to-stiffness
+  ratio, i.e. the position offset that fraction of full effort corresponds to.
   """
   scales: dict[str, float] = {}
   names: list[str] = []
-  for actuator in articulation.actuators:
+  for actuator in actuators:
     if actuator.transmission_type != transmission_type:
       continue
     for name in actuator.target_names_expr:
@@ -874,7 +889,7 @@ def _build_action_scales(
         else {name: actuator.stiffness}
       )
       if name in efforts and stiffnesses.get(name):
-        scales[name] = 0.25 * efforts[name] / stiffnesses[name]
+        scales[name] = action_scale_factor * efforts[name] / stiffnesses[name]
         names.append(name)
   return scales, tuple(names)
 
@@ -900,6 +915,8 @@ class KangarooFullModel:
   ankle: AnkleActuation
   mjcf: MjcfVariant
   lower_body: LowerBody
+  arm_action_scale_factor: float
+  leg_action_scale_factor: float
 
   articulation: EntityArticulationInfoCfg
   init_state: EntityCfg.InitialStateCfg
@@ -1000,23 +1017,33 @@ def get_kangaroo_full_model(
   ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
+  leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> KangarooFullModel:
   """Assemble the actuators, action scales and tendon offsets for one variant.
+
+  The two ``*_action_scale_factor`` values set what fraction of an actuator's
+  effort limit a unit action commands, expressed as a position offset through
+  its stiffness: ``leg_action_scale_factor`` for every leg mechanism (joint and
+  tendon terms alike), ``arm_action_scale_factor`` for the upper body.
 
   Cached because the tendon offsets require compiling the model, and every task
   registration asks for the same handful of variants.
   """
+  # Ordered like the simple pal_kangaroo model's actuators (hip yaw, hip
+  # pitch/roll, ankle, leg length, then upper body) so the JOINT action vector
+  # reads the same way in every variant.
+  leg_actuators = (
+    _HIP_Z_ACTUATORS[hip_z]
+    + _HIP_XY_ACTUATORS[hip_xy]
+    + _ANKLE_ACTUATORS[ankle]
+    + _LEG_LENGTH_ACTUATORS[leg_length]
+  )
+  upper_body_actuators = (
+    _LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS
+  )
   articulation = EntityArticulationInfoCfg(
-    # Ordered like the simple pal_kangaroo model's actuators (hip yaw, hip
-    # pitch/roll, ankle, leg length, then upper body) so the JOINT action
-    # vector reads the same way in every variant.
-    actuators=(
-      _HIP_Z_ACTUATORS[hip_z]
-      + _HIP_XY_ACTUATORS[hip_xy]
-      + _ANKLE_ACTUATORS[ankle]
-      + _LEG_LENGTH_ACTUATORS[leg_length]
-      + (_LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS)
-    ),
+    actuators=leg_actuators + upper_body_actuators,
     soft_joint_pos_limit_factor=0.99,
   )
 
@@ -1027,10 +1054,21 @@ def get_kangaroo_full_model(
     joint_vel=INIT_STATE.joint_vel,
   )
 
-  joint_action_scale, joint_actuator_names = _build_action_scales(
-    articulation, TransmissionType.JOINT
+  # Legs and upper body get their own factor, so build the JOINT term in two
+  # halves and concatenate them in the same leg-then-upper-body order.
+  joint_action_scale: dict[str, float] = {}
+  joint_actuator_names: tuple[str, ...] = ()
+  for actuators, factor in (
+    (leg_actuators, leg_action_scale_factor),
+    (upper_body_actuators, arm_action_scale_factor),
+  ):
+    scales, names = _build_action_scales(actuators, TransmissionType.JOINT, factor)
+    joint_action_scale.update(scales)
+    joint_actuator_names += names
+  # Only the leg mechanisms are ever tendon driven.
+  tendon_scale, _ = _build_action_scales(
+    leg_actuators, TransmissionType.TENDON, leg_action_scale_factor
   )
-  tendon_scale, _ = _build_action_scales(articulation, TransmissionType.TENDON)
 
   tendon_names = (
     (HIP_Z_TENDON_NAMES if hip_z == "tendon" else ())
@@ -1072,6 +1110,8 @@ def get_kangaroo_full_model(
     ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
+    arm_action_scale_factor=arm_action_scale_factor,
+    leg_action_scale_factor=leg_action_scale_factor,
     articulation=articulation,
     init_state=init_state,
     joint_action_scale=joint_action_scale,
