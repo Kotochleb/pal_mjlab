@@ -185,7 +185,7 @@ _HIP_XY_ACTUATORS: dict[HipXyActuation, tuple[BuiltinPositionActuatorCfg, ...]] 
   "slider": (
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"leg_(left|right)_[23]_actuator$",),
-      **_calc_linear_leg_params(stiffness=2500.0, effort=2000.0, armature=0.1),
+      **_calc_linear_leg_params(stiffness=750.0, effort=2000.0, armature=0.1),
     ),
   ),
   "joint": (
@@ -235,7 +235,7 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[BuiltinPositionActuatorCfg, ...]] =
   "slider": (
     BuiltinPositionActuatorCfg(
       target_names_expr=(r"leg_(left|right)_[45]_actuator$",),
-      **_calc_linear_leg_params(stiffness=2500.0, effort=2000.0, armature=0.1),
+      **_calc_linear_leg_params(stiffness=1500.0, effort=2000.0, armature=0.1),
     ),
   ),
 }
