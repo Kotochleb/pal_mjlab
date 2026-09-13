@@ -173,8 +173,13 @@ def pal_kangaroo_full_baseline_env_cfg(
   cfg.rewards["pose"].params["asset_cfg"].joint_names = (
     REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   )
+  # Keys may not overlap (resolve_matching_names_values raises on a joint two
+  # keys match), so pelvis_1 is carved out of the catch-all regex to be held
+  # twice as tightly as everything else while standing.
   cfg.rewards["pose"].params["std_standing"] = {
-    REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.05
+    r"pelvis_1_joint$": 0.015,
+    r"^(?!leg_.*_(femur|knee)_joint$|leg_.*_length_actuator$|pelvis_1_joint$)"
+    r"(pelvis|arm|leg)_.*$": 0.05,
   }
 
   # -- Metrics for the closed-loop constraints.
