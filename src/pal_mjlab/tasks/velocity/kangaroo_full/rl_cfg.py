@@ -18,6 +18,7 @@ def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         "class_name": "GaussianDistribution",
         "init_std": 1.0,
         "std_type": "scalar",
+        "std_range": (1e-6, 1e6),
       },
     ),
     critic=RslRlModelCfg(

@@ -36,7 +36,7 @@ from pal_mjlab.robots import (
   MjcfVariant,
   get_kangaroo_full_model,
 )
-from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_baseline_env_cfg
+from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_rough_env_cfg
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
 
@@ -52,7 +52,7 @@ def pal_kangaroo_full_rough_env_cfg(
   lower_body: LowerBody = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
-  cfg = pal_kangaroo_baseline_env_cfg(play)
+  cfg = pal_kangaroo_rough_env_cfg(play)
   cfg.sim.nconmax = 200
 
   model = get_kangaroo_full_model(
