@@ -1,14 +1,11 @@
 """PAL Robotics KANGAROO FULL velocity tracking environment configurations.
 
-Every variant is the simple ``pal_kangaroo`` velocity task with the full model
-swapped in: identical rewards, identical observations, identical terrain and
-command setup. The only thing a variant changes is *how the legs are actuated*
--- hip yaw through a tendon or a revolute motor, hip pitch/roll through tendons
-or revolute motors, leg length through the prismatic screw or the leg length
-joint directly. That is deliberate: it is what makes training results across
-variants comparable. ``lower_body=True`` is the one axis that isn't just an
-actuation choice: it deletes both arms and makes every arm-related
-observation and reward term drop out along with them.
+The baseline adapts the simple ``pal_kangaroo`` baseline to the full model's
+actuation, joint observations and constraint metrics. Rough and flat tasks
+extend that baseline independently. Rough-task overrides are shared with the
+simple model, including its box terrain, sensors, rewards and command setup.
+``lower_body=True`` deletes both arms and removes their observation and reward
+entries.
 """
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -36,12 +33,15 @@ from pal_mjlab.robots import (
   MjcfVariant,
   get_kangaroo_full_model,
 )
-from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import pal_kangaroo_rough_env_cfg
+from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
+  configure_kangaroo_rough_env,
+  pal_kangaroo_baseline_env_cfg,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
 
 
-def pal_kangaroo_full_rough_env_cfg(
+def pal_kangaroo_full_baseline_env_cfg(
   play: bool = False,
   hip_z: HipZActuation = "tendon",
   hip_xy: HipXyActuation = "tendon",
@@ -51,9 +51,8 @@ def pal_kangaroo_full_rough_env_cfg(
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
 ) -> ManagerBasedRlEnvCfg:
-  """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
-  cfg = pal_kangaroo_rough_env_cfg(play)
-  cfg.sim.nconmax = 200
+  """Create the shared PAL Robotics KANGAROO FULL velocity configuration."""
+  cfg = pal_kangaroo_baseline_env_cfg(play)
 
   model = get_kangaroo_full_model(
     hip_z=hip_z,
@@ -315,6 +314,30 @@ def pal_kangaroo_full_rough_env_cfg(
   return cfg
 
 
+def pal_kangaroo_full_rough_env_cfg(
+  play: bool = False,
+  hip_z: HipZActuation = "tendon",
+  hip_xy: HipXyActuation = "tendon",
+  leg_length: LegLengthActuation = "actuator",
+  femur_closure: FemurClosure = "prismatic",
+  ankle: AnkleActuation = "joint",
+  mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
+) -> ManagerBasedRlEnvCfg:
+  """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
+  cfg = pal_kangaroo_full_baseline_env_cfg(
+    play=play,
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    leg_length=leg_length,
+    femur_closure=femur_closure,
+    ankle=ankle,
+    mjcf=mjcf,
+    lower_body=lower_body,
+  )
+  return configure_kangaroo_rough_env(cfg, play=play)
+
+
 def pal_kangaroo_full_flat_env_cfg(
   play: bool = False,
   hip_z: HipZActuation = "tendon",
@@ -326,7 +349,7 @@ def pal_kangaroo_full_flat_env_cfg(
   lower_body: LowerBody = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
-  cfg = pal_kangaroo_full_rough_env_cfg(
+  cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
     hip_z=hip_z,
     hip_xy=hip_xy,

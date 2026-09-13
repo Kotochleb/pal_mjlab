@@ -359,10 +359,16 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
 
 def pal_kangaroo_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics custom rough terrain velocity configuration."""
+  cfg = pal_kangaroo_baseline_env_cfg(play=play)
+  return configure_kangaroo_rough_env(cfg, play=play)
+
+
+def configure_kangaroo_rough_env(
+  cfg: ManagerBasedRlEnvCfg, play: bool = False
+) -> ManagerBasedRlEnvCfg:
+  """Apply shared rough-task settings to a simple or full Kangaroo baseline."""
 
   ### GENERAL CONFIGURATION
-
-  cfg = pal_kangaroo_baseline_env_cfg(play=play)
 
   # nconmax is the max number of contacts that will be generated at runtime
   # due to https://github.com/google-deepmind/mujoco_warp/blob/c62864ed2bf816c0a724d4cbf153921188f78eae/mujoco_warp/_src/io.py#L649-L660
