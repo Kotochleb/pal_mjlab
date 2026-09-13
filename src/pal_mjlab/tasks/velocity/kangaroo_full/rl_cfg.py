@@ -6,6 +6,11 @@ from mjlab.rl import (
   RslRlPpoAlgorithmCfg,
 )
 
+POLICY_STD_RANGE_START = (0.8, 1e6)
+"""Clamp on the actor's action std at the start of training: (min, max)."""
+POLICY_STD_RANGE_END = (1e-6, 1e6)
+"""Clamp the policy_std_range curriculum ramps to, and then holds."""
+
 
 def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   """Create RL runner configuration for PAL kangaroo_full velocity task."""
@@ -18,7 +23,9 @@ def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
         "class_name": "GaussianDistribution",
         "init_std": 1.0,
         "std_type": "scalar",
-        "std_range": (1e-6, 1e6),
+        # Must match the policy_std_range curriculum's start_range in
+        # env_cfgs.py: the clamp is this until the curriculum first runs.
+        "std_range": POLICY_STD_RANGE_START,
       },
     ),
     critic=RslRlModelCfg(

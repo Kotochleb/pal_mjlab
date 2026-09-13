@@ -43,6 +43,8 @@ from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
 from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
+  POLICY_STD_RANGE_END,
+  POLICY_STD_RANGE_START,
   pal_kangaroo_full_ppo_runner_cfg,
 )
 
@@ -209,6 +211,19 @@ def pal_kangaroo_full_baseline_env_cfg(
         "end_step": 400 * steps_per_iteration,
         "start_weight": 6.0 * pose_weight,
         "end_weight": pose_weight,
+      },
+    )
+    # Same window for the clamp on the policy's action std: keep the floor up
+    # so exploration can't collapse while the pose is being learned, then let
+    # it go. The runner cfg's std_range starts from the same value, and the
+    # KangarooFullOnPolicyRunner is what exposes the distribution to the term.
+    cfg.curriculum["policy_std_range"] = CurriculumTermCfg(
+      func=mdp.policy_std_range_linear_ramp,
+      params={
+        "start_step": 150 * steps_per_iteration,
+        "end_step": 400 * steps_per_iteration,
+        "start_range": POLICY_STD_RANGE_START,
+        "end_range": POLICY_STD_RANGE_END,
       },
     )
 

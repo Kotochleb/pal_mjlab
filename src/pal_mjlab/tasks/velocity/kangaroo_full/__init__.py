@@ -1,11 +1,11 @@
 from mjlab.tasks.registry import register_mjlab_task
-from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
 
 from .env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
   pal_kangaroo_full_rough_env_cfg,
 )
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
+from .runner import KangarooFullOnPolicyRunner
 
 # One task per actuation variant, on flat and on rough terrain. The name spells
 # out all six axes so a run is identifiable from its task id alone.
@@ -65,5 +65,5 @@ for _terrain, _env_cfg_fn in (
                   env_cfg=_env_cfg_fn(**_variant),
                   play_env_cfg=_env_cfg_fn(play=True, **_variant),
                   rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
-                  runner_cls=VelocityOnPolicyRunner,
+                  runner_cls=KangarooFullOnPolicyRunner,
                 )
