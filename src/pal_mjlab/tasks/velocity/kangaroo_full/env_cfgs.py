@@ -222,8 +222,8 @@ def pal_kangaroo_full_baseline_env_cfg(
     cfg.curriculum["policy_std_range"] = CurriculumTermCfg(
       func=mdp.policy_std_range_linear_ramp,
       params={
-        "start_step": 300 * steps_per_iteration,
-        "end_step": 2000 * steps_per_iteration,
+        "start_step": 100 * steps_per_iteration,
+        "end_step": 200 * steps_per_iteration,
         "start_range": POLICY_STD_RANGE_START,
         "end_range": POLICY_STD_RANGE_END,
       },

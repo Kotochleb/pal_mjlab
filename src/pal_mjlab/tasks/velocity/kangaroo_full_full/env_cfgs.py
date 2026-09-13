@@ -20,6 +20,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
@@ -31,6 +32,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   LEG_LENGTH_FROM_KNEE_JOINTS,
   LOWER_BODY_JOINT_ORDER,
   SIMPLE_MODEL_JOINT_ORDER,
+  get_kangaroo_full_spec,
 )
 from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
@@ -117,13 +119,10 @@ def pal_kangaroo_full_full_baseline_env_cfg(
       term_cfg.func = mdp.joint_state_with_mapped_leg_length
       term_cfg.params = params
 
-  # The map fills the observation slot, but the baseline terms that act on
-  # the joint itself have nothing left to act on: there is no velocity to
-  # limit, no encoder to bias, and no posture to hold.
-  cfg.rewards.pop("joint_vel_limits", None)
+  # The map fills the observation slot; the reward terms that act on the
+  # joint itself are re-pointed at the same map below. The encoder bias has
+  # nothing to bias, though: the leg length is never measured here.
   cfg.events.pop("leg_length_encoder_bias", None)
-  for pose_type in ("std_walking", "std_running"):
-    cfg.rewards["pose"].params[pose_type].pop(r"leg_.*_length_.*", None)
 
   if model.lower_body:
     # No arm_* joints in this variant: the arm-specific keys the baseline
@@ -153,6 +152,42 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   )
   cfg.rewards["pose"].params["std_standing"] = {
     REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY: 0.05
+  }
+
+  # The three baseline terms on leg_.*_length_joint, read through the knee map
+  # instead (mdp.rewards): the posture term folds the mapped leg length into
+  # its mean with the std_* keys the baseline already sets for it, and the
+  # limit terms take the slider's range and rate limit from the variants that
+  # have the slider, so all three score the same leg length the same way.
+  mapped_leg_length = {
+    "csv_path": KNEE_DISTANCE_MAP_CSV,
+    "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
+  }
+  cfg.rewards["pose"].func = mdp.variable_posture_with_mapped_leg_length
+  cfg.rewards["pose"].params.update(mapped_leg_length)
+
+  leg_length_joint = get_kangaroo_full_spec(lower_body=model.lower_body).joint(
+    "leg_left_length_joint"
+  )
+  cfg.rewards["dof_pos_limits_leg_length"] = RewardTermCfg(
+    func=mdp.mapped_leg_length_pos_limits,
+    weight=cfg.rewards["dof_pos_limits"].weight,
+    params={
+      "asset_cfg": SceneEntityCfg("robot"),
+      "joint_range": tuple(float(v) for v in leg_length_joint.range),
+      "soft_limit_factor": model.articulation.soft_joint_pos_limit_factor,
+      **mapped_leg_length,
+    },
+  )
+
+  (velocity_limits,) = (
+    cfg.rewards["joint_vel_limits"].params["velocity_limits"].values()
+  )
+  cfg.rewards["joint_vel_limits"].func = mdp.mapped_leg_length_vel_limits
+  cfg.rewards["joint_vel_limits"].params = {
+    "asset_cfg": SceneEntityCfg("robot"),
+    "velocity_limits": velocity_limits,
+    **mapped_leg_length,
   }
   cfg.rewards["track_linear_velocity"].weight = 3.5
   cfg.rewards["track_angular_velocity"].weight = 3.0
@@ -187,8 +222,8 @@ def pal_kangaroo_full_full_baseline_env_cfg(
     cfg.curriculum["policy_std_range"] = CurriculumTermCfg(
       func=mdp.policy_std_range_linear_ramp,
       params={
-        "start_step": 300 * steps_per_iteration,
-        "end_step": 2000 * steps_per_iteration,
+        "start_step": 100 * steps_per_iteration,
+        "end_step": 200 * steps_per_iteration,
         "start_range": POLICY_STD_RANGE_START,
         "end_range": POLICY_STD_RANGE_END,
       },
@@ -278,7 +313,9 @@ def pal_kangaroo_full_full_rough_env_cfg(
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
-  return configure_kangaroo_rough_env(cfg, play=play)
+  cfg = configure_kangaroo_rough_env(cfg, play=play)
+  cfg.sim.njmax = 700
+  return cfg
 
 
 def pal_kangaroo_full_full_flat_env_cfg(
@@ -301,7 +338,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
     leg_action_scale_factor=leg_action_scale_factor,
   )
 
-  cfg.sim.njmax = 300
+  cfg.sim.njmax = 550
   cfg.sim.mujoco.ccd_iterations = 50
   cfg.sim.contact_sensor_maxmatch = 64
   cfg.sim.nconmax = None
