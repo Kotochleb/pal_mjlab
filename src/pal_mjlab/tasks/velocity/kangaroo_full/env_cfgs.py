@@ -42,6 +42,9 @@ from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
 )
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
+from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
+  pal_kangaroo_full_ppo_runner_cfg,
+)
 
 
 def pal_kangaroo_full_baseline_env_cfg(
@@ -187,23 +190,23 @@ def pal_kangaroo_full_baseline_env_cfg(
 
   # -- Curriculum
   #
-  # Hold the posture term at six times its weight for the first 150 episodes
-  # so the policy settles into the nominal pose before the other terms take
-  # over, then ramp it linearly back to the baseline weight by episode 250.
-  # The ramp is keyed on env.common_step_counter, which advances once per env
-  # step across all parallel envs, so an "episode" here is one full
-  # episode_length_s of training time. Skipped in play mode, where the episode
-  # is effectively endless and the weight would never come back down.
+  # Hold the posture term at six times its weight for the first 150 training
+  # iterations so the policy settles into the nominal pose before the other
+  # terms take over, then ramp it linearly back to the baseline weight by
+  # iteration 400. The ramp is keyed on env.common_step_counter, which
+  # advances once per env step across all parallel envs, so an iteration is
+  # the runner's num_steps_per_env env steps. Skipped in play mode, where the
+  # weight would never come back down.
   if not play:
     assert cfg.curriculum is not None
-    episode_steps = round(cfg.sim.mujoco.timestep * cfg.decimation)
+    steps_per_iteration = pal_kangaroo_full_ppo_runner_cfg().num_steps_per_env
     pose_weight = cfg.rewards["pose"].weight
     cfg.curriculum["pose_weight"] = CurriculumTermCfg(
       func=mdp.reward_weight_linear_ramp,
       params={
         "reward_name": "pose",
-        "start_step": 150 * episode_steps,
-        "end_step": 400 * episode_steps,
+        "start_step": 150 * steps_per_iteration,
+        "end_step": 400 * steps_per_iteration,
         "start_weight": 6.0 * pose_weight,
         "end_weight": pose_weight,
       },
