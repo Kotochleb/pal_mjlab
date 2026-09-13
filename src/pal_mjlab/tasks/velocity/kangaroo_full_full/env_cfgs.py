@@ -16,6 +16,9 @@ direct leg-length observation, which metric groups exist) collapses to a
 single unconditional path here.
 """
 
+import re
+from functools import lru_cache
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
@@ -42,17 +45,40 @@ from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (
   HipZActuation,
   LowerBody,
   get_kangaroo_full_full_model,
+  get_kangaroo_full_full_spec,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
   configure_kangaroo_rough_env,
   pal_kangaroo_baseline_env_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
+from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
+  configure_simple_model_encoder_bias,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
   POLICY_STD_RANGE_END,
   POLICY_STD_RANGE_START,
   pal_kangaroo_full_ppo_runner_cfg,
 )
+
+
+@lru_cache(maxsize=None)
+def _screw_ranges(lower_body: LowerBody) -> dict[str, tuple[float, float]]:
+  """Joint range of every ``*_actuator`` screw slider, by name.
+
+  Read off the compiled model rather than the spec: an unnamed spec joint's
+  ``name`` doesn't decode, and the free joint is one. Cached because every
+  task registration would otherwise compile the model again.
+  """
+  model = get_kangaroo_full_full_spec(lower_body=lower_body).compile()
+  return {
+    model.joint(i).name: (
+      float(model.joint(i).range[0]),
+      float(model.joint(i).range[1]),
+    )
+    for i in range(model.njnt)
+    if model.joint(i).name.endswith("_actuator")
+  }
 
 
 def pal_kangaroo_full_full_baseline_env_cfg(
@@ -84,13 +110,30 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # kangaroo_full_full_constants.py) -- so the whole action vector is one
   # JointPositionActionCfg, unlike pal_kangaroo_full's per-mechanism tendon
   # terms.
-
+  #
+  # The screws' targets are clipped to their own joint ranges. Their action
+  # scale (a quarter of effort over stiffness, like every other actuator) is
+  # over a metre per unit action against a travel of a few centimetres, so an
+  # unclipped exploratory action parks the target metres out of range and
+  # the PD saturates at its full effort limit -- which the ankle linkage
+  # (light bars on six <connect> equalities) does not survive: joint rates
+  # run away to thousands of rad/s and the state goes NaN within a handful
+  # of steps.
+  # Only the screws this variant actually drives: a clip key that matches
+  # no action target is an error, and e.g. ankle="joint" leaves the ankle
+  # screws in the model but servos the ankle joints instead.
+  screw_clip = {
+    name: joint_range
+    for name, joint_range in _screw_ranges(model.lower_body).items()
+    if any(re.fullmatch(expr, name) for expr in model.joint_actuator_names)
+  }
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
       entity_name="robot",
       actuator_names=model.joint_actuator_names,
       scale=model.joint_action_scale,
       use_default_offset=True,
+      clip=screw_clip,
     )
   }
 
@@ -103,6 +146,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # reconstruction rather than a per-variant choice.
 
   joint_order = LOWER_BODY_JOINT_ORDER if model.lower_body else SIMPLE_MODEL_JOINT_ORDER
+  configure_simple_model_encoder_bias(cfg, joint_order, has_leg_length_joint=False)
 
   for group in ("actor", "critic"):
     for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):
@@ -118,11 +162,6 @@ def pal_kangaroo_full_full_baseline_env_cfg(
         params["biased"] = term_cfg.params["biased"]
       term_cfg.func = mdp.joint_state_with_mapped_leg_length
       term_cfg.params = params
-
-  # The map fills the observation slot; the reward terms that act on the
-  # joint itself are re-pointed at the same map below. The encoder bias has
-  # nothing to bias, though: the leg length is never measured here.
-  cfg.events.pop("leg_length_encoder_bias", None)
 
   if model.lower_body:
     # No arm_* joints in this variant: the arm-specific keys the baseline

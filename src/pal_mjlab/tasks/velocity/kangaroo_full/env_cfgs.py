@@ -41,6 +41,9 @@ from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
   pal_kangaroo_baseline_env_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
+from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
+  configure_simple_model_encoder_bias,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
 from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
   POLICY_STD_RANGE_END,
@@ -120,6 +123,7 @@ def pal_kangaroo_full_baseline_env_cfg(
   # deleted), so the policy's joint vector drops those slots too rather than
   # reading zeros for a limb that doesn't exist.
   joint_order = LOWER_BODY_JOINT_ORDER if model.lower_body else SIMPLE_MODEL_JOINT_ORDER
+  configure_simple_model_encoder_bias(cfg, joint_order, model.has_leg_length_joint)
 
   for group in ("actor", "critic"):
     for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):
@@ -149,9 +153,8 @@ def pal_kangaroo_full_baseline_env_cfg(
   if not model.has_leg_length_joint:
     # The map fills the observation slot, but the baseline terms that act on
     # the joint itself have nothing left to act on: there is no velocity to
-    # limit, no encoder to bias, and no posture to hold.
+    # limit and no posture to hold directly.
     cfg.rewards.pop("joint_vel_limits", None)
-    cfg.events.pop("leg_length_encoder_bias", None)
     for pose_type in ("std_walking", "std_running"):
       cfg.rewards["pose"].params[pose_type].pop(r"leg_.*_length_.*", None)
 

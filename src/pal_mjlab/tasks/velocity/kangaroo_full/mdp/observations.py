@@ -19,6 +19,8 @@ import torch
 from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 
+from .dr.encoder_bias import mapped_leg_length_encoder_bias
+
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
@@ -73,6 +75,9 @@ class joint_state_with_mapped_leg_length:
     between the map's absolute distance and the slider's own zero;
   * velocities as ``d map/d knee * knee_vel``, the map's local slope carrying
     the knee rate into the slider's units.
+
+  The actor adds an independent, persistent leg-length encoder bias after
+  reconstruction, in metres, just as for a real leg-length joint.
   """
 
   def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRlEnv):
@@ -108,6 +113,15 @@ class joint_state_with_mapped_leg_length:
     self.present_ids = _ids(present_ids)
     self.mapped_cols = _ids(mapped_cols)
     self.knee_ids = _ids(knee_ids)
+    self.length_encoder_bias: torch.Tensor | None = None
+    if mapped_cols and cfg.params.get("biased", False):
+      bias_event = env.event_manager.get_term_cfg("leg_length_encoder_bias").func
+      if not isinstance(bias_event, mapped_leg_length_encoder_bias):
+        raise TypeError("Mapped actor positions require mapped leg-length encoder bias")
+      self.length_encoder_bias = bias_event.bias
+      self.length_bias_ids = _ids(
+        [bias_event.joint_names.index(joint_order[col]) for col in mapped_cols]
+      )
 
   def __call__(
     self,
@@ -146,6 +160,8 @@ class joint_state_with_mapped_leg_length:
         assert default_knee is not None
         length_default, _ = _interpolate(default_knee[:, self.knee_ids], self.table)
         out[:, self.mapped_cols] = length - length_default
+        if biased and self.length_encoder_bias is not None:
+          out[:, self.mapped_cols] += self.length_encoder_bias[:, self.length_bias_ids]
       else:
         out[:, self.mapped_cols] = slope * data.joint_vel[:, self.knee_ids]
 
