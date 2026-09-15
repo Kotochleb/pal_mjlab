@@ -592,7 +592,7 @@
       </body>
       <body name="leg_right_1_link" pos="-0.01469 -0.08 -0.0166">
         <inertial pos="0.010057 0.000187 -0.09373" quat="0.999312 0.016951 -0.0328248 -0.00338385" mass="0.594262" diaginertia="0.00197802 0.00145996 0.000588024"/>
-        <joint name="leg_right_1_joint" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
+        <joint name="leg_right_1_joint" range="-0.698132 0.261799"/>
         <body name="right_hip_xy_bracket_r" pos="0.0625 -0.035 -0.06685" quat="0.707107 0 0.707107 0">
           <inertial pos="3e-06 0.003743 -0.008331" quat="0.999395 -0.034767 0 0" mass="0.155834" diaginertia="0.000236 0.000189488 8.85124e-05"/>
           <joint name="right_hip_xy_bracket_r" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>

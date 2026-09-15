@@ -41,15 +41,11 @@ third option, ``"butterfly"``, which targets the real butterfly hinges
 instead of either screw-adjacent coordinate. ``lower_body`` is unchanged from
 ``pal_kangaroo_full``: it deletes both arms and servos only the waist.
 
-Caveat: :data:`INIT_STATE` (reused from ``pal_kangaroo_full``) sets a rest
-value for every joint the *simple* model has, which now leaves every
-mechanism-only coordinate this MJCF adds (the motor housings, the sliders,
-the femur triangle/rod, the knee rods, the butterflies and their tibia bars)
-at qpos 0 -- not the value consistent with its own closed loop at the pose
-the simple joints rest at. The `<connect>` equalities are soft
-(``solref``/``solimp``), so the solver pulls each loop consistent over the
-first few physics steps after a reset rather than leaving a permanent error,
-but this has not been checked for a visible pop at reset.
+:data:`INIT_STATE` is this MJCF's own, not ``pal_kangaroo_full``'s: every
+mechanism-only coordinate (the motor housings, the sliders, the femur
+triangle/rod, the knee rods, the butterflies and their tibia bars) rests at
+the value consistent with its closed loop at the pose the simple joints rest
+at, and the ankle is posed for flat feet -- see the note on INIT_STATE.
 """
 
 from __future__ import annotations
@@ -82,7 +78,6 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   _build_action_scales,
   _calc_linear_leg_params,
   _delete_subtrees,
-  _MJCF_ANKLE_INIT_STATE,
 )
 
 ##
@@ -126,21 +121,50 @@ AnkleActuation = Literal["butterfly", "joint", "slider"]
 # reads the same way at every call site, mirroring pal_kangaroo_full.
 LowerBody = Literal[True, False]
 
-# leg_.*_4_joint / butterfly rest pose. pal_kangaroo_full layers a different
-# one of these onto INIT_STATE per MjcfVariant (the geometry differs between
-# its two XMLs); this MJCF's ankle geometry matches its "tendons" variant, so
-# that is the one reused below.
-_ANKLE_INIT_STATE = _MJCF_ANKLE_INIT_STATE["tendons"]
+# The slider joint each of pal_kangaroo_full's virtual-motor tendons stands
+# for, listed in that tendon list's order (HIP_Z_TENDON_NAMES,
+# HIP_XY_TENDON_NAMES, ANKLE_TENDON_NAMES: left-outer, left-inner,
+# right-inner, right-outer), so a policy trained on the tendon variant reads
+# the same mechanism from the same action slot here. The pairing is by
+# parent body: (left|right)_hip_z_slider holds leg_*_1_actuator,
+# (left|right)_hip_xy_(l|r)_slider hold leg_*_(2|3)_actuator and
+# (left|right)_ankle_(l|r)_slider hold leg_*_(4|5)_actuator -- the "l"/"r"
+# in the tendon name is the slider body's, not the leg's, on both sides. The
+# tree order in kangaroo_full.xml already lists the right hip_xy pair as
+# 3-then-2 but the right ankle pair as 4-then-5, so these are consumed with
+# preserve_order rather than as a regex.
+HIP_Z_SLIDER_JOINT_NAMES = ("leg_left_1_actuator", "leg_right_1_actuator")
+HIP_XY_SLIDER_JOINT_NAMES = (
+  "leg_left_2_actuator",
+  "leg_left_3_actuator",
+  "leg_right_3_actuator",
+  "leg_right_2_actuator",
+)
+ANKLE_SLIDER_JOINT_NAMES = (
+  "leg_left_4_actuator",
+  "leg_left_5_actuator",
+  "leg_right_5_actuator",
+  "leg_right_4_actuator",
+)
 
+# Every closed loop rests at a mutually consistent pose here (the <connect>
+# residual at the keyframe is ~1e-8 m), so there is no pop at reset. The
+# ankle chain was solved for flat feet -- sole normal parallel to base z in
+# both pitch and roll, so leg_.*_5_joint takes up the 0.04 rad hip roll --
+# by holding every simple-model joint with the "joint" actuation variant's
+# PD in zero-g and Newton-iterating the ankle pitch/roll targets. Keys are
+# paired left_*_l|right_*_r because the two legs are mirror images: the
+# "l"/"r" of a slider body is its own, not the leg's.
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.90),
   rot=(1.0, 0.0, 0.0, 0.0),
   joint_pos={
     "pelvis_1_joint": 0.0,
     "pelvis_2_joint": 0.0,
-    ".*_hip_z_motor": -0.0003,
+    "left_hip_z_motor": -0.0003,
+    "right_hip_z_motor": 0.0003,
     "leg_left_1_actuator": 0.000476,
-    "leg_right_1_actuator": -0.000482,
+    "leg_right_1_actuator": 0.000476,
     "leg_left_1_joint": -0.012,
     "leg_right_1_joint": 0.012,
     ".*_hip_xy_bracket_l": -0.0003,
@@ -153,25 +177,34 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "leg_left_3_joint": 0.04,
     "leg_right_3_joint": -0.04,
     ".*_hip_xy_cross_(l|r)": 0.0,
-    ".*_ankle_motor_(l|r)": 0.0299,
-    "leg_.*_4_actuator": -0.0113,
-    "leg_.*_5_actuator": -0.0113,
-    ".*_ankle_crank_(l|r)": 0.3305,
-    ".*_ankle_femur_bar_l": 0.6538,
-    ".*_ankle_femur_bar_r": -0.6538,
-    ".*_hip_xy_link": 0.0865,
-    "leg_.*_femur_joint": -0.3225,
-    ".*_femur_triangle": -0.6533,
-    ".*_femur_rod": -0.6533,
-    ".*_butterfly_(l|r)": 0.653,
-    ".*_ankle_tibia_bar_l1": 0.0003,
-    ".*_ankle_tibia_bar_(l|r)2": 0.0,
-    ".*_ankle_tibia_bar_r1": -0.0003,
+    "(left_ankle_motor_l|right_ankle_motor_r)": 0.0,
+    "(left_ankle_motor_r|right_ankle_motor_l)": 0.00085,
+    "(leg_left_4_actuator|leg_right_5_actuator)": 0.00098,
+    "(leg_left_5_actuator|leg_right_4_actuator)": 0.00266,
+    "(left_ankle_crank_l|right_ankle_crank_r)": -0.02803,
+    "(left_ankle_crank_r|right_ankle_crank_l)": -0.07615,
+    "left_ankle_femur_bar_l": 0.29448,
+    "right_ankle_femur_bar_r": -0.29448,
+    "left_ankle_femur_bar_r": -0.24631,
+    "right_ankle_femur_bar_l": 0.24631,
+    ".*_hip_xy_link": 0.08647,
+    "leg_.*_femur_joint": -0.32217,
+    ".*_femur_triangle": -0.65257,
+    ".*_femur_rod": -0.65258,
+    "(left_butterfly_l|right_butterfly_r)": 0.2937,
+    "(left_butterfly_r|right_butterfly_l)": 0.24561,
+    "left_ankle_tibia_bar_l1": 0.35897,
+    "right_ankle_tibia_bar_r1": -0.35897,
+    "left_ankle_tibia_bar_r1": -0.40708,
+    "right_ankle_tibia_bar_l1": 0.40708,
+    "(left_ankle_tibia_bar_l2|right_ankle_tibia_bar_r2)": -0.00008,
+    "(left_ankle_tibia_bar_r2|right_ankle_tibia_bar_l2)": 0.00008,
     "leg_.*_length_actuator": 0.0311,
-    ".*_knee_rods": -0.2227,
-    "leg_.*_knee_joint": 0.6533,
-    "leg_.*_4_joint": 0.0,
-    "leg_.*_5_joint": 0.0,
+    ".*_knee_rods": -0.2225,
+    "leg_.*_knee_joint": 0.65254,
+    "leg_.*_4_joint": -0.38233,
+    "leg_left_5_joint": -0.04252,
+    "leg_right_5_joint": 0.04252,
     "leg_.*_length_joint": -0.125,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
@@ -283,6 +316,16 @@ _ANKLE_ACTUATORS: dict[AnkleActuation, tuple[BuiltinPositionActuatorCfg, ...]] =
   ),
 }
 
+# The target_names_expr of the three "slider" configs above, i.e. the keys
+# _build_action_scales hands back for them; get_kangaroo_full_full_model
+# routes these into per-mechanism SliderActions instead of the catch-all term.
+_SLIDER_ACTUATOR_KEYS = frozenset(
+  name
+  for actuators in (_HIP_Z_ACTUATORS, _HIP_XY_ACTUATORS, _ANKLE_ACTUATORS)
+  for actuator in actuators["slider"]
+  for name in actuator.target_names_expr
+)
+
 # Not a variant axis (see the module docstring): this MJCF's only femur
 # closure is the four-bar linkage, which only ever pairs with driving the
 # screw directly, so there is exactly one leg-length actuator config.
@@ -309,6 +352,21 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 
 
 @dataclass(frozen=True)
+class SliderAction:
+  """What an order-preserved joint action term needs for one screw mechanism.
+
+  The counterpart of pal_kangaroo_full's ``TendonAction``: the same explicit,
+  ordered target list, but naming slider joints rather than tendons, and no
+  offset -- a joint term reads its rest position from INIT_STATE through
+  ``use_default_offset``.
+  """
+
+  actuator_names: tuple[str, ...]
+  """Slider joint names, in the order they should occupy in the action vector."""
+  scale: dict[str, float]
+
+
+@dataclass(frozen=True)
 class KangarooFullFullModel:
   """One actuation variant of the connect-linkage KANGAROO full model."""
 
@@ -323,6 +381,11 @@ class KangarooFullFullModel:
   init_state: EntityCfg.InitialStateCfg
   joint_action_scale: dict[str, float]
   joint_actuator_names: tuple[str, ...]
+  """Targets of the catch-all joint term: everything that is not a screw
+  driven in a "slider" variant (those get their own ordered terms below)."""
+  hip_z_slider_action: SliderAction | None
+  hip_xy_slider_action: SliderAction | None
+  ankle_slider_action: SliderAction | None
 
   def make_spec(self) -> mujoco.MjSpec:
     return get_kangaroo_full_full_spec(lower_body=self.lower_body)
@@ -349,8 +412,11 @@ def get_kangaroo_full_full_model(
 
   Every actuator here is JOINT-transmission (there is no tendon left to
   target), so unlike pal_kangaroo_full's get_kangaroo_full_model this needs
-  no TENDON-side action term or tendon-length-at-init offset computation --
-  the whole action vector is one JointPositionActionCfg.
+  no tendon-length-at-init offset computation. The action vector still
+  splits the same way, though: one catch-all joint term, plus one
+  order-preserved term per mechanism driven at its screw, laid out exactly
+  like the tendon term it replaces (see HIP_Z_SLIDER_JOINT_NAMES and
+  friends) so a checkpoint transfers between the two models slot for slot.
 
   The two ``*_action_scale_factor`` values mean the same as pal_kangaroo_full's:
   what fraction of an actuator's effort limit a unit action commands, expressed
@@ -375,16 +441,32 @@ def get_kangaroo_full_full_model(
   )
 
   # Legs and upper body get their own factor, so build the action term in two
-  # halves and concatenate them in the same leg-then-upper-body order.
+  # halves and concatenate them in the same leg-then-upper-body order. The
+  # screws of a "slider" variant are carved out into their own terms.
   joint_action_scale: dict[str, float] = {}
   joint_actuator_names: tuple[str, ...] = ()
+  slider_scale: dict[str, float] = {}
+  slider_names: tuple[str, ...] = ()
   for actuators, factor in (
     (leg_actuators, leg_action_scale_factor),
     (upper_body_actuators, arm_action_scale_factor),
   ):
     scales, names = _build_action_scales(actuators, TransmissionType.JOINT, factor)
-    joint_action_scale.update(scales)
-    joint_actuator_names += names
+    for name in names:
+      if name in _SLIDER_ACTUATOR_KEYS:
+        slider_scale[name] = scales[name]
+        slider_names += (name,)
+      else:
+        joint_action_scale[name] = scales[name]
+        joint_actuator_names += (name,)
+
+  def _slider_action(names: tuple[str, ...], key: str) -> SliderAction:
+    # Each term's scale may only carry keys matching its own targets, so
+    # hand each mechanism the one regex that names its sliders.
+    return SliderAction(
+      actuator_names=tuple(f"{name}$" for name in names),
+      scale={k: v for k, v in slider_scale.items() if key in k},
+    )
 
   return KangarooFullFullModel(
     hip_z=hip_z,
@@ -397,6 +479,15 @@ def get_kangaroo_full_full_model(
     init_state=INIT_STATE,
     joint_action_scale=joint_action_scale,
     joint_actuator_names=joint_actuator_names,
+    hip_z_slider_action=(
+      _slider_action(HIP_Z_SLIDER_JOINT_NAMES, "_1_") if hip_z == "slider" else None
+    ),
+    hip_xy_slider_action=(
+      _slider_action(HIP_XY_SLIDER_JOINT_NAMES, "[23]") if hip_xy == "slider" else None
+    ),
+    ankle_slider_action=(
+      _slider_action(ANKLE_SLIDER_JOINT_NAMES, "[45]") if ankle == "slider" else None
+    ),
   )
 
 
@@ -456,6 +547,17 @@ def main(
   print(f"  joint action targets ({len(model_cfg.joint_actuator_names)}):")
   for name in model_cfg.joint_actuator_names:
     print(f"    {name}  scale={model_cfg.joint_action_scale[name]:.4f}")
+  for label, slider_action in (
+    ("hip_z", model_cfg.hip_z_slider_action),
+    ("hip_xy", model_cfg.hip_xy_slider_action),
+    ("ankle", model_cfg.ankle_slider_action),
+  ):
+    if slider_action is None:
+      print(f"  {label} slider action: none (driven as a joint)")
+      continue
+    print(f"  {label} slider action targets ({len(slider_action.actuator_names)}):")
+    for name in slider_action.actuator_names:
+      print(f"    {name}")
 
   if launch_viewer:
     # Imported here, not at module scope, so importing these constants

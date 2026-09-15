@@ -82,11 +82,15 @@ def pal_kangaroo_full_full_baseline_env_cfg(
 
   # -- Actions
   #
-  # Every actuator in this model is JOINT-transmission -- there is no tendon
-  # left to target (see the module docstring on
-  # kangaroo_full_full_constants.py) -- so the whole action vector is one
-  # JointPositionActionCfg, unlike pal_kangaroo_full's per-mechanism tendon
-  # terms.
+  # Same layout as pal_kangaroo_full: one JOINT term for everything driven by
+  # a plain motor, plus one term per mechanism driven at its screw. Every
+  # actuator here is JOINT-transmission (there is no tendon left to target --
+  # see the module docstring on kangaroo_full_full_constants.py), but the
+  # screw terms are still kept separate and order-preserved, with the slider
+  # names listed in the order of the tendon they replace, so a mechanism
+  # occupies the same action slots in both models and a checkpoint trained
+  # on one can be played on the other. A plain JointPositionActionCfg would
+  # lay the sliders out in MJCF tree order, which differs (the right ankle).
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
@@ -96,6 +100,20 @@ def pal_kangaroo_full_full_baseline_env_cfg(
       use_default_offset=True,
     )
   }
+  for name, slider_action in (
+    ("hip_z_pos", model.hip_z_slider_action),
+    ("hip_xy_pos", model.hip_xy_slider_action),
+    ("ankle_pos", model.ankle_slider_action),
+  ):
+    if slider_action is None:
+      continue
+    cfg.actions[name] = mdp.OrderedJointPositionActionCfg(
+      entity_name="robot",
+      actuator_names=slider_action.actuator_names,
+      preserve_order=True,
+      scale=slider_action.scale,
+      use_default_offset=True,
+    )
 
   # -- Observations
   #
