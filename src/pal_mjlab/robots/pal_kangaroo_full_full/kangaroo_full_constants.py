@@ -156,7 +156,7 @@ ANKLE_SLIDER_JOINT_NAMES = (
 # paired left_*_l|right_*_r because the two legs are mirror images: the
 # "l"/"r" of a slider body is its own, not the leg's.
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.90),
+  pos=(0.0, 0.0, 0.91),
   rot=(1.0, 0.0, 0.0, 0.0),
   joint_pos={
     "pelvis_1_joint": 0.0,

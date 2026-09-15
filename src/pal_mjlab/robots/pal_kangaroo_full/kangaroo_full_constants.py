@@ -765,7 +765,7 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 # init state covers every :data:`MjcfVariant` and every hip_z / hip_xy /
 # leg_length / femur_closure variant.
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.90),
+  pos=(0.0, 0.0, 0.91),
   rot=(1.0, 0.0, 0.0, 0.0),
   joint_pos={
     "leg_left_1_joint": -0.012074,
