@@ -415,7 +415,7 @@
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
                 <body name="left_leg_ankle_cross">
                   <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
-                  <body name="left_ankle">
+                  <body name="left_ankle" quat="0.947955592 -4.91214115e-07 -0.318402569 1.41542953e-08" >
                     <body name="left_ankle_connection_frame" quat="1.76763e-09 -0.173648 -3.11681e-10 -0.984808">
                       <body name="leg_left_4_link" quat="-0.173648 0 0.984808 0">
                         <inertial pos="-0.00759995 -6.94998e-09 5.88281e-08" quat="3.61787e-06 0.707107 3.61787e-06 0.707106" mass="0.0905838" diaginertia="2.98863e-05 2.92763e-05 4.05264e-06"/>
@@ -627,7 +627,7 @@
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
                 <body name="right_leg_ankle_cross">
                   <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
-                  <body name="right_ankle">
+                  <body name="right_ankle" quat="0.947955592 -4.91214115e-07 -0.318402569 1.41542953e-08" >
                     <body name="right_ankle_connection_frame" quat="1.76763e-09 -0.173648 -3.11681e-10 -0.984808">
                       <body name="leg_right_4_link" quat="-0.173648 0 0.984808 0">
                         <inertial pos="-0.00759995 -6.94998e-09 5.88281e-08" quat="3.61787e-06 0.707107 3.61787e-06 0.707106" mass="0.0905838" diaginertia="2.98863e-05 2.92763e-05 4.05264e-06"/>

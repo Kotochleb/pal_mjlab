@@ -762,26 +762,22 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 
 # leg_.*_length_actuator is absent from the leg_length="joint" variants; a
 # pattern that matches no joint is simply ignored by resolve_expr, so one
-# base init state covers every hip_z / hip_xy / leg_length / femur_closure
-# variant. leg_.*_4_joint and the butterflies are the exception: the two
-# MJCFs describe different ankle geometry, so those two keys rest at a
-# different pose per :data:`MjcfVariant` and are layered on top by
-# get_kangaroo_full_model rather than fixed here -- see
-# :data:`_MJCF_ANKLE_INIT_STATE`.
+# init state covers every :data:`MjcfVariant` and every hip_z / hip_xy /
+# leg_length / femur_closure variant.
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.90),
   rot=(1.0, 0.0, 0.0, 0.0),
   joint_pos={
-    "leg_left_1_joint": -0.012,
-    "leg_right_1_joint": 0.012,
-    "leg_.*_2_joint": 0.0522,
-    "leg_left_3_joint": 0.04,
-    "leg_right_3_joint": -0.04,
-    "leg_.*_length_joint": -0.125,
-    "leg_.*_length_actuator": 0.02766,
-    "leg_.*_5_joint": 0.0,
-    "leg_.*_femur_joint": -0.29636,
-    "leg_.*_knee_joint": 0.5978,
+    "leg_left_1_joint": -0.012074,
+    "leg_right_1_joint": 0.012072,
+    "leg_.*_2_joint": 0.052192,
+    "leg_left_3_joint": -0.039992,
+    "leg_right_3_joint": 0.040002,
+    "leg_.*_length_joint": -0.125030,
+    "leg_.*_4_joint": -0.352785,
+    "leg_.*_5_joint": 0.000001,
+    "leg_.*_femur_joint": -0.296368,
+    "leg_.*_knee_joint": 0.597794,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
     "arm_.*_2_joint": 1.32,
@@ -794,20 +790,6 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   joint_vel={".*": 0.0},
 )
 
-# leg_.*_4_joint / butterfly rest pose, layered onto INIT_STATE.joint_pos by
-# get_kangaroo_full_model -- see the note on INIT_STATE above.
-_MJCF_ANKLE_INIT_STATE: dict[MjcfVariant, dict[str, float]] = {
-  "tendons": {
-    "leg_.*_4_joint": -0.2953,
-    ".*_butterfly_(r|l)": 0.0,
-  },
-  "tendons_over_constrained": {
-    "leg_.*_4_joint": 0.2953,
-    ".*_butterfly_(r|l)": 0.543,
-  },
-}
-
-
 def _compute_tendon_lengths_at_init_state(
   spec: mujoco.MjSpec, tendon_names: tuple[str, ...], joint_pos: dict[str, float]
 ) -> dict[str, float]:
@@ -819,9 +801,9 @@ def _compute_tendon_lengths_at_init_state(
   ``TendonLengthActionCfg`` has no ``use_default_offset``, so the equivalent
   offset is solved for here instead of being hand-maintained -- a hardcoded
   constant silently drifts out of sync with the model (it previously did, by
-  ~0.3-0.5 mm). ``joint_pos`` is a caller's fully-assembled init state (see
-  :data:`INIT_STATE` and :data:`_MJCF_ANKLE_INIT_STATE`), not read off a
-  module-level default, since the rest pose differs by :data:`MjcfVariant`.
+  ~0.3-0.5 mm). ``joint_pos`` is the caller's init state (see
+  :data:`INIT_STATE`) rather than a module-level default read here, so the
+  offset always follows whatever pose the caller actually spawns at.
   """
   # The raw XML references a `terrain` body for foot-collision excludes that
   # only resolves once attached into a full scene; add a placeholder so this
@@ -1047,13 +1029,6 @@ def get_kangaroo_full_model(
     soft_joint_pos_limit_factor=0.99,
   )
 
-  init_state = EntityCfg.InitialStateCfg(
-    pos=INIT_STATE.pos,
-    rot=INIT_STATE.rot,
-    joint_pos={**INIT_STATE.joint_pos, **_MJCF_ANKLE_INIT_STATE[mjcf]},
-    joint_vel=INIT_STATE.joint_vel,
-  )
-
   # Legs and upper body get their own factor, so build the JOINT term in two
   # halves and concatenate them in the same leg-then-upper-body order.
   joint_action_scale: dict[str, float] = {}
@@ -1087,7 +1062,7 @@ def get_kangaroo_full_model(
         lower_body=lower_body,
       ),
       tendon_names,
-      init_state.joint_pos,
+      INIT_STATE.joint_pos,
     )
     if tendon_names
     else {}
@@ -1113,7 +1088,7 @@ def get_kangaroo_full_model(
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
     articulation=articulation,
-    init_state=init_state,
+    init_state=INIT_STATE,
     joint_action_scale=joint_action_scale,
     joint_actuator_names=joint_actuator_names,
     hip_z_tendon_action=(

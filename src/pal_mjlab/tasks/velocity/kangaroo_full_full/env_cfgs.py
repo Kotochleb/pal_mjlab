@@ -331,7 +331,6 @@ def pal_kangaroo_full_full_rough_env_cfg(
     leg_action_scale_factor=leg_action_scale_factor,
   )
   cfg = configure_kangaroo_rough_env(cfg, play=play)
-  cfg.sim.njmax = 700
   return cfg
 
 
