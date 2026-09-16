@@ -24,4 +24,7 @@ docs_build/
 # Data
 artifacts/
 *.npz
+# The LUT transmission maps of the connect-linkage Kangaroo model ship with
+# the package: the only .npz files that are tracked.
+!src/pal_mjlab/robots/pal_kangaroo_full/lut_transmission/*.npz
 motion.mp4

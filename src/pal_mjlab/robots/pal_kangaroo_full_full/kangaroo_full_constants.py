@@ -25,21 +25,35 @@ Two axes ``pal_kangaroo_full`` has don't exist here:
 * ``femur_closure``: this MJCF only has the ``"linkage"`` four-bar (femur
   triangle + femur rod, closed through the ``(left|right)_hip_xy_link`` /
   ``(left|right)_femur_rod`` equalities) -- there is no straight-line
-  ``leg_.*_length_joint`` stand-in to fall back to. Consequently ``leg_length``
-  is not a variant axis either: every ``pal_kangaroo_full`` value other than
-  ``"actuator"`` targets that missing joint, and ``get_kangaroo_full_spec``
-  already restricts ``femur_closure="linkage"`` to pair only with
-  ``leg_length="actuator"`` -- the one combination this model can produce, so
-  the screw (``leg_.*_length_actuator``) is simply always driven directly.
+  ``leg_.*_length_joint`` stand-in to fall back to. Consequently none of
+  ``pal_kangaroo_full``'s ``leg_length`` values other than ``"actuator"``
+  apply (they all target that missing joint); the ``leg_length`` axis here
+  is the ``"actuator"`` / ``"transmission"`` pair described below.
 * ``mjcf``: there is one XML here, not a base/over-constrained pair.
 
-What's left are three real actuation choices. ``hip_z`` and ``hip_xy`` each
+What's left are four real actuation choices. ``hip_z`` and ``hip_xy`` each
 pick between driving the linear actuator screw directly (``"slider"`` --
 ``pal_kangaroo_full``'s tendon axis, replaced by the real actuator it stood
 in for) or driving the output joint directly (``"joint"``). ``ankle`` keeps a
 third option, ``"butterfly"``, which targets the real butterfly hinges
 instead of either screw-adjacent coordinate. ``lower_body`` is unchanged from
 ``pal_kangaroo_full``: it deletes both arms and servos only the waist.
+
+Every screw axis, and ``leg_length``, also has a ``"transmission"`` value:
+the real screw is driven, as in ``"slider"``, but *commanded* on the simple
+model's joint, as in ``"joint"`` -- a full PD (kp and kd) runs on the joint,
+the torque it asks for is pushed onto the screw through the mechanism's
+Jacobian, and the resulting force is handed to a ``<motor>`` on the screw.
+That is ``pal_kangaroo_full``'s ``leg_length="semi_serial"`` law
+generalised, with the transmission read from spline-interpolated maps of
+the mechanism geometry (one file per mechanism, built from the right leg and
+shared by both legs -- hip yaw through a sign flip): see
+``pal_kangaroo_full.lut_actuator`` and ``pal_kangaroo_full.lut_maps``, and
+:data:`LUT_TRANSMISSION_DIR` for the files. ``leg_length`` is a two-valued
+axis for this reason alone (``"actuator"`` drives the screw directly, as
+before); its transmitted variant servos the knee in the leg-length metres
+``knee_distance_map.csv`` maps it onto, the same coordinate the observations
+present as the missing ``leg_.*_length_joint``.
 
 :data:`INIT_STATE` is this MJCF's own, not ``pal_kangaroo_full``'s: every
 mechanism-only coordinate (the motor housings, the sliders, the femur
@@ -50,15 +64,16 @@ at, and the ankle is posed for flat feet -- see the note on INIT_STATE.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 import mujoco
 from mjlab.actuator import BuiltinPositionActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
-
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   FULL_COLLISION,
@@ -68,16 +83,27 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
   _calc_leg_params,
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
-  INIT_STATE as _SIMPLE_MJCF_INIT_STATE,
-)
-from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  _ARM_BASE_LINK_NAMES,
   ARM_ACTION_SCALE_FACTOR,
   LEG_ACTION_SCALE_FACTOR,
+  LUT_TRANSMISSION_DIR,
   _add_collision_capsules,
-  _ARM_BASE_LINK_NAMES,
   _build_action_scales,
   _calc_linear_leg_params,
   _delete_subtrees,
+)
+from pal_mjlab.robots.pal_kangaroo_full.lut_actuator import (
+  AnkleLutPdActuatorCfg,
+  GainSpec,
+  HipXyLutPdActuatorCfg,
+  HipZLutPdActuatorCfg,
+  LegLengthLutPdActuatorCfg,
+)
+from pal_mjlab.robots.pal_kangaroo_full.lut_maps import (
+  AnkleMap,
+  HipXyMap,
+  HipZMap,
+  LegLengthMap,
 )
 
 ##
@@ -112,10 +138,41 @@ KANGAROO_FULL_FULL_PATH = (
 )
 KANGAROO_FULL_FULL_XML = KANGAROO_FULL_FULL_PATH / "kangaroo_full.xml"
 assert KANGAROO_FULL_FULL_XML.exists(), f"Missing: {KANGAROO_FULL_FULL_XML}"
+# The transmission maps of this MJCF's screw mechanisms, read by the
+# "transmission" actuation variants below, live with the actuator classes in
+# pal_kangaroo_full: LUT_TRANSMISSION_DIR, imported above.
 
-HipZActuation = Literal["slider", "joint"]
-HipXyActuation = Literal["slider", "joint"]
-AnkleActuation = Literal["butterfly", "joint", "slider"]
+# The passive hinges of each leg's ankle linkage: the two motor cranks, the
+# rods and cranks of the two femur four-bars, the two butterflies, and the
+# tibia bars' two-hinge universal joints (whose *_1 intermediate body is a
+# 1e-5 kg dummy). The MJCF gives none of them armature, and the parts they
+# move weigh 0.07-0.25 kg, so under the 2000 N the ankle screws can apply the
+# linkage is numerically near-massless: an untrained policy's first random
+# targets drove it to 1e3-1e7 rad/s and NaN within a dozen 2 ms substeps.
+# Reflected screw armature only regularizes the driven slider, not these
+# hinges -- see get_kangaroo_full_full_spec.
+REGEX_ANKLE_LINKAGE_JOINTS = (
+  r"^(left|right)_(ankle_(motor|crank|femur_bar)_(l|r)|"
+  r"ankle_tibia_bar_(l|r)[12]|butterfly_(l|r))$"
+)
+# On the order of the linkage's own inertia (butterfly ~1.7e-4 kg m^2, femur
+# bar ~1.5e-3 about its hinge). On CPU with the ankle screws saturated, 0
+# diverges, 1e-4 still peaks at ~1e6 rad/s on some random commands, 1e-3
+# stays below ~250 rad/s, and 1e-2 would outweigh every part it sits on.
+ANKLE_LINKAGE_ARMATURE = 1e-3
+# The intermediate body of each tibia bar's universal joint is a 1e-5 kg
+# placeholder in the MJCF (no mesh, no real part). Its two hinges are covered
+# by ANKLE_LINKAGE_ARMATURE; the body itself is also brought up to a small but
+# non-vanishing mass so the linear part of its inertia isn't at float32 noise
+# level either. Its diaginertia (1e-5, already larger than the mass warrants)
+# is left as is.
+REGEX_ANKLE_LINKAGE_DUMMY_BODIES = r"^(left|right)_ankle_tibia_bar_(l|r)1$"
+ANKLE_LINKAGE_DUMMY_BODY_MASS = 2e-3
+
+HipZActuation = Literal["slider", "joint", "transmission"]
+HipXyActuation = Literal["slider", "joint", "transmission"]
+AnkleActuation = Literal["butterfly", "joint", "slider", "transmission"]
+LegLengthActuation = Literal["actuator", "transmission"]
 # Not an actuation choice like the axes above -- whether the arms exist at
 # all -- but still a `Literal` alongside them rather than a bare `bool` so it
 # reads the same way at every call site, mirroring pal_kangaroo_full.
@@ -204,12 +261,38 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   joint_vel={".*": 0.0},
 )
 
-def get_kangaroo_full_full_spec(lower_body: LowerBody = False) -> mujoco.MjSpec:
-  """Load the MJCF and add the collision capsules the raw file doesn't carry.
 
-  Unlike ``pal_kangaroo_full``'s ``get_kangaroo_full_spec``, none of hip_z /
-  hip_xy / ankle need spec edits here: every mechanism they could pick
-  between is a real ``<connect>``-closed loop with exactly one DOF, present
+def _regularize_ankle_linkage(spec: mujoco.MjSpec) -> None:
+  """Give every ankle linkage hinge ANKLE_LINKAGE_ARMATURE and the universal
+  joints' placeholder bodies ANKLE_LINKAGE_DUMMY_BODY_MASS.
+
+  Applied for every ``ankle`` actuation, not just ``"slider"``: the linkage is
+  in the model either way (the ``"joint"`` variant leaves it free-wheeling
+  along with the ankle) and the same near-massless hinges are what any
+  contact or actuator impulse reaches.
+  """
+  pattern = re.compile(REGEX_ANKLE_LINKAGE_JOINTS)
+  joints = [jnt for jnt in spec.joints if pattern.match(jnt.name)]
+  assert len(joints) == 24, [jnt.name for jnt in joints]
+  for jnt in joints:
+    jnt.armature = ANKLE_LINKAGE_ARMATURE
+
+  pattern = re.compile(REGEX_ANKLE_LINKAGE_DUMMY_BODIES)
+  bodies = [body for body in spec.bodies if pattern.match(body.name)]
+  assert len(bodies) == 4, [body.name for body in bodies]
+  for body in bodies:
+    body.mass = ANKLE_LINKAGE_DUMMY_BODY_MASS
+
+
+def get_kangaroo_full_full_spec(lower_body: LowerBody = False) -> mujoco.MjSpec:
+  """Load the MJCF and add what the raw file doesn't carry.
+
+  That is the collision capsules, armature on the ankle linkage's passive
+  hinges and mass on its placeholder bodies (see REGEX_ANKLE_LINKAGE_JOINTS
+  and REGEX_ANKLE_LINKAGE_DUMMY_BODIES). Unlike ``pal_kangaroo_full``'s
+  ``get_kangaroo_full_spec``, none of hip_z / hip_xy / ankle need
+  variant-specific spec edits here: every mechanism they could pick between
+  is a real ``<connect>``-closed loop with exactly one DOF, present
   unconditionally in the MJCF, and the actuator config alone decides which of
   its two redundant coordinates gets driven -- see
   :func:`get_kangaroo_full_full_model`. Only ``lower_body`` changes the spec
@@ -217,6 +300,7 @@ def get_kangaroo_full_full_spec(lower_body: LowerBody = False) -> mujoco.MjSpec:
   """
   spec = mujoco.MjSpec.from_file(str(KANGAROO_FULL_FULL_XML))
   _add_collision_capsules(spec)
+  _regularize_ankle_linkage(spec)
   if lower_body:
     # Whole-arm removal: delete before returning so nothing downstream has to
     # know the arms are gone. Reused verbatim from pal_kangaroo_full -- same
@@ -335,8 +419,152 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 
 
 ##
+# Transmitted actuator configs.
+#
+# Built on demand rather than at import: each one loads its map from
+# LUT_TRANSMISSION_DIR, so a checkout without the maps still imports this
+# module and builds every other variant; get_kangaroo_full_full_model is
+# cached, so each map is read once per process. One instance per mechanism
+# serves both legs (the maps are built from the right leg and hold for the
+# left one, hip yaw through a sign flip -- see lut_actuator), so each map is
+# shared. Joint-side gains are the "joint" variants' (the leg length
+# pal_kangaroo_full's "semi_serial" gains, in metres); the <motor> on each
+# screw takes the "slider" / "actuator" variants' force limit, armature and
+# viscous damping.
+##
+
+_SIDES = ("left", "right")
+
+# The target_names_expr of the transmitted leg-length config, i.e. the keys
+# _build_action_scales hands back for it; get_kangaroo_full_full_model
+# routes these into the mapped leg-length action term rather than the
+# catch-all, since their targets are in metres, not knee radians.
+_LEG_LENGTH_TRANSMISSION_KEYS = frozenset(f"leg_{side}_knee_joint" for side in _SIDES)
+
+TRANSMISSION_MAP_NAMES = (
+  "hip_z_map.npz",
+  "leg_length_map.npz",
+  "hip_xy_jacobian_map.npz",
+  "ankle_xy_jacobian_map.npz",
+)
+"""Every map the "transmission" variants read, relative to LUT_TRANSMISSION_DIR."""
+
+
+def transmission_maps_available() -> bool:
+  """Whether every "transmission" variant can be built from this checkout."""
+  return all((LUT_TRANSMISSION_DIR / name).exists() for name in TRANSMISSION_MAP_NAMES)
+
+
+def _transmission_file(name: str) -> Path:
+  path = LUT_TRANSMISSION_DIR / name
+  if not path.exists():
+    raise FileNotFoundError(
+      f'{path} is missing: the "transmission" actuation variants need the maps '
+      "(hip_z_map.npz, leg_length_map.npz, hip_xy_jacobian_map.npz, "
+      "ankle_xy_jacobian_map.npz) that ship in pal_kangaroo_full/lut_transmission/."
+    )
+  return path
+
+
+@lru_cache(maxsize=None)
+def _transmission_leg_length_map() -> LegLengthMap:
+  # Shared by the leg-length and the ankle actuators (the ankle map's third
+  # axis is the leg-length slider, reached from the knee through this map).
+  return LegLengthMap.load(_transmission_file("leg_length_map.npz"))
+
+
+def _screw_motor_params(stiffness: float, effort: float, armature: float) -> dict:
+  """The "slider" variants' screw element, as the <motor> parameters of a
+  transmitted actuator: its force limit, armature and viscous damping (the kp/kv
+  belong to the <position> element that isn't there)."""
+  params = _calc_linear_leg_params(
+    stiffness=stiffness, effort=effort, armature=armature
+  )
+  return {
+    "actuator_effort_limit": params["effort_limit"],
+    "armature": params["armature"],
+    "viscous_damping": params["viscous_damping"],
+  }
+
+
+def _joint_pd_params(stiffness: float, effort: GainSpec) -> dict:
+  """The "joint" variants' PD, as the servo-side gains of a transmitted actuator."""
+  # Only the damping rule (2 zeta kp / omega) is wanted from _calc_leg_params;
+  # the effort may be per joint, which that helper doesn't take.
+  joint = _calc_leg_params(stiffness, 0.0, 0.01, None, None)
+  return {
+    "joint_stiffness": joint["stiffness"],
+    "joint_damping": joint["damping"],
+    "joint_effort_limit": effort,
+  }
+
+
+def _hip_z_transmission_actuators() -> tuple[HipZLutPdActuatorCfg, ...]:
+  return (
+    HipZLutPdActuatorCfg(
+      target_names_expr=(r"leg_(left|right)_1_joint",),
+      hip_z_map=HipZMap.load(_transmission_file("hip_z_map.npz")),
+      **_joint_pd_params(100.0, 80.0),
+      **_screw_motor_params(stiffness=2500.0, effort=2000.0, armature=0.1),
+    ),
+  )
+
+
+def _hip_xy_transmission_actuators() -> tuple[HipXyLutPdActuatorCfg, ...]:
+  return (
+    HipXyLutPdActuatorCfg(
+      target_names_expr=(r"leg_(left|right)_2_joint", r"leg_(left|right)_3_joint"),
+      hip_xy_map=HipXyMap.load(_transmission_file("hip_xy_jacobian_map.npz")),
+      **_joint_pd_params(
+        100.0, {r"leg_(left|right)_2_joint": 230.0, r"leg_(left|right)_3_joint": 139.0}
+      ),
+      **_screw_motor_params(stiffness=750.0, effort=2000.0, armature=0.1),
+    ),
+  )
+
+
+def _ankle_transmission_actuators() -> tuple[AnkleLutPdActuatorCfg, ...]:
+  return (
+    AnkleLutPdActuatorCfg(
+      target_names_expr=(r"leg_(left|right)_4_joint", r"leg_(left|right)_5_joint"),
+      ankle_map=AnkleMap.load(_transmission_file("ankle_xy_jacobian_map.npz")),
+      leg_length_map=_transmission_leg_length_map(),
+      **_joint_pd_params(
+        30.0, {r"leg_(left|right)_4_joint": 140.0, r"leg_(left|right)_5_joint": 82.0}
+      ),
+      **_screw_motor_params(stiffness=1500.0, effort=2000.0, armature=0.1),
+    ),
+  )
+
+
+def _leg_length_transmission_actuators() -> tuple[LegLengthLutPdActuatorCfg, ...]:
+  # Explicit knee names rather than a regex: _build_action_scales hands
+  # these back as the keys, and _LEG_LENGTH_TRANSMISSION_KEYS routes them
+  # into the mapped (metres) leg-length action term.
+  return (
+    LegLengthLutPdActuatorCfg(
+      target_names_expr=tuple(f"leg_{side}_knee_joint" for side in _SIDES),
+      leg_length_map=_transmission_leg_length_map(),
+      **_joint_pd_params(900.0, 1100.0),
+      **_screw_motor_params(stiffness=6000.0, effort=5000.0, armature=1.0),
+    ),
+  )
+
+
+##
 # Variants.
 ##
+
+
+@dataclass(frozen=True)
+class LegLengthAction:
+  """What the mapped leg-length action term needs for the transmitted
+  leg-length variant: the knee joints it targets and the scale, in metres,
+  a unit action commands. The offset is the map's value at the default knee
+  angle, which the term reads for itself."""
+
+  actuator_names: tuple[str, ...]
+  scale: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -361,6 +589,7 @@ class KangarooFullFullModel:
   hip_z: HipZActuation
   hip_xy: HipXyActuation
   ankle: AnkleActuation
+  leg_length: LegLengthActuation
   lower_body: LowerBody
   arm_action_scale_factor: float
   leg_action_scale_factor: float
@@ -370,10 +599,12 @@ class KangarooFullFullModel:
   joint_action_scale: dict[str, float]
   joint_actuator_names: tuple[str, ...]
   """Targets of the catch-all joint term: everything that is not a screw
-  driven in a "slider" variant (those get their own ordered terms below)."""
+  driven in a "slider" variant (those get their own ordered terms below)
+  and not the knee of a transmitted leg length (its own term too)."""
   hip_z_slider_action: SliderAction | None
   hip_xy_slider_action: SliderAction | None
   ankle_slider_action: SliderAction | None
+  leg_length_action: LegLengthAction | None
 
   def make_spec(self) -> mujoco.MjSpec:
     return get_kangaroo_full_full_spec(lower_body=self.lower_body)
@@ -392,6 +623,7 @@ def get_kangaroo_full_full_model(
   hip_z: HipZActuation = "slider",
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
+  leg_length: LegLengthActuation = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -405,20 +637,41 @@ def get_kangaroo_full_full_model(
   order-preserved term per mechanism driven at its screw, laid out exactly
   like the tendon term it replaces (see HIP_Z_SLIDER_JOINT_NAMES and
   friends) so a checkpoint transfers between the two models slot for slot.
+  A "transmission" mechanism is commanded on its simple-model joints and so
+  sits in the catch-all term like a "joint" one -- except the transmitted
+  leg length, whose knee target is in metres and gets its own term.
 
   The two ``*_action_scale_factor`` values mean the same as pal_kangaroo_full's:
   what fraction of an actuator's effort limit a unit action commands, expressed
   as a position offset through its stiffness -- ``leg_action_scale_factor`` for
-  every leg mechanism, ``arm_action_scale_factor`` for the upper body.
+  every leg mechanism, ``arm_action_scale_factor`` for the upper body. For a
+  transmitted mechanism that is the servo joint's effort and stiffness, so
+  a unit action means the same thing as on the "joint" variant.
   """
   # Ordered like the simple pal_kangaroo model's actuators (hip yaw, hip
   # pitch/roll, ankle, leg length, then upper body) so the action vector reads
   # the same way in every variant, and the same way as pal_kangaroo_full's.
   leg_actuators = (
-    _HIP_Z_ACTUATORS[hip_z]
-    + _HIP_XY_ACTUATORS[hip_xy]
-    + _ANKLE_ACTUATORS[ankle]
-    + _LEG_LENGTH_ACTUATOR
+    (
+      _hip_z_transmission_actuators()
+      if hip_z == "transmission"
+      else _HIP_Z_ACTUATORS[hip_z]
+    )
+    + (
+      _hip_xy_transmission_actuators()
+      if hip_xy == "transmission"
+      else _HIP_XY_ACTUATORS[hip_xy]
+    )
+    + (
+      _ankle_transmission_actuators()
+      if ankle == "transmission"
+      else _ANKLE_ACTUATORS[ankle]
+    )
+    + (
+      _leg_length_transmission_actuators()
+      if leg_length == "transmission"
+      else _LEG_LENGTH_ACTUATOR
+    )
   )
   upper_body_actuators = (
     _LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS
@@ -435,6 +688,8 @@ def get_kangaroo_full_full_model(
   joint_actuator_names: tuple[str, ...] = ()
   slider_scale: dict[str, float] = {}
   slider_names: tuple[str, ...] = ()
+  leg_length_scale: dict[str, float] = {}
+  leg_length_names: tuple[str, ...] = ()
   for actuators, factor in (
     (leg_actuators, leg_action_scale_factor),
     (upper_body_actuators, arm_action_scale_factor),
@@ -444,6 +699,9 @@ def get_kangaroo_full_full_model(
       if name in _SLIDER_ACTUATOR_KEYS:
         slider_scale[name] = scales[name]
         slider_names += (name,)
+      elif name in _LEG_LENGTH_TRANSMISSION_KEYS:
+        leg_length_scale[name] = scales[name]
+        leg_length_names += (name,)
       else:
         joint_action_scale[name] = scales[name]
         joint_actuator_names += (name,)
@@ -460,6 +718,7 @@ def get_kangaroo_full_full_model(
     hip_z=hip_z,
     hip_xy=hip_xy,
     ankle=ankle,
+    leg_length=leg_length,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
@@ -476,6 +735,11 @@ def get_kangaroo_full_full_model(
     ankle_slider_action=(
       _slider_action(ANKLE_SLIDER_JOINT_NAMES, "[45]") if ankle == "slider" else None
     ),
+    leg_length_action=(
+      LegLengthAction(actuator_names=leg_length_names, scale=leg_length_scale)
+      if leg_length == "transmission"
+      else None
+    ),
   )
 
 
@@ -483,6 +747,7 @@ def main(
   hip_z: HipZActuation = "slider",
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
+  leg_length: LegLengthActuation = "actuator",
   lower_body: LowerBody = False,
   launch_viewer: bool = True,
 ) -> None:
@@ -490,22 +755,33 @@ def main(
 
   Args:
     hip_z: Drive hip yaw through its linear actuator screw
-      (leg_.*_1_actuator), or through the plain leg_.*_1_joint revolute
-      motor. Either way the physical mechanism -- housing, slider, <connect>
-      -- stays in the model; only which coordinate is driven changes.
+      (leg_.*_1_actuator), through the plain leg_.*_1_joint revolute motor,
+      or through the screw commanded on leg_.*_1_joint via the transmission
+      map (PD on the joint, <motor> on the screw). Either way the physical
+      mechanism -- housing, slider, <connect> -- stays in the model; only
+      which coordinate is driven changes.
     hip_xy: Drive hip pitch/roll through the parallel screw pair
-      (leg_.*_(2|3)_actuator), or through the plain leg_.*_2_joint /
-      leg_.*_3_joint revolute motors.
+      (leg_.*_(2|3)_actuator), through the plain leg_.*_2_joint /
+      leg_.*_3_joint revolute motors, or through the pair commanded on those
+      joints via the 2-D transmission map.
     ankle: Swing the ankle from the (left|right)_butterfly_(l|r) joints, as
-      the hardware does; servo leg_.*_4_joint / leg_.*_5_joint directly; or
-      drive the ankle screw pair (leg_.*_(4|5)_actuator).
+      the hardware does; servo leg_.*_4_joint / leg_.*_5_joint directly;
+      drive the ankle screw pair (leg_.*_(4|5)_actuator); or drive the pair
+      commanded on leg_.*_(4|5)_joint via the 3-D (pitch, roll, leg length)
+      transmission map.
+    leg_length: Drive the knee screw (leg_.*_length_actuator) directly, or
+      commanded in leg-length metres on the knee via the transmission map.
     lower_body: Delete both arms (everything from arm_(left|right)_base_link
       down) and servo only the waist where the full model would otherwise
       also drive the arms.
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_full_model(
-    hip_z=hip_z, hip_xy=hip_xy, ankle=ankle, lower_body=lower_body
+    hip_z=hip_z,
+    hip_xy=hip_xy,
+    ankle=ankle,
+    leg_length=leg_length,
+    lower_body=lower_body,
   )
 
   # Go through Entity rather than compiling make_spec() directly:
@@ -521,7 +797,10 @@ def main(
   mujoco.mj_resetDataKeyframe(model, data, model.key("init_state").id)
   mujoco.mj_forward(model, data)
 
-  print(f"hip_z={hip_z} hip_xy={hip_xy} ankle={ankle} lower_body={lower_body}")
+  print(
+    f"hip_z={hip_z} hip_xy={hip_xy} ankle={ankle} leg_length={leg_length} "
+    f"lower_body={lower_body}"
+  )
   if entity.is_fixed_base:
     print("  base:    FIXED (no freejoint in the MJCF -- pinned to a mocap body)")
   else:
@@ -531,7 +810,11 @@ def main(
   print(f"  actuators ({model.nu}):")
   for i in range(model.nu):
     actuator = model.actuator(i)
-    print(f"    {actuator.name:34s} (joint)  kp={actuator.gainprm[0]:.1f}")
+    if actuator.biasprm[1] != 0.0:  # <position>: gainprm[0] is kp
+      print(f"    {actuator.name:34s} (joint)  kp={actuator.gainprm[0]:.1f}")
+    else:  # <motor>: an external force within forcerange
+      lo, hi = actuator.forcerange
+      print(f"    {actuator.name:34s} (joint)  motor, force in [{lo:.0f}, {hi:.0f}]")
   print(f"  joint action targets ({len(model_cfg.joint_actuator_names)}):")
   for name in model_cfg.joint_actuator_names:
     print(f"    {name}  scale={model_cfg.joint_action_scale[name]:.4f}")
@@ -541,11 +824,18 @@ def main(
     ("ankle", model_cfg.ankle_slider_action),
   ):
     if slider_action is None:
-      print(f"  {label} slider action: none (driven as a joint)")
+      print(f"  {label} slider action: none (commanded on joints)")
       continue
     print(f"  {label} slider action targets ({len(slider_action.actuator_names)}):")
     for name in slider_action.actuator_names:
       print(f"    {name}")
+  if model_cfg.leg_length_action is None:
+    print("  leg length action: none (screw driven directly)")
+  else:
+    action = model_cfg.leg_length_action
+    print(f"  leg length action targets ({len(action.actuator_names)}), metres:")
+    for name in action.actuator_names:
+      print(f"    {name}  scale={action.scale[name]:.4f}")
 
   if launch_viewer:
     # Imported here, not at module scope, so importing these constants

@@ -47,9 +47,22 @@ TranssmitedIdealPdCfgT = TypeVar(
 )
 
 
-def load_transmission_table(csv_path: str | Path) -> torch.Tensor:
+def load_transmission_table(
+  csv_path: str | Path,
+  columns: tuple[int, int] = (0, 1),
+  key_offset: float = 0.0,
+) -> torch.Tensor:
+  """Load a CSV as an (N, 2) ``(key, value)`` table sorted by key.
+
+  ``columns`` picks which two columns of the file are the key and the value
+  -- the default reads a ``pos,force_J`` transmission file as is; another
+  choice reads e.g. ``knee_distance_map.csv``'s ``(knee_rad, distance_m)``.
+  ``key_offset`` is added to the key column, for a file keyed by a
+  coordinate that differs from the servoed one by a constant.
+  """
   data = np.loadtxt(csv_path, delimiter=",", skiprows=1, dtype=np.float32)
-  table = torch.from_numpy(data)
+  table = torch.from_numpy(data[:, list(columns)])
+  table[:, 0] += key_offset
   return table[torch.argsort(table[:, 0])]
 
 
@@ -234,25 +247,44 @@ class TransmittedPositionActuatorCfg(ActuatorCfg):
   Unlike a Python-side PD, that force then keeps tracking as the driven joint
   moves through the control period, and the implicit integrators see the gains.
 
-  ``effort_limit`` is the only limit in the chain: tau is not clamped on the
-  servo side, and the force that reaches the mechanism is bounded where it is
-  actually applied, by the element's ``forcerange``. The setpoint itself is
-  deliberately unclamped (``create_position_actuator`` sets
+  By default ``effort_limit`` is the only limit in the chain: tau is not
+  clamped on the servo side, and the force that reaches the mechanism is
+  bounded where it is actually applied, by the element's ``forcerange``.
+  ``joint_effort_limit`` adds an optional clamp on tau itself. The setpoint
+  is deliberately unclamped (``create_position_actuator`` sets
   ``ctrllimited=False``), since it lives outside the driven joint's range
   whenever the transmission is asking for near-limit force.
+
+  The servo coordinate ``q`` is the target joint's own position unless
+  ``servo_map`` is given, in which case it is that table evaluated at the
+  joint's position -- how the connect-linkage model servos its leg length:
+  the target is ``leg_.*_knee_joint`` (the only DOF it has there), but the P
+  law, the targets and ``transmission`` all run in the leg-length metres the
+  simple model uses, through the swept knee-to-length map.
   """
 
   joint_to_actuator_map: dict[str, str]
   """Servo joint name -> name of the joint driven through the transmission."""
 
   transmission: torch.Tensor
-  """Transmission lookup table: (N, 2) tensor of (servo joint pos, force_J)
-  rows, sorted by position ascending. See `load_transmission_table`."""
+  """Transmission lookup table: (N, 2) tensor of (servo pos, force_J) rows,
+  sorted by position ascending, keyed by the servo coordinate (the joint
+  position, or its ``servo_map`` image). See `load_transmission_table`."""
 
   joint_stiffness: float
-  """Proportional gain of the servo joint. The only servo-side parameter there
-  is: the derivative term lives on the driven joint as `damping`, and the only
-  effort limit lives there too as `effort_limit`."""
+  """Proportional gain of the servo joint. The derivative term lives on the
+  driven joint as `damping`."""
+
+  joint_effort_limit: float | None = None
+  """Clamp on the servo-side torque before it is transmitted. None (the
+  default) leaves the driven joint's `effort_limit` as the chain's only
+  limit. Also what the action scale derives from when set, so a unit action
+  means the same fraction of joint effort as on the plain joint actuator."""
+
+  servo_map: torch.Tensor | None = None
+  """Optional (N, 2) table of (joint pos, servo pos) rows, sorted by joint
+  pos, mapping the target joint's position onto the coordinate the P law and
+  `transmission` are keyed by. None servos the joint position itself."""
 
   stiffness: float
   """Proportional gain of the driven joint (the <position> element's kp)."""
@@ -291,6 +323,7 @@ class TransmittedPositionActuator(Actuator[TransmittedPositionActuatorCfg]):
     )
     self._driven_joint_ids: torch.Tensor | None = None
     self._transmission: torch.Tensor | None = None
+    self._servo_map: torch.Tensor | None = None
 
   def edit_spec(self, spec: mujoco.MjSpec, target_names: list[str]) -> None:
     for target_name in target_names:
@@ -316,6 +349,8 @@ class TransmittedPositionActuator(Actuator[TransmittedPositionActuatorCfg]):
   ) -> None:
     super().initialize(mj_model, model, data, device)
     self._transmission = self.cfg.transmission.to(device=device, dtype=torch.float)
+    if self.cfg.servo_map is not None:
+      self._servo_map = self.cfg.servo_map.to(device=device, dtype=torch.float)
     self._driven_joint_ids = torch.as_tensor(
       self._driven_joint_ids_list, dtype=torch.long, device=device
     )
@@ -339,6 +374,12 @@ class TransmittedPositionActuator(Actuator[TransmittedPositionActuatorCfg]):
   def compute(self, cmd: ActuatorCmd) -> torch.Tensor:
     assert isinstance(cmd, TransmittedActuatorCmd)
     assert self._transmission is not None
-    joint_torque = self.cfg.joint_stiffness * (cmd.position_target - cmd.pos)
-    force = joint_torque * interpolate_transmission(cmd.pos, self._transmission)
+    pos = cmd.pos
+    if self._servo_map is not None:
+      pos = interpolate_transmission(pos, self._servo_map)
+    joint_torque = self.cfg.joint_stiffness * (cmd.position_target - pos)
+    if self.cfg.joint_effort_limit is not None:
+      limit = self.cfg.joint_effort_limit
+      joint_torque = torch.clamp(joint_torque, -limit, limit)
+    force = joint_torque * interpolate_transmission(pos, self._transmission)
     return cmd.actuator_pos + force / self.cfg.stiffness

@@ -40,6 +40,7 @@ from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (
   AnkleActuation,
   HipXyActuation,
   HipZActuation,
+  LegLengthActuation,
   LowerBody,
   get_kangaroo_full_full_model,
 )
@@ -63,6 +64,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   hip_z: HipZActuation = "slider",
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
+  leg_length: LegLengthActuation = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -74,6 +76,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
     hip_z=hip_z,
     hip_xy=hip_xy,
     ankle=ankle,
+    leg_length=leg_length,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
@@ -91,6 +94,12 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # occupies the same action slots in both models and a checkpoint trained
   # on one can be played on the other. A plain JointPositionActionCfg would
   # lay the sliders out in MJCF tree order, which differs (the right ankle).
+  #
+  # A "transmission" mechanism is commanded on its simple-model joints, so
+  # it sits in the catch-all term exactly like a "joint" one -- except the
+  # transmitted leg length: its target joint is the knee but its targets are
+  # leg lengths in metres, so it gets the mapped term below, which offsets
+  # and de-biases in that coordinate.
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
@@ -113,6 +122,15 @@ def pal_kangaroo_full_full_baseline_env_cfg(
       preserve_order=True,
       scale=slider_action.scale,
       use_default_offset=True,
+    )
+  if model.leg_length_action is not None:
+    cfg.actions["leg_length_pos"] = mdp.MappedLegLengthPositionActionCfg(
+      entity_name="robot",
+      actuator_names=model.leg_length_action.actuator_names,
+      scale=model.leg_length_action.scale,
+      use_default_offset=True,
+      csv_path=KNEE_DISTANCE_MAP_CSV,
+      mapped_joints=LEG_LENGTH_FROM_KNEE_JOINTS,
     )
 
   # -- Observations
@@ -316,6 +334,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
   hip_z: HipZActuation = "slider",
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
+  leg_length: LegLengthActuation = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -326,6 +345,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
     hip_z=hip_z,
     hip_xy=hip_xy,
     ankle=ankle,
+    leg_length=leg_length,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
@@ -339,6 +359,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
   hip_z: HipZActuation = "slider",
   hip_xy: HipXyActuation = "slider",
   ankle: AnkleActuation = "joint",
+  leg_length: LegLengthActuation = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -349,6 +370,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
     hip_z=hip_z,
     hip_xy=hip_xy,
     ankle=ankle,
+    leg_length=leg_length,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,

@@ -71,26 +71,25 @@ simple model's joint set in every variant -- see
 from __future__ import annotations
 
 import re
-import math
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, NamedTuple
 
 import mujoco
-from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg, DcMotorActuatorCfg
+import torch
+from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
+  DAMPING_RATIO,
   FULL_COLLISION,
   KANGAROO_PELVIS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
-  FACTOR,
   NATURAL_FREQ,
-  DAMPING_RATIO,
   _calc_leg_params,
 )
 from pal_mjlab.robots.pal_kangaroo_full.actuator import (
@@ -182,12 +181,40 @@ _MJCF_XML_PATHS: dict[MjcfVariant, Path] = {
   "tendons_over_constrained": KANGAROO_FULL_XML_OVER_CONSTRAINED,
 }
 
-# Measured (leg_length_joint -> leg_length_actuator) transmission Jacobian of
-# the knee screw, used by the leg_length="semi_serial" actuator to push a joint
-# torque through the mechanism. Rows are (joint_pos, dF_actuator/dtau_joint).
+# Measured transmission Jacobian of the knee screw, used by the two
+# leg_length="semi_serial*" actuators to push a joint force through the
+# mechanism. Rows are (pos, force_J) with force_J = d(leg length)/d(screw), but
+# pos is NOT leg_.*_length_joint: it is the leg length as a distance, from the
+# leg_.*_femur_joint anchor to leg_.*_length_connect_b (0.13..0.71 m, the same
+# coordinate knee_distance_map.csv's distance_m column is in). Read it through
+# _leg_length_transmission_table(), which re-keys it into joint coordinates.
 LEG_LENGTH_TRANSMISSION_CSV = (
   KANGAROO_FULL_PATH.parent / "transmission" / "leg_length.csv"
 )
+
+# leg_.*_length_joint + this = the distance LEG_LENGTH_TRANSMISSION_CSV is
+# keyed by. Exact and constant: with the "prismatic" femur closure (the only
+# one the semi_serial variants run with) the slide axis passes through the
+# femur joint anchor, so the distance is the joint value plus the site's
+# offset along the axis at qpos 0 -- measured at INIT_STATE, where the joint
+# reads -0.125030 and the connect site sits 0.599916 m from the anchor.
+# tests/test_kangaroo_full_leg_length_transmission.py checks both facts
+# against the compiled model.
+LEG_LENGTH_JOINT_TO_DISTANCE = 0.724946
+
+
+def _leg_length_transmission_table() -> torch.Tensor:
+  """LEG_LENGTH_TRANSMISSION_CSV keyed by leg_.*_length_joint.
+
+  Interpolating the file at the raw joint position (-0.58..0) would clamp to
+  its first row everywhere, since its keys start at 0.13; shifting the keys
+  by -LEG_LENGTH_JOINT_TO_DISTANCE puts them where the joint actually reads.
+  force_J is left alone: with a unit-slope map it is dq/dx either way.
+  """
+  return load_transmission_table(
+    LEG_LENGTH_TRANSMISSION_CSV, key_offset=-LEG_LENGTH_JOINT_TO_DISTANCE
+  )
+
 
 # Swept over this same MJCF: where leg_.*_length_connect_b sits relative to the
 # leg_.*_femur_joint anchor as the knee folds. Rows are (knee_rad, knee_deg,
@@ -195,6 +222,12 @@ LEG_LENGTH_TRANSMISSION_CSV = (
 KNEE_DISTANCE_MAP_CSV = (
   KANGAROO_FULL_PATH.parent / "transmission" / "knee_distance_map.csv"
 )
+# The spline-interpolated transmission maps of the leg mechanisms
+# (hip_z_map.npz, leg_length_map.npz, hip_xy_jacobian_map.npz,
+# ankle_xy_jacobian_map.npz), read by the transmitted actuators of
+# pal_kangaroo_full.lut_actuator (pal_kangaroo_full_full's "transmission"
+# variants) through pal_kangaroo_full.lut_maps.
+LUT_TRANSMISSION_DIR = KANGAROO_FULL_PATH.parent / "lut_transmission"
 
 # Which knee stands in for which leg length joint, for the variants that have
 # no leg length joint to observe (see mdp.observations).
@@ -567,7 +600,6 @@ def _calc_linear_leg_params(
   armature: float,
 ) -> dict:
   """Calculate leg actuator parameters."""
-  stiffness = round(armature * NATURAL_FREQ**2, 3)
   damping = round(2.0 * DAMPING_RATIO * armature * NATURAL_FREQ, 3)
   return {
     "armature": armature,
@@ -706,7 +738,7 @@ _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
         "leg_left_length_joint": "leg_left_length_actuator",
         "leg_right_length_joint": "leg_right_length_actuator",
       },
-      transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
+      transmission=_leg_length_transmission_table(),
       actuator_effort_limit=5000.0,
       **_calc_leg_params(900.0, 1100.0, 0.01, None, None),
     ),
@@ -726,7 +758,7 @@ _LEG_LENGTH_ACTUATORS: dict[LegLengthActuation, tuple[ActuatorCfg, ...]] = {
         "leg_left_length_joint": "leg_left_length_actuator",
         "leg_right_length_joint": "leg_right_length_actuator",
       },
-      transmission=load_transmission_table(LEG_LENGTH_TRANSMISSION_CSV),
+      transmission=_leg_length_transmission_table(),
       joint_stiffness=900.0,
       **_calc_leg_params(
         stiffness=6000.0,
@@ -789,6 +821,7 @@ INIT_STATE = EntityCfg.InitialStateCfg(
   },
   joint_vel={".*": 0.0},
 )
+
 
 def _compute_tendon_lengths_at_init_state(
   spec: mujoco.MjSpec, tendon_names: tuple[str, ...], joint_pos: dict[str, float]
@@ -853,23 +886,24 @@ def _build_action_scales(
 
   The scale is ``action_scale_factor`` times each actuator's torque-to-stiffness
   ratio, i.e. the position offset that fraction of full effort corresponds to.
+  For a transmitted actuator that sets a ``joint_effort_limit`` the ratio is
+  the servo joint's (``joint_effort_limit`` over ``joint_stiffness``), since
+  that is the coordinate the action commands; otherwise it is the element's
+  own, as for any other actuator.
   """
   scales: dict[str, float] = {}
   names: list[str] = []
   for actuator in actuators:
     if actuator.transmission_type != transmission_type:
       continue
+    effort_limit = getattr(actuator, "joint_effort_limit", None)
+    if effort_limit is not None:
+      stiffness = actuator.joint_stiffness
+    else:
+      effort_limit, stiffness = actuator.effort_limit, actuator.stiffness
     for name in actuator.target_names_expr:
-      efforts = (
-        actuator.effort_limit
-        if isinstance(actuator.effort_limit, dict)
-        else {name: actuator.effort_limit}
-      )
-      stiffnesses = (
-        actuator.stiffness
-        if isinstance(actuator.stiffness, dict)
-        else {name: actuator.stiffness}
-      )
+      efforts = effort_limit if isinstance(effort_limit, dict) else {name: effort_limit}
+      stiffnesses = stiffness if isinstance(stiffness, dict) else {name: stiffness}
       if name in efforts and stiffnesses.get(name):
         scales[name] = action_scale_factor * efforts[name] / stiffnesses[name]
         names.append(name)
