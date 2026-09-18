@@ -691,12 +691,23 @@ def screw_element(
   to the <position> element that isn't there), on the element ``name``
   (default: the map actuator's own name, the connect-linkage model's slider)."""
   params = screw_pd_params(map_actuator)
+  viscous_damping = params["viscous_damping"]
+  frictionloss = None
+  if map_actuator == "leg_right_length_actuator":
+    armature = 50.72
+    viscous_damping = 589.4603
+    frictionloss = 11.7333
+  elif map_actuator in ("leg_right_1_actuator", "leg_right_2_actuator", "leg_right_3_actuator"):
+    armature = 72.07
+  else:
+    armature = 72.09
   return ScrewElement(
     name=map_actuator if name is None else name,
     transmission_type=transmission_type,
     effort_limit=params["effort_limit"],
-    armature=params["armature"],
-    viscous_damping=params["viscous_damping"],
+    armature=armature,
+    viscous_damping=viscous_damping,
+    frictionloss=frictionloss,
   )
 
 
@@ -737,24 +748,31 @@ def _tendon_screws() -> dict[str, ScrewElement]:
 
 
 def _tendon_pd_actuator(
-  target_names_expr: tuple[str, ...], map_actuator: str
+  target_names_expr: tuple[str, ...], map_actuator: str, armature: float
 ) -> BuiltinPositionActuatorCfg:
   return BuiltinPositionActuatorCfg(
     transmission_type=TransmissionType.TENDON,
     target_names_expr=target_names_expr,
-    **screw_pd_params(map_actuator),
+    **{**screw_pd_params(map_actuator), "armature": armature},
   )
 
 
 # The "actuator" transmission: tendon-space PD on the hip yaw, hip pitch/roll
 # and ankle screws (their tendons), and the knee screw's prismatic joint.
 _ACTUATOR_TRANSMISSION_ACTUATORS: tuple[ActuatorCfg, ...] = (
-  _tendon_pd_actuator((r"(left|right)_hip_z_slider$",), "leg_right_1_actuator"),
-  _tendon_pd_actuator((r"(left|right)_hip_xy_(l|r)_slider$",), "leg_right_2_actuator"),
-  _tendon_pd_actuator((r"(left|right)_ankle_(l|r)_slider$",), "leg_right_4_actuator"),
+  _tendon_pd_actuator((r"(left|right)_hip_z_slider$",), "leg_right_1_actuator", 72.07),
+  _tendon_pd_actuator(
+    (r"(left|right)_hip_xy_(l|r)_slider$",), "leg_right_2_actuator", 72.07
+  ),
+  _tendon_pd_actuator((r"(left|right)_ankle_(l|r)_slider$",), "leg_right_4_actuator", 72.09),
   BuiltinPositionActuatorCfg(
     target_names_expr=(r"leg_(left|right)_length_actuator$",),
-    **screw_pd_params("leg_right_length_actuator"),
+    **{
+      **screw_pd_params("leg_right_length_actuator"),
+      "armature": 50.72,
+      "damping": 589.4603,
+      "frictionloss": 11.7333,
+    },
   ),
 )
 

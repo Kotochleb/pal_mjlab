@@ -407,7 +407,7 @@ def pal_kangaroo_full_flat_env_cfg(
   cfg.sim.njmax = 300
   cfg.sim.mujoco.ccd_iterations = 50
   cfg.sim.contact_sensor_maxmatch = 64
-  cfg.sim.nconmax = None
+  cfg.sim.nconmax = 64
 
   # Switch to flat terrain.
   assert cfg.scene.terrain is not None

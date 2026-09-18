@@ -294,21 +294,28 @@ def get_kangaroo_full_full_spec(lower_body: LowerBody = False) -> mujoco.MjSpec:
 
 
 def _slider_pd_actuator(
-  target_names_expr: str, map_actuator: str
+  target_names_expr: str, map_actuator: str, armature: float
 ) -> BuiltinPositionActuatorCfg:
   return BuiltinPositionActuatorCfg(
-    target_names_expr=(target_names_expr,), **screw_pd_params(map_actuator)
+    target_names_expr=(target_names_expr,),
+    **{**screw_pd_params(map_actuator), "armature": armature},
   )
 
 
 # The "actuator" transmission: a PD on every screw, ordered like the simple
 # model's actuators (hip yaw, hip pitch/roll, ankle, leg length).
 _ACTUATOR_TRANSMISSION_ACTUATORS: tuple[ActuatorCfg, ...] = (
-  _slider_pd_actuator(r"leg_(left|right)_1_actuator$", "leg_right_1_actuator"),
-  _slider_pd_actuator(r"leg_(left|right)_[23]_actuator$", "leg_right_2_actuator"),
-  _slider_pd_actuator(r"leg_(left|right)_[45]_actuator$", "leg_right_4_actuator"),
-  _slider_pd_actuator(
-    r"leg_(left|right)_length_actuator$", "leg_right_length_actuator"
+  _slider_pd_actuator(r"leg_(left|right)_1_actuator$", "leg_right_1_actuator", 72.07),
+  _slider_pd_actuator(r"leg_(left|right)_[23]_actuator$", "leg_right_2_actuator", 72.07),
+  _slider_pd_actuator(r"leg_(left|right)_[45]_actuator$", "leg_right_4_actuator", 72.09),
+  BuiltinPositionActuatorCfg(
+    target_names_expr=(r"leg_(left|right)_length_actuator$",),
+    **{
+      **screw_pd_params("leg_right_length_actuator"),
+      "armature": 50.72,
+      "damping": 589.4603,
+      "frictionloss": 11.7333,
+    },
   ),
 )
 
