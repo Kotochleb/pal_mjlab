@@ -445,13 +445,9 @@
                     <site name="left_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
                 </body>
-                <body name="left_femur_slider_nut" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
-                  <!-- Mass of the nut is 0.26 and is stationary in femur, so I am editing the mass -->
-                  <inertial pos="0.0 0.0 0.0" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.26" diaginertia="0.000350609 0.000343893 0.000138497"/>
-                </body>
                 <body name="left_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
                   <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
-                  <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.1506"/>
+                  <joint name="leg_left_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.15"/>
                   <geom material="mtl_femur_slider" mesh="femur_slider" class="visual" pos="" quat=""/>
                   <site name="left_femur_slider" pos="0 0 0" quat="1.0 0 0 0"/>
                   <site name="left_knee_rods_connect_a"/>
@@ -659,13 +655,9 @@
                     <site name="right_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                   </body>
                 </body>
-                <body name="right_femur_slider_nut" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
-                  <!-- Mass of the nut is 0.26 and is stationary in femur, so I am editing the mass -->
-                  <inertial pos="0.0 0.0 0.0" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.26" diaginertia="0.000350609 0.000343893 0.000138497"/>
-                </body>
                 <body name="right_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
                   <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
-                  <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.1506"/>
+                  <joint name="leg_right_length_actuator" pos="0 0 0" axis="0 0 -1" type="slide" range="0 0.15"/>
                   <site name="right_knee_rods_connect_a"/>
                   <geom material="mtl_femur_slider" mesh="femur_slider" class="visual" pos="" quat=""/>
                   <site name="right_femur_slider" pos="0 0 0" quat="1.0 0 0 0"/>
