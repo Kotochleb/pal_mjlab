@@ -1,8 +1,9 @@
 """Torch port of ``lut_transmission/transmission_maps.py``: the leg
 transmissions of the KANGAROO screw mechanisms as lookup tables, evaluated
 batched on the GPU. The maps ship in ``pal_kangaroo_full/lut_transmission/``
-and are driven by the actuators of ``pal_kangaroo_full.lut_actuator`` on the
-connect-linkage model (``pal_kangaroo_full_full``).
+(:class:`TransmissionMaps` loads the set) and are driven by the
+``"lut"`` transmission of ``pal_kangaroo_full.lut_actuator`` on both MJCFs of
+the full robot.
 
 The maps store the actuation Jacobian ``J = d(actuators)/d(joints)`` (and,
 for the 1-D mechanisms, the actuator position and a few companion tables)
@@ -34,6 +35,7 @@ are built from the right leg, and the callers handle the mirroring.
 from __future__ import annotations
 
 import itertools
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Sequence
 
@@ -373,14 +375,14 @@ class LegLengthMap(_LutMap):
       force_on_distance(s, F_s)     F_d = J F_s
       actuator_force(s, F_d)        F_s = F_d / J
       knee_torque(s, F_s)           tau = F_s / (dknee/dslider)
-      slider_of_knee(k)             inverse lookup
+      slider_of_knee(k), slider_of_distance(d)   inverse lookups
 
-  The reference inverts ``knee(s)`` by bisection on the spline; here the
-  spline is sampled once on a fine uniform ``s`` grid (``inverse_samples``
-  points, checked monotone) and inverted by linear interpolation of that
-  table, then the splines are evaluated at the recovered ``s``. The
-  inversion error is ``O(ds^2 knee'')`` -- below float32 at the default
-  sampling.
+  The reference inverts ``knee(s)`` and ``distance(s)`` by bisection on the
+  spline; here each spline is sampled once on a fine uniform ``s`` grid
+  (``inverse_samples`` points, checked monotone) and inverted by linear
+  interpolation of that table, then the splines are evaluated at the
+  recovered ``s``. The inversion error is ``O(ds^2 f'')`` -- below float32
+  at the default sampling.
   """
 
   _table_attrs = (
@@ -389,7 +391,7 @@ class LegLengthMap(_LutMap):
     "_J",
     "_dknee_dslider",
     "_inverse_knee",
-    "_inverse_slider",
+    "_inverse_distance",
   )
 
   def __init__(
@@ -413,19 +415,27 @@ class LegLengthMap(_LutMap):
     self._distance = SplineTensorMap([slider], distance, method, dtype)
     self._J = SplineTensorMap([slider], J, method, dtype)
     self._dknee_dslider = SplineTensorMap([slider], dknee_dslider, method, dtype)
-    # Inverse table knee -> slider, sampled from the same spline in float64.
-    fine = SplineTensorMap([slider], knee, method, torch.float64)
-    s_fine = torch.linspace(
-      float(slider[0]), float(slider[-1]), inverse_samples, dtype=torch.float64
+    # Inverse tables (value -> slider), sampled from the same splines.
+    self._inverse_knee = self._inverse_table(
+      slider, knee, "knee", method, dtype, inverse_samples
     )
-    k_fine = fine(s_fine)
-    steps = torch.diff(k_fine)
+    self._inverse_distance = self._inverse_table(
+      slider, distance, "distance", method, dtype, inverse_samples
+    )
+
+  @staticmethod
+  def _inverse_table(slider, values, what, method, dtype, n) -> torch.Tensor:
+    """``(2, n)`` rows ``(value, slider)`` with increasing value, from the
+    spline of ``values`` sampled on a uniform slider grid in float64."""
+    fine = SplineTensorMap([slider], values, method, torch.float64)
+    s_fine = torch.linspace(float(slider[0]), float(slider[-1]), n, dtype=torch.float64)
+    v_fine = fine(s_fine)
+    steps = torch.diff(v_fine)
     if not (torch.all(steps > 0) or torch.all(steps < 0)):
-      raise ValueError("knee(slider) is not monotone; cannot invert it")
+      raise ValueError(f"{what}(slider) is not monotone; cannot invert it")
     if steps[0] < 0:  # searchsorted needs an increasing key
-      s_fine, k_fine = s_fine.flip(0), k_fine.flip(0)
-    self._inverse_knee = k_fine.to(dtype).contiguous()
-    self._inverse_slider = s_fine.to(dtype).contiguous()
+      s_fine, v_fine = s_fine.flip(0), v_fine.flip(0)
+    return torch.stack((v_fine, s_fine)).to(dtype).contiguous()
 
   @classmethod
   def load(
@@ -456,7 +466,11 @@ class LegLengthMap(_LutMap):
 
   @property
   def knee_bounds(self) -> tuple[float, float]:
-    return float(self._inverse_knee[0]), float(self._inverse_knee[-1])
+    return float(self._inverse_knee[0, 0]), float(self._inverse_knee[0, -1])
+
+  @property
+  def distance_bounds(self) -> tuple[float, float]:
+    return float(self._inverse_distance[0, 0]), float(self._inverse_distance[0, -1])
 
   def knee(self, s: torch.Tensor) -> torch.Tensor:
     return self._knee(s)
@@ -486,16 +500,23 @@ class LegLengthMap(_LutMap):
   def inside(self, s: torch.Tensor) -> torch.Tensor:
     return self._J.inside(s)
 
+  @staticmethod
+  def _invert(table: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
+    keys, values = table[0], table[1]
+    x = torch.clamp(x.to(keys.dtype), keys[0], keys[-1])
+    i = torch.clamp(
+      torch.searchsorted(keys, x.contiguous(), right=True) - 1, 0, keys.numel() - 2
+    )
+    t = (x - keys[i]) / (keys[i + 1] - keys[i])
+    return values[i] + t * (values[i + 1] - values[i])
+
   def slider_of_knee(self, knee: torch.Tensor) -> torch.Tensor:
     """Slider position at a knee angle (clamped to the map's knee range)."""
-    keys, values = self._inverse_knee, self._inverse_slider
-    k = torch.clamp(knee.to(keys.dtype), keys[0], keys[-1])
-    i = torch.clamp(
-      torch.searchsorted(keys, k.contiguous(), right=True) - 1, 0, keys.numel() - 2
-    )
-    k0, k1 = keys[i], keys[i + 1]
-    t = (k - k0) / (k1 - k0)
-    return values[i] + t * (values[i + 1] - values[i])
+    return self._invert(self._inverse_knee, knee)
+
+  def slider_of_distance(self, distance: torch.Tensor) -> torch.Tensor:
+    """Slider position at a femur-ankle distance (clamped to the map's range)."""
+    return self._invert(self._inverse_distance, distance)
 
 
 class _JacobianMap(_LutMap):
@@ -642,21 +663,104 @@ class AnkleMap(_JacobianMap):
     return self._J.inside(q[..., 0], q[..., 1], length)
 
 
+@dataclass(frozen=True)
+class TransmissionMaps:
+  """The four maps of one leg's screw mechanisms, loaded from one directory:
+  ``hip_z_map.npz``, ``hip_xy_jacobian_map.npz``, ``ankle_xy_jacobian_map.npz``
+  and ``leg_length_map.npz`` (see :data:`TRANSMISSION_MAP_NAMES`)."""
+
+  hip_z: HipZMap
+  hip_xy: HipXyMap
+  ankle: AnkleMap
+  leg_length: LegLengthMap
+
+  @classmethod
+  def load(
+    cls,
+    directory: str | Path,
+    method: InterpolationMethod = "cubic",
+    dtype: torch.dtype = torch.float32,
+  ) -> TransmissionMaps:
+    directory = Path(directory)
+    missing = [
+      name for name in TRANSMISSION_MAP_NAMES if not (directory / name).exists()
+    ]
+    if missing:
+      raise FileNotFoundError(f"{directory} lacks the transmission maps {missing}")
+    return cls(
+      hip_z=HipZMap.load(directory / "hip_z_map.npz", method=method, dtype=dtype),
+      hip_xy=HipXyMap.load(
+        directory / "hip_xy_jacobian_map.npz", method=method, dtype=dtype
+      ),
+      ankle=AnkleMap.load(
+        directory / "ankle_xy_jacobian_map.npz", method=method, dtype=dtype
+      ),
+      leg_length=LegLengthMap.load(
+        directory / "leg_length_map.npz", method=method, dtype=dtype
+      ),
+    )
+
+  @staticmethod
+  def available(directory: str | Path) -> bool:
+    """Whether every map is in ``directory``."""
+    return all((Path(directory) / name).exists() for name in TRANSMISSION_MAP_NAMES)
+
+  def to(self, device: str | torch.device) -> TransmissionMaps:
+    return TransmissionMaps(
+      hip_z=self.hip_z.to(device),
+      hip_xy=self.hip_xy.to(device),
+      ankle=self.ankle.to(device),
+      leg_length=self.leg_length.to(device),
+    )
+
+  @property
+  def joint_names(self) -> tuple[str, ...]:
+    """The reference side's joints the maps are keyed by, in the order the
+    actuator lays them out: hip yaw, hip pitch, hip roll, ankle pitch, ankle
+    roll -- then the leg length, whose servo joint the actuator picks."""
+    return self.hip_z.joint_names + self.hip_xy.joint_names + self.ankle.joint_names
+
+  @property
+  def actuator_names(self) -> tuple[str, ...]:
+    """The reference side's actuators (screws), in the same order, with the
+    leg-length screw last."""
+    return (
+      self.hip_z.actuator_names
+      + self.hip_xy.actuator_names
+      + self.ankle.actuator_names
+      + (self.leg_length.slider_name,)
+    )
+
+
+TRANSMISSION_MAP_NAMES = (
+  "hip_z_map.npz",
+  "hip_xy_jacobian_map.npz",
+  "ankle_xy_jacobian_map.npz",
+  "leg_length_map.npz",
+)
+"""The files :meth:`TransmissionMaps.load` reads, relative to its directory."""
+
+
 def reside(name: str, side: str, reference_side: str = "right") -> str:
-  """``leg_right_2_joint`` -> ``leg_left_2_joint`` for ``side="left"``."""
-  token, replacement = f"_{reference_side}_", f"_{side}_"
-  if token not in name:
+  """``leg_right_2_joint`` -> ``leg_left_2_joint``, ``right_hip_z_slider`` ->
+  ``left_hip_z_slider`` for ``side="left"``: the first ``_``-separated
+  component equal to ``reference_side`` is replaced."""
+  parts = name.split("_")
+  if reference_side not in parts:
     raise ValueError(f"{name!r} does not name the {reference_side} side")
-  return name.replace(token, replacement, 1)
+  parts[parts.index(reference_side)] = side
+  return "_".join(parts)
 
 
 __all__ = [
+  "TRANSMISSION_MAP_NAMES",
   "AnkleMap",
   "HipXyMap",
   "HipZMap",
   "InterpolationMethod",
   "LegLengthMap",
   "SplineTensorMap",
+  "TransmissionMaps",
   "reside",
   "solve_forces",
   "spline_second_derivatives",

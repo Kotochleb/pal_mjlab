@@ -27,13 +27,10 @@ from pal_mjlab.robots import (
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
   SIMPLE_MODEL_JOINT_ORDER,
-  AnkleActuation,
   FemurClosure,
-  HipXyActuation,
-  HipZActuation,
-  LegLengthActuation,
   LowerBody,
   MjcfVariant,
+  Transmission,
   get_kangaroo_full_model,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
@@ -54,11 +51,8 @@ from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
 
 def pal_kangaroo_full_baseline_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "tendon",
-  hip_xy: HipXyActuation = "tendon",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   femur_closure: FemurClosure = "prismatic",
-  ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
@@ -68,11 +62,8 @@ def pal_kangaroo_full_baseline_env_cfg(
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
   model = get_kangaroo_full_model(
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    leg_length=leg_length,
+    transmission=transmission,
     femur_closure=femur_closure,
-    ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
@@ -82,10 +73,14 @@ def pal_kangaroo_full_baseline_env_cfg(
 
   # -- Actions
   #
-  # One JOINT term for everything driven by a plain motor, plus one TENDON term
-  # per hip mechanism that is tendon driven. The tendon terms use explicit,
-  # order-preserved names so a mechanism keeps the same action indices whether
-  # or not the other one is a tendon.
+  # One JOINT term for everything commanded on a joint, plus -- for the
+  # "actuator" transmission -- one TENDON term per mechanism. The tendon terms
+  # use explicit, order-preserved names so a mechanism keeps the same action
+  # indices in both full models. The "lut" transmission is commanded on the
+  # simple model's joints, so it sits in the joint term like "joint" -- except
+  # the knee servo of the "linkage" closure, whose targets are leg lengths in
+  # metres and get the mapped term, which offsets and de-biases in that
+  # coordinate.
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
@@ -108,6 +103,15 @@ def pal_kangaroo_full_baseline_env_cfg(
       preserve_order=True,
       scale=tendon_action.scale,
       offset=tendon_action.offset,
+    )
+  if model.leg_length_action is not None:
+    cfg.actions["leg_length_pos"] = mdp.MappedLegLengthPositionActionCfg(
+      entity_name="robot",
+      actuator_names=model.leg_length_action.actuator_names,
+      scale=model.leg_length_action.scale,
+      use_default_offset=True,
+      csv_path=KNEE_DISTANCE_MAP_CSV,
+      mapped_joints=LEG_LENGTH_FROM_KNEE_JOINTS,
     )
 
   # -- Observations
@@ -287,9 +291,9 @@ def pal_kangaroo_full_baseline_env_cfg(
         },
       )
 
-  # The ankle bars and the decoupler's gearing to the knee both only survive a
-  # butterfly-actuated ankle -- see KangarooFullModel.has_ankle_tibia_bar_tendons
-  # / has_butterfly_decoupler_coupling.
+  # The ankle bars and the decoupler's gearing to the knee are both deleted
+  # when the ankle joints are servoed directly -- see
+  # KangarooFullModel.has_ankle_tibia_bar_tendons / has_butterfly_decoupler_coupling.
   if model.has_ankle_tibia_bar_tendons:
     _add_tendon_eq_metrics("ankle_tibia_bars", (r"(left|right)_ankle_tibia_bar_(l|r)",))
   if model.has_butterfly_decoupler_coupling:
@@ -377,11 +381,8 @@ def pal_kangaroo_full_baseline_env_cfg(
 
 def pal_kangaroo_full_rough_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "tendon",
-  hip_xy: HipXyActuation = "tendon",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   femur_closure: FemurClosure = "prismatic",
-  ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
@@ -390,11 +391,8 @@ def pal_kangaroo_full_rough_env_cfg(
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    leg_length=leg_length,
+    transmission=transmission,
     femur_closure=femur_closure,
-    ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
@@ -405,11 +403,8 @@ def pal_kangaroo_full_rough_env_cfg(
 
 def pal_kangaroo_full_flat_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "tendon",
-  hip_xy: HipXyActuation = "tendon",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   femur_closure: FemurClosure = "prismatic",
-  ankle: AnkleActuation = "joint",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
@@ -418,11 +413,8 @@ def pal_kangaroo_full_flat_env_cfg(
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    leg_length=leg_length,
+    transmission=transmission,
     femur_closure=femur_closure,
-    ankle=ankle,
     mjcf=mjcf,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,

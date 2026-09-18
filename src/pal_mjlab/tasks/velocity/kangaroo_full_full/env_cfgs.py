@@ -37,11 +37,8 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
 from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
-  AnkleActuation,
-  HipXyActuation,
-  HipZActuation,
-  LegLengthActuation,
   LowerBody,
+  Transmission,
   get_kangaroo_full_full_model,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
@@ -61,10 +58,7 @@ from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
 
 def pal_kangaroo_full_full_baseline_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "slider",
-  hip_xy: HipXyActuation = "slider",
-  ankle: AnkleActuation = "joint",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -73,10 +67,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   cfg = pal_kangaroo_baseline_env_cfg(play)
 
   model = get_kangaroo_full_full_model(
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    ankle=ankle,
-    leg_length=leg_length,
+    transmission=transmission,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
@@ -85,21 +76,22 @@ def pal_kangaroo_full_full_baseline_env_cfg(
 
   # -- Actions
   #
-  # Same layout as pal_kangaroo_full: one JOINT term for everything driven by
-  # a plain motor, plus one term per mechanism driven at its screw. Every
-  # actuator here is JOINT-transmission (there is no tendon left to target --
-  # see the module docstring on kangaroo_full_full_constants.py), but the
-  # screw terms are still kept separate and order-preserved, with the slider
-  # names listed in the order of the tendon they replace, so a mechanism
-  # occupies the same action slots in both models and a checkpoint trained
-  # on one can be played on the other. A plain JointPositionActionCfg would
-  # lay the sliders out in MJCF tree order, which differs (the right ankle).
+  # Same layout as pal_kangaroo_full: one JOINT term for everything commanded
+  # on a joint, plus -- for the "actuator" transmission -- one term per hip
+  # and ankle mechanism driven at its screws. Every actuator here is
+  # JOINT-transmission (there is no tendon to target -- see the module
+  # docstring on kangaroo_full_full_constants.py), but the screw terms are
+  # still kept separate and order-preserved, with the slider names listed in
+  # the order of the tendon they replace, so a mechanism occupies the same
+  # action slots in both models and a checkpoint trained on one can be
+  # played on the other. A plain JointPositionActionCfg would lay the sliders
+  # out in MJCF tree order, which differs (the right ankle).
   #
-  # A "transmission" mechanism is commanded on its simple-model joints, so
-  # it sits in the catch-all term exactly like a "joint" one -- except the
-  # transmitted leg length: its target joint is the knee but its targets are
-  # leg lengths in metres, so it gets the mapped term below, which offsets
-  # and de-biases in that coordinate.
+  # The "lut" transmission is commanded on the simple-model joints, so it
+  # sits in the catch-all term exactly like the "joint" one -- except the
+  # leg length: its target joint is the knee but its targets are leg lengths
+  # in metres, so it gets the mapped term below, which offsets and de-biases
+  # in that coordinate.
 
   cfg.actions = {
     "joint_pos": JointPositionActionCfg(
@@ -331,10 +323,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
 
 def pal_kangaroo_full_full_rough_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "slider",
-  hip_xy: HipXyActuation = "slider",
-  ankle: AnkleActuation = "joint",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -342,10 +331,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
   """Create PAL Robotics KANGAROO FULL FULL rough terrain velocity configuration."""
   cfg = pal_kangaroo_full_full_baseline_env_cfg(
     play=play,
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    ankle=ankle,
-    leg_length=leg_length,
+    transmission=transmission,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
@@ -356,10 +342,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
 
 def pal_kangaroo_full_full_flat_env_cfg(
   play: bool = False,
-  hip_z: HipZActuation = "slider",
-  hip_xy: HipXyActuation = "slider",
-  ankle: AnkleActuation = "joint",
-  leg_length: LegLengthActuation = "actuator",
+  transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
@@ -367,10 +350,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
   """Create PAL Robotics KANGAROO FULL FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_full_baseline_env_cfg(
     play=play,
-    hip_z=hip_z,
-    hip_xy=hip_xy,
-    ankle=ankle,
-    leg_length=leg_length,
+    transmission=transmission,
     lower_body=lower_body,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,

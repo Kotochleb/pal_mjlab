@@ -1,46 +1,55 @@
-"""Actuators for the connect-linkage model's (``pal_kangaroo_full_full``)
-screws, commanded in the simple model's joint space through the lookup
-tables of ``lut_maps``. They live here, with the other transmitted
-actuators of ``pal_kangaroo_full.actuator`` and the tables in
-``pal_kangaroo_full/transmission`` and ``lut_transmission``, because the
-mechanisms and their maps are the robot's, not one MJCF's.
+"""The ``"lut"`` transmission of the full KANGAROO models: one actuator that
+servos every leg joint of the simple model and drives every leg screw.
 
-The law is ``pal_kangaroo_full.actuator.TransmitedIdealPdActuator``'s, per
-mechanism: a full PD (kp, kd, feed-forward) on the simple-model joints,
-clamped to the joint torque limit, pushed through the mechanism's Jacobian
-to the screw forces, clamped to the screw force limit, and handed to a
-``<motor>`` element on each screw as an external force. What differs per
-mechanism is only the transmission step (``lut_maps`` conventions:
-``J = d(actuators)/d(joints)``, ``tau = J^T F``):
+The law, for all twelve leg joints at once:
 
-* :class:`HipZLutPdActuatorCfg` -- hip yaw, ``leg_*_1_joint`` ->
-  ``leg_*_1_actuator``: ``F = tau / J(q)``.
-* :class:`LegLengthLutPdActuatorCfg` -- the knee is the joint, but the PD
-  runs in the simple model's leg-length metres: the knee angle is mapped to
-  the slider position and from there to the femur-ankle distance ``d``,
-  ``F_d = PD(d)``, and ``F_s = F_d / J(s)`` with ``J = d(slider)/d(distance)``.
-* :class:`HipXyLutPdActuatorCfg` -- hip pitch/roll, ``leg_*_(2|3)_joint`` ->
-  ``leg_*_(2|3)_actuator``: ``F = J(q2, q3)^-T tau``.
-* :class:`AnkleLutPdActuatorCfg` -- ankle pitch/roll, ``leg_*_(4|5)_joint``
-  -> ``leg_*_(4|5)_actuator``, with the knee as context: ``s`` from the knee
-  through the leg-length map, ``F = J(q4, q5, s)^-T tau`` (pseudo-inverse at
-  the mechanism's dead point).
+1. a PD (kp, kd, feed-forward) on the simple model's joints -- hip yaw, hip
+   pitch/roll, ankle pitch/roll and the leg length -- clamped to each
+   joint's torque limit;
+2. the joint torques pushed through the mechanisms' Jacobians, read from
+   the lookup tables of ``lut_maps`` (``J = d(actuators)/d(joints)``,
+   ``tau = J^T F``), to the screw forces;
+3. each screw force clamped to the screw's limit and handed to MuJoCo as
+   the ctrl of a ``<motor>`` on that screw.
 
-One instance drives **both legs**. The maps are built from the right leg
-and the mechanisms are mirror images with a naming convention that makes the
-tables identical for the left leg (hip pitch/roll, ankle, leg length --
-checked against the per-leg sweep tables), except hip yaw, whose left joint
-runs the other way (``x_left(q) = x_right(-q)``); ``joint_sign`` flips that
-leg's joint coordinates going into the map, and the screw force comes out
-unflipped. The map is therefore loaded once, and both legs' queries are
-batched into one lookup.
+Per mechanism the transmission step is
+
+* hip yaw, ``leg_*_1_joint`` -> ``leg_*_1_actuator``: ``F = tau / J(q)``;
+* hip pitch/roll, ``leg_*_(2|3)_joint`` -> ``leg_*_(2|3)_actuator``:
+  ``F = J(q2, q3)^-T tau``;
+* ankle pitch/roll, ``leg_*_(4|5)_joint`` -> ``leg_*_(4|5)_actuator``:
+  ``F = J(q4, q5, s)^-T tau`` with ``s`` the leg-length slider position
+  (pseudo-inverse at the mechanism's dead point);
+* leg length -> ``leg_*_length_actuator``: the PD runs in the simple
+  model's leg-length metres, the femur-ankle ``distance`` of
+  ``leg_length_map.npz``, and ``F_s = F_d / J(s)`` with ``J =
+  d(slider)/d(distance)``. The servo joint is the prismatic
+  ``leg_*_length_joint`` where the MJCF has one (it reads the distance up to
+  ``length_joint_to_distance``) or else the knee, mapped onto the distance;
+  ``s`` follows from either, and is also the ankle's third coordinate.
+
+The maps are built from the right leg and the mechanisms are mirror images
+whose naming makes the tables identical for the left leg (hip pitch/roll,
+ankle, leg length), except hip yaw, whose left joint runs the other way
+(``x_left(q) = x_right(-q)``): ``joint_sign`` flips that joint's coordinates
+going into the map and the screw force comes out unflipped. One instance
+therefore drives **both legs** through one set of maps, every query batched.
+
+Which MJCF element is "the screw" is the :class:`ScrewElement` table: the
+connect-linkage model (``pal_kangaroo_full_full``) has the real prismatic
+sliders, the tendon model (``pal_kangaroo_full``) has the spatial tendons
+standing in for them. The hip tendons' lengths move with the joints exactly
+as the sliders do (checked by finite differences against the maps); the
+ankle tendons are the decoupler-to-butterfly chords, a stand-in for the real
+screw that the maps do not describe exactly, and are driven through the maps
+as they are.
 """
 
 from __future__ import annotations
 
-import math
+import re
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Literal
 
 import mujoco
 import mujoco_warp as mjwarp
@@ -48,58 +57,80 @@ import torch
 from mjlab.actuator.actuator import Actuator, ActuatorCfg, ActuatorCmd, TransmissionType
 from mjlab.utils.lab_api.string import resolve_matching_names_values
 from mjlab.utils.spec import create_motor_actuator
-from pal_mjlab.robots.pal_kangaroo_full.lut_maps import (
-  AnkleMap,
-  HipXyMap,
-  HipZMap,
-  LegLengthMap,
-  reside,
-)
+from pal_mjlab.robots.pal_kangaroo_full.lut_maps import TransmissionMaps, reside
 
 if TYPE_CHECKING:
   from mjlab.entity import Entity
   from mjlab.entity.data import EntityData
 
-LutPdCfgT = TypeVar("LutPdCfgT", bound="LutPdActuatorCfg")
-
 GainSpec = float | dict[str, float]
+LegLengthServo = Literal["length_joint", "knee"]
 
 
-@dataclass
-class LutActuatorCmd(ActuatorCmd):
-  """``ActuatorCmd`` on the servo joints, plus the context joints the map is
-  keyed by beyond them (the ankle's knee), ``(num_envs, n_sides * n_context)``
-  -- ``None`` when there are none."""
+@dataclass(frozen=True)
+class ScrewElement:
+  """The ``<motor>`` that applies one of the map's actuator forces in an MJCF."""
 
-  context_pos: torch.Tensor | None = None
-  context_vel: torch.Tensor | None = None
+  name: str
+  """The element's name on the reference side (``right_hip_z_slider`` for the
+  tendon model's ``leg_right_1_actuator``); re-sided for the other leg."""
+
+  effort_limit: float
+  """Force limit of the ``<motor>`` (``forcerange``) and the clamp on the
+  transmitted force, N."""
+
+  transmission_type: TransmissionType = TransmissionType.JOINT
+  """Whether the element is a slider joint or a tendon."""
+
+  armature: float | None = None
+  frictionloss: float | None = None
+  viscous_damping: float | None = None
+  """Element overrides, as on any ``ActuatorCfg``; None keeps the XML value."""
+
+  def __post_init__(self) -> None:
+    if self.effort_limit <= 0:
+      raise ValueError(f"{self.name}: effort_limit must be positive")
 
 
 @dataclass(kw_only=True)
-class LutPdActuatorCfg(ActuatorCfg):
-  """Shared configuration of the LUT-transmitted PD actuators.
+class LutTransmissionActuatorCfg(ActuatorCfg):
+  """Configuration of the whole-leg LUT transmission (see the module docstring).
 
   ``target_names_expr`` must resolve to exactly the servo joints of every
-  side in ``sides`` (the map's ``leg_right_*`` joints, re-sided). The
-  per-joint gains may be one value or a dict keyed by regexes over the joint
-  names -- the ``target_names_expr`` entries themselves are the natural
-  keys, which is also what ``_build_action_scales`` reads them by.
+  side in ``sides``: the maps' hip and ankle joints plus the leg-length
+  servo joint, re-sided. Its entries are the keys the per-joint gains are
+  looked up by (a plain float applies to every joint), and what
+  ``_build_action_scales`` reads the action scale from.
   """
 
+  maps: TransmissionMaps
+  """The four maps, shared by both legs."""
+
+  screws: dict[str, ScrewElement]
+  """The MJCF element of each map actuator, keyed by the map's reference-side
+  actuator names (``maps.actuator_names``)."""
+
   joint_stiffness: GainSpec
-  """PD proportional gain on the servo joints (N m/rad; N/m for the leg
-  length, whose servo coordinate is metres)."""
+  """PD proportional gain on the servo joints: N m/rad, and N/m for the leg
+  length, whose servo coordinate is metres."""
 
   joint_damping: GainSpec
   """PD derivative gain on the servo joints."""
 
   joint_effort_limit: GainSpec
-  """Clamp on the servo-joint PD output before it is transmitted. Also what
-  the action scale derives from."""
+  """Clamp on each joint's PD output before it is transmitted (N m; N for the
+  leg length), and what the action scale derives from."""
 
-  actuator_effort_limit: float = math.inf
-  """Force limit of the screws' ``<motor>`` elements, and the clamp on the
-  transmitted force (N)."""
+  leg_length_servo: LegLengthServo = "knee"
+  """Which joint the leg-length PD reads: the prismatic ``length_joint_name``
+  (its position is the distance minus ``length_joint_to_distance``) or the
+  knee, mapped onto the distance through ``maps.leg_length``."""
+
+  length_joint_name: str = "leg_right_length_joint"
+  """The reference side's prismatic leg-length joint (``"length_joint"``)."""
+
+  length_joint_to_distance: float = 0.0
+  """``length_joint + length_joint_to_distance`` = the map's distance."""
 
   sides: tuple[str, ...] = ("left", "right")
   """Legs served by this one instance; the map's names are re-sided to each."""
@@ -107,92 +138,134 @@ class LutPdActuatorCfg(ActuatorCfg):
   reference_side: str = "right"
   """The side the map files name their joints and actuators after."""
 
-  joint_sign: dict[str, float] = field(default_factory=dict)
-  """Per-side sign of the servo joint coordinates relative to the map's
-  (``{"left": -1.0}`` for hip yaw); sides not listed are ``+1``."""
+  joint_sign: dict[str, float] = field(
+    default_factory=lambda: {"leg_left_1_joint": -1.0}
+  )
+  """Sign of a servo joint's coordinates relative to the map's, keyed by
+  regexes over the re-sided joint names; unlisted joints are ``+1``. The
+  default is the hip yaw mirror."""
 
   def __post_init__(self) -> None:
     super().__post_init__()
     if self.transmission_type != TransmissionType.JOINT:
-      raise ValueError(f"{type(self).__name__} only supports JOINT transmission")
-    for side in self.joint_sign:
-      if side not in self.sides:
-        raise ValueError(f"joint_sign names {side!r}, not one of sides {self.sides}")
-    if self.actuator_effort_limit <= 0:
-      raise ValueError("actuator_effort_limit must be positive")
+      raise ValueError(
+        f"{type(self).__name__} servos joints; transmission_type is JOINT"
+      )
+    if (
+      self.armature is not None
+      or self.frictionloss is not None
+      or self.viscous_damping is not None
+    ):
+      raise ValueError(
+        f"{type(self).__name__}: armature / frictionloss / viscous_damping belong "
+        "to the screws (ScrewElement), not the servo joints"
+      )
+    expected = set(self.maps.actuator_names)
+    if set(self.screws) != expected:
+      raise ValueError(
+        f"screws must be keyed by the maps' actuators {sorted(expected)}, "
+        f"got {sorted(self.screws)}"
+      )
+    if self.leg_length_servo not in ("length_joint", "knee"):
+      raise ValueError(
+        f"leg_length_servo must be 'length_joint' or 'knee', got {self.leg_length_servo!r}"
+      )
 
-  # Subclasses describe the mechanism through the map they carry.
-  def servo_joint_names(self) -> tuple[str, ...]:
-    """The reference side's servo joints, in map order."""
-    raise NotImplementedError
-
-  def context_joint_names(self) -> tuple[str, ...]:
-    """The reference side's context joints (keys beyond the servo joints)."""
-    return ()
-
-  def screw_names(self) -> tuple[str, ...]:
-    """The reference side's screws (slider joints that get the ``<motor>``)."""
-    raise NotImplementedError
+  @property
+  def leg_length_servo_expr(self) -> str:
+    """The ``target_names_expr`` entry naming the leg-length servo joints --
+    the knee's targets are in metres, which the action term must know."""
+    name = (
+      self.maps.leg_length.knee_name
+      if self.leg_length_servo == "knee"
+      else self.length_joint_name
+    )
+    matches = [
+      expr
+      for expr in self.target_names_expr
+      if any(
+        re.fullmatch(expr, reside(name, side, self.reference_side))
+        for side in self.sides
+      )
+    ]
+    if len(matches) != 1:
+      raise ValueError(
+        f"exactly one target_names_expr entry must name {name}, found {matches}"
+      )
+    return matches[0]
 
   def build(
     self, entity: Entity, target_ids: list[int], target_names: list[str]
-  ) -> LutPdActuator:
-    raise NotImplementedError
+  ) -> LutTransmissionActuator:
+    return LutTransmissionActuator(self, entity, target_ids, target_names)
 
 
-class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
-  """Joint-space PD, transmitted through a LUT to ``<motor>``s on the screws,
-  both legs batched. Subclasses implement :meth:`_transmit`."""
+class LutTransmissionActuator(Actuator[LutTransmissionActuatorCfg]):
+  """Joint-space PD on every leg joint, transmitted through the maps to
+  ``<motor>``s on every leg screw, both legs batched."""
+
+  # Per side, in map order: hip yaw, hip pitch, hip roll, ankle pitch, ankle
+  # roll, leg length. Screws follow the same order.
+  N_JOINTS = 6
 
   def __init__(
     self,
-    cfg: LutPdCfgT,
+    cfg: LutTransmissionActuatorCfg,
     entity: Entity,
     target_ids: list[int],
     target_names: list[str],
   ) -> None:
     super().__init__(cfg, entity, target_ids, target_names)
+    maps = cfg.maps
     ref = cfg.reference_side
     self.n_sides = len(cfg.sides)
-    self.n_servo = len(cfg.servo_joint_names())
-    self.n_context = len(cfg.context_joint_names())
-    self.n_screws = len(cfg.screw_names())
-    # Per side, in map order; flat lists are side-major.
-    self.servo_names = [
-      reside(name, side, ref) for side in cfg.sides for name in cfg.servo_joint_names()
-    ]
-    self.context_names = [
-      reside(name, side, ref)
-      for side in cfg.sides
-      for name in cfg.context_joint_names()
-    ]
+    leg_length_servo = (
+      maps.leg_length.knee_name
+      if cfg.leg_length_servo == "knee"
+      else cfg.length_joint_name
+    )
+    ref_joints = maps.joint_names + (leg_length_servo,)
+    assert (
+      len(ref_joints) == self.N_JOINTS and len(maps.actuator_names) == self.N_JOINTS
+    )
+    # Flat lists are side-major.
+    self.servo_names = [reside(n, side, ref) for side in cfg.sides for n in ref_joints]
+    self._screws = [cfg.screws[n] for _ in cfg.sides for n in maps.actuator_names]
     self.screw_names = [
-      reside(name, side, ref) for side in cfg.sides for name in cfg.screw_names()
+      reside(screw.name, side, ref)
+      for side in cfg.sides
+      for screw in (cfg.screws[n] for n in maps.actuator_names)
     ]
     if sorted(target_names) != sorted(self.servo_names):
       raise ValueError(
         f"{type(self).__name__}: target_names_expr {cfg.target_names_expr} resolved "
-        f"to {target_names}, but the map serves {self.servo_names}"
+        f"to {target_names}, but the maps serve {self.servo_names}"
       )
-    self._servo_ids_list = self._find(entity, self.servo_names)
-    self._context_ids_list = self._find(entity, self.context_names)
-    self._screw_ids_list = self._find(entity, self.screw_names)
+    ids, found = entity.find_joints(self.servo_names, preserve_order=True)
+    if found != self.servo_names:
+      raise ValueError(f"joints {self.servo_names} resolved to {found}")
+    self._servo_ids_list = ids
+    # Column of each side's leg-length servo in the (num_envs, n_sides * 6) layout.
+    self._leg_length_cols_list = [
+      side * self.N_JOINTS + self.N_JOINTS - 1 for side in range(self.n_sides)
+    ]
 
     self._stiffness_list = self._per_joint(cfg.joint_stiffness, "joint_stiffness")
     self._damping_list = self._per_joint(cfg.joint_damping, "joint_damping")
     self._effort_limit_list = self._per_joint(
       cfg.joint_effort_limit, "joint_effort_limit"
     )
-    self._sign_list = [
-      float(cfg.joint_sign.get(side, 1.0))
-      for side in cfg.sides
-      for _ in range(self.n_servo)
-    ]
+    self._sign_list = [1.0] * len(self.servo_names)
+    if cfg.joint_sign:
+      idx, _, values = resolve_matching_names_values(cfg.joint_sign, self.servo_names)
+      for i, v in zip(idx, values, strict=True):
+        self._sign_list[i] = float(v)
+    self._screw_limit_list = [screw.effort_limit for screw in self._screws]
 
     self._servo_ids: torch.Tensor | None = None
-    self._context_ids: torch.Tensor | None = None
-    self._screw_ids: torch.Tensor | None = None
+    self._leg_length_cols: torch.Tensor | None = None
     self._sign: torch.Tensor | None = None
+    self.maps: TransmissionMaps = cfg.maps
     self.stiffness: torch.Tensor | None = None
     self.damping: torch.Tensor | None = None
     self.force_limit: torch.Tensor | None = None
@@ -201,15 +274,6 @@ class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
     self.default_damping: torch.Tensor | None = None
     self.default_force_limit: torch.Tensor | None = None
     self.default_actuator_force_limit: torch.Tensor | None = None
-
-  @staticmethod
-  def _find(entity: Entity, names: list[str]) -> list[int]:
-    if not names:
-      return []
-    ids, found = entity.find_joints(names, preserve_order=True)
-    if found != names:
-      raise ValueError(f"joints {names} resolved to {found}")
-    return ids
 
   def _per_joint(self, value: GainSpec, what: str) -> list[float]:
     """``value`` as one float per servo joint, in ``servo_names`` order."""
@@ -226,17 +290,18 @@ class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
 
   def edit_spec(self, spec: mujoco.MjSpec, target_names: list[str]) -> None:
     del target_names  # The screws, not the servo joints, get the elements.
-    for screw_name in self.screw_names:
-      actuator = create_motor_actuator(
-        spec,
-        screw_name,
-        effort_limit=self.cfg.actuator_effort_limit,
-        armature=self.cfg.armature,
-        frictionloss=self.cfg.frictionloss,
-        viscous_damping=self.cfg.viscous_damping,
-        transmission_type=self.cfg.transmission_type,
+    for name, screw in zip(self.screw_names, self._screws, strict=True):
+      self._mjs_actuators.append(
+        create_motor_actuator(
+          spec,
+          name,
+          effort_limit=screw.effort_limit,
+          armature=screw.armature,
+          frictionloss=screw.frictionloss,
+          viscous_damping=screw.viscous_damping,
+          transmission_type=screw.transmission_type,
+        )
       )
-      self._mjs_actuators.append(actuator)
 
   def initialize(
     self,
@@ -247,10 +312,12 @@ class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
   ) -> None:
     super().initialize(mj_model, model, data, device)
     num_envs = data.nworld
-    as_long = lambda ids: torch.as_tensor(ids, dtype=torch.long, device=device)  # noqa: E731
-    self._servo_ids = as_long(self._servo_ids_list)
-    self._context_ids = as_long(self._context_ids_list)
-    self._screw_ids = as_long(self._screw_ids_list)
+    self._servo_ids = torch.as_tensor(
+      self._servo_ids_list, dtype=torch.long, device=device
+    )
+    self._leg_length_cols = torch.as_tensor(
+      self._leg_length_cols_list, dtype=torch.long, device=device
+    )
     self._sign = torch.tensor(self._sign_list, dtype=torch.float, device=device)
 
     def per_env(values: list[float]) -> torch.Tensor:
@@ -260,22 +327,14 @@ class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
     self.stiffness = per_env(self._stiffness_list)
     self.damping = per_env(self._damping_list)
     self.force_limit = per_env(self._effort_limit_list)
-    self.actuator_force_limit = torch.full(
-      (num_envs, len(self.screw_names)),
-      self.cfg.actuator_effort_limit,
-      dtype=torch.float,
-      device=device,
-    )
+    self.actuator_force_limit = per_env(self._screw_limit_list)
     self.default_stiffness = self.stiffness.clone()
     self.default_damping = self.damping.clone()
     self.default_force_limit = self.force_limit.clone()
     self.default_actuator_force_limit = self.actuator_force_limit.clone()
-    self._maps_to(device)
+    self.maps = self.cfg.maps.to(device)
 
-  def _maps_to(self, device: str) -> None:
-    raise NotImplementedError
-
-  # Same DR hooks as IdealPdActuator / TranssmitedIdealPdActuator.
+  # Same DR hooks as IdealPdActuator.
   def set_gains(
     self,
     env_ids: torch.Tensor | slice,
@@ -304,266 +363,83 @@ class LutPdActuator(Actuator[LutPdCfgT], Generic[LutPdCfgT]):
       effort_limit = effort_limit.unsqueeze(-1)
     self.actuator_force_limit[env_ids] = effort_limit
 
-  def get_command(self, data: EntityData) -> LutActuatorCmd:
-    assert self._servo_ids is not None and self._context_ids is not None
+  def get_command(self, data: EntityData) -> ActuatorCmd:
+    assert self._servo_ids is not None
     ids = self._servo_ids
-    has_context = self.n_context > 0
-    return LutActuatorCmd(
+    return ActuatorCmd(
       position_target=data.joint_pos_target[:, ids],
       velocity_target=data.joint_vel_target[:, ids],
       effort_target=data.joint_effort_target[:, ids],
       pos=data.joint_pos[:, ids],
       vel=data.joint_vel[:, ids],
-      context_pos=data.joint_pos[:, self._context_ids] if has_context else None,
-      context_vel=data.joint_vel[:, self._context_ids] if has_context else None,
     )
 
-  # -- The law, in three steps shared by every mechanism.
+  def leg_length_state(
+    self, q: torch.Tensor, q_dot: torch.Tensor
+  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """``(slider, distance, distance rate)`` from the leg-length servo joint's
+    position and velocity, whichever joint that is."""
+    leg = self.maps.leg_length
+    if self.cfg.leg_length_servo == "knee":
+      s = leg.slider_of_knee(q)
+      return s, leg.distance(s), leg.distance_rate(s, q_dot)
+    s = leg.slider_of_distance(q + self.cfg.length_joint_to_distance)
+    return s, q, q_dot
 
-  def _batched(self, x: torch.Tensor | None, width: int) -> torch.Tensor | None:
-    """``(num_envs, n_sides * width)`` -> ``(num_envs * n_sides, width)``."""
-    if x is None:
-      return None
-    return x.reshape(x.shape[0] * self.n_sides, width)
-
-  def _pd(
-    self,
-    pos: torch.Tensor,
-    vel: torch.Tensor,
-    position_target: torch.Tensor,
-    velocity_target: torch.Tensor,
-    effort_target: torch.Tensor,
-  ) -> torch.Tensor:
-    """Clamped PD on the servo coordinate, ``(num_envs, n_sides * n_servo)``."""
+  def joint_torques(
+    self, cmd: ActuatorCmd
+  ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Step 1 of the law: the clamped PD torques ``(num_envs, n_sides * 6)``
+    in map coordinates, with the joint positions they were taken at (the
+    leg length replaced by its distance) and the leg-length slider positions
+    ``(num_envs, n_sides)``."""
+    assert self._sign is not None and self._leg_length_cols is not None
     assert self.stiffness is not None and self.damping is not None
     assert self.force_limit is not None
-    torque = self.stiffness * (position_target - pos)
-    torque = torque + self.damping * (velocity_target - vel)
-    torque = torque + effort_target
-    return torch.clamp(torque, -self.force_limit, self.force_limit)
-
-  def _signed(self, cmd: LutActuatorCmd) -> LutActuatorCmd:
-    """The command in the map's joint coordinates (``joint_sign`` applied)."""
     sign = self._sign
-    assert sign is not None
-    return LutActuatorCmd(
-      position_target=cmd.position_target * sign,
-      velocity_target=cmd.velocity_target * sign,
-      effort_target=cmd.effort_target * sign,
-      pos=cmd.pos * sign,
-      vel=cmd.vel * sign,
-      context_pos=cmd.context_pos,
-      context_vel=cmd.context_vel,
-    )
+    cols = self._leg_length_cols
+    pos, vel = cmd.pos * sign, cmd.vel * sign
+    s, d, d_dot = self.leg_length_state(pos[:, cols], vel[:, cols])
+    pos[:, cols] = d
+    vel[:, cols] = d_dot
+    torque = self.stiffness * (cmd.position_target * sign - pos)
+    torque = torque + self.damping * (cmd.velocity_target * sign - vel)
+    torque = torque + cmd.effort_target * sign
+    return torch.clamp(torque, -self.force_limit, self.force_limit), pos, s
 
-  def _transmit(
-    self, pos: torch.Tensor, context_pos: torch.Tensor | None, torque: torch.Tensor
+  def screw_forces(
+    self, torque: torch.Tensor, pos: torch.Tensor, s: torch.Tensor
   ) -> torch.Tensor:
-    """Screw forces ``(num_envs * n_sides, n_screws)`` from the servo joint
-    torques and positions ``(num_envs * n_sides, n_servo)`` in map
-    coordinates, and the context positions ``(..., n_context)``."""
-    raise NotImplementedError
+    """Step 2: the screw forces ``(num_envs, n_sides * 6)`` for joint torques
+    and positions in map coordinates (from :meth:`joint_torques`)."""
+    n = self.N_JOINTS
+    q = pos.reshape(-1, n)
+    tau = torque.reshape(-1, n)
+    s = s.reshape(-1)
+    maps = self.maps
+    F = torch.cat(
+      (
+        maps.hip_z.force(q[:, 0], tau[:, 0]).unsqueeze(-1),
+        maps.hip_xy.forces(q[:, 1:3], tau[:, 1:3]),
+        maps.ankle.forces(q[:, 3:5], s, tau[:, 3:5]),
+        maps.leg_length.actuator_force(s, tau[:, 5]).unsqueeze(-1),
+      ),
+      dim=-1,
+    )
+    return F.reshape(torque.shape)
 
   def compute(self, cmd: ActuatorCmd) -> torch.Tensor:
-    assert isinstance(cmd, LutActuatorCmd)
     assert self.actuator_force_limit is not None
-    cmd = self._signed(cmd)
-    torque = self._pd(
-      cmd.pos, cmd.vel, cmd.position_target, cmd.velocity_target, cmd.effort_target
-    )
-    force = self._transmit(
-      self._batched(cmd.pos, self.n_servo),
-      self._batched(cmd.context_pos, self.n_context),
-      self._batched(torque, self.n_servo),
-    )
-    force = force.reshape(-1, self.n_sides * self.n_screws)
+    torque, pos, s = self.joint_torques(cmd)
+    force = self.screw_forces(torque, pos, s)
+    # Step 3: the clamped force is the <motor>'s ctrl.
     return torch.clamp(force, -self.actuator_force_limit, self.actuator_force_limit)
 
 
-##
-# Hip yaw.
-##
-
-
-@dataclass(kw_only=True)
-class HipZLutPdActuatorCfg(LutPdActuatorCfg):
-  """Hip yaw: PD on ``leg_*_1_joint``, force on ``leg_*_1_actuator`` through
-  ``hip_z_map.npz`` (``F = tau / J(q)``). The left joint is the mirror of
-  the right one, hence the default ``joint_sign``."""
-
-  hip_z_map: HipZMap
-
-  joint_sign: dict[str, float] = field(default_factory=lambda: {"left": -1.0})
-
-  def servo_joint_names(self) -> tuple[str, ...]:
-    return self.hip_z_map.joint_names
-
-  def screw_names(self) -> tuple[str, ...]:
-    return self.hip_z_map.actuator_names
-
-  def build(
-    self, entity: Entity, target_ids: list[int], target_names: list[str]
-  ) -> HipZLutPdActuator:
-    return HipZLutPdActuator(self, entity, target_ids, target_names)
-
-
-class HipZLutPdActuator(LutPdActuator[HipZLutPdActuatorCfg]):
-  def __init__(self, cfg, entity, target_ids, target_names) -> None:
-    super().__init__(cfg, entity, target_ids, target_names)
-    self.map: HipZMap = cfg.hip_z_map
-
-  def _maps_to(self, device: str) -> None:
-    self.map = self.cfg.hip_z_map.to(device)
-
-  def _transmit(self, pos, context_pos, torque):
-    del context_pos
-    return self.map.force(pos, torque)
-
-
-##
-# Leg length.
-##
-
-
-@dataclass(kw_only=True)
-class LegLengthLutPdActuatorCfg(LutPdActuatorCfg):
-  """Leg length: the target joint is ``leg_*_knee_joint`` (the only
-  leg-length DOF this MJCF has) but the PD runs in the simple model's
-  leg-length metres, the femur-ankle ``distance`` of ``leg_length_map.npz``
-  -- the coordinate the mapped leg-length action term and the observations
-  use. ``joint_stiffness`` / ``joint_damping`` / ``joint_effort_limit`` are
-  therefore N/m, N s/m and N. Per leg::
-
-    s     = slider_of_knee(knee)
-    d     = distance(s)                       d_dot = knee_dot / (J(s) dknee_dslider(s))
-    F_d   = clamp(kp (d_t - d) + kd (d_dot_t - d_dot) + F_ff, joint_effort_limit)
-    F_s   = clamp(F_d / J(s), actuator_effort_limit)     # J = d(slider)/d(distance)
-  """
-
-  leg_length_map: LegLengthMap
-
-  def servo_joint_names(self) -> tuple[str, ...]:
-    return (self.leg_length_map.knee_name,)
-
-  def screw_names(self) -> tuple[str, ...]:
-    return (self.leg_length_map.slider_name,)
-
-  def build(
-    self, entity: Entity, target_ids: list[int], target_names: list[str]
-  ) -> LegLengthLutPdActuator:
-    return LegLengthLutPdActuator(self, entity, target_ids, target_names)
-
-
-class LegLengthLutPdActuator(LutPdActuator[LegLengthLutPdActuatorCfg]):
-  def __init__(self, cfg, entity, target_ids, target_names) -> None:
-    super().__init__(cfg, entity, target_ids, target_names)
-    self.map: LegLengthMap = cfg.leg_length_map
-
-  def _maps_to(self, device: str) -> None:
-    self.map = self.cfg.leg_length_map.to(device)
-
-  def leg_length(self, knee_pos: torch.Tensor, knee_vel: torch.Tensor):
-    """``(slider, distance, distance rate)`` of the knee state."""
-    s = self.map.slider_of_knee(knee_pos)
-    return s, self.map.distance(s), self.map.distance_rate(s, knee_vel)
-
-  def compute(self, cmd: ActuatorCmd) -> torch.Tensor:
-    assert isinstance(cmd, LutActuatorCmd)
-    assert self.actuator_force_limit is not None
-    cmd = self._signed(cmd)
-    s, d, d_dot = self.leg_length(cmd.pos, cmd.vel)
-    F_d = self._pd(
-      d, d_dot, cmd.position_target, cmd.velocity_target, cmd.effort_target
-    )
-    F_s = self.map.actuator_force(s, F_d)
-    return torch.clamp(F_s, -self.actuator_force_limit, self.actuator_force_limit)
-
-  def _transmit(self, pos, context_pos, torque):
-    raise NotImplementedError(
-      "the leg length's PD is in mapped coordinates; see compute"
-    )
-
-
-##
-# Hip pitch / roll.
-##
-
-
-@dataclass(kw_only=True)
-class HipXyLutPdActuatorCfg(LutPdActuatorCfg):
-  """Hip pitch/roll: PD on ``leg_*_2_joint``, ``leg_*_3_joint``, forces on
-  ``leg_*_2_actuator``, ``leg_*_3_actuator`` through
-  ``hip_xy_jacobian_map.npz`` (``F = J(q2, q3)^-T tau``)."""
-
-  hip_xy_map: HipXyMap
-
-  def servo_joint_names(self) -> tuple[str, ...]:
-    return self.hip_xy_map.joint_names
-
-  def screw_names(self) -> tuple[str, ...]:
-    return self.hip_xy_map.actuator_names
-
-  def build(
-    self, entity: Entity, target_ids: list[int], target_names: list[str]
-  ) -> HipXyLutPdActuator:
-    return HipXyLutPdActuator(self, entity, target_ids, target_names)
-
-
-class HipXyLutPdActuator(LutPdActuator[HipXyLutPdActuatorCfg]):
-  def __init__(self, cfg, entity, target_ids, target_names) -> None:
-    super().__init__(cfg, entity, target_ids, target_names)
-    self.map: HipXyMap = cfg.hip_xy_map
-
-  def _maps_to(self, device: str) -> None:
-    self.map = self.cfg.hip_xy_map.to(device)
-
-  def _transmit(self, pos, context_pos, torque):
-    del context_pos
-    return self.map.forces(pos, torque)
-
-
-##
-# Ankle pitch / roll.
-##
-
-
-@dataclass(kw_only=True)
-class AnkleLutPdActuatorCfg(LutPdActuatorCfg):
-  """Ankle pitch/roll: PD on ``leg_*_4_joint``, ``leg_*_5_joint``, forces
-  on ``leg_*_4_actuator``, ``leg_*_5_actuator`` through
-  ``ankle_xy_jacobian_map.npz``, whose third axis is the leg-length slider
-  position: the knee (context joint) is mapped to it through
-  ``leg_length_map.npz``, then ``F = J(q4, q5, s)^-T tau``."""
-
-  ankle_map: AnkleMap
-  leg_length_map: LegLengthMap
-
-  def servo_joint_names(self) -> tuple[str, ...]:
-    return self.ankle_map.joint_names
-
-  def context_joint_names(self) -> tuple[str, ...]:
-    return (self.leg_length_map.knee_name,)
-
-  def screw_names(self) -> tuple[str, ...]:
-    return self.ankle_map.actuator_names
-
-  def build(
-    self, entity: Entity, target_ids: list[int], target_names: list[str]
-  ) -> AnkleLutPdActuator:
-    return AnkleLutPdActuator(self, entity, target_ids, target_names)
-
-
-class AnkleLutPdActuator(LutPdActuator[AnkleLutPdActuatorCfg]):
-  def __init__(self, cfg, entity, target_ids, target_names) -> None:
-    super().__init__(cfg, entity, target_ids, target_names)
-    self.map: AnkleMap = cfg.ankle_map
-    self.leg_length_map: LegLengthMap = cfg.leg_length_map
-
-  def _maps_to(self, device: str) -> None:
-    self.map = self.cfg.ankle_map.to(device)
-    self.leg_length_map = self.cfg.leg_length_map.to(device)
-
-  def _transmit(self, pos, context_pos, torque):
-    assert context_pos is not None
-    s = self.leg_length_map.slider_of_knee(context_pos[:, 0])
-    return self.map.forces(pos, s, torque)
+__all__ = [
+  "GainSpec",
+  "LegLengthServo",
+  "LutTransmissionActuator",
+  "LutTransmissionActuatorCfg",
+  "ScrewElement",
+]
