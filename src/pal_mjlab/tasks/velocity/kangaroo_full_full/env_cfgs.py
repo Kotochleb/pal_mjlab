@@ -19,11 +19,13 @@ single unconditional path here.
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.reward_manager import RewardTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  ANKLE_FEMUR_JOINT_PAIRS,
   ARM_ACTION_SCALE_FACTOR,
   KNEE_DISTANCE_MAP_CSV,
   KNEE_DISTANCE_MAP_LEGS,
@@ -55,6 +57,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   play: bool = False,
   transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -155,6 +158,24 @@ def pal_kangaroo_full_full_baseline_env_cfg(
         params["biased"] = term_cfg.params["biased"]
       term_cfg.func = mdp.joint_state_with_mapped_leg_length
       term_cfg.params = params
+
+      # ankle_normalized re-expresses joint_pos's leg_.*_4_joint column
+      # relative to the shank (leg_.*_4_joint - leg_.*_femur_joint) instead
+      # of the femur link, matching the ankle hull reward's own correction --
+      # see mdp.observations.ankle_femur_normalized. Velocity is untouched:
+      # the hull reward this mirrors never normalizes a rate either. Unlike
+      # pal_kangaroo_full, every variant here gets the correction when
+      # requested -- there is no over-constrained MJCF that already pins
+      # leg_.*_4_joint to the shank.
+      if ankle_normalized and mode == "pos":
+        inner_cfg = ObservationTermCfg(func=term_cfg.func, params=term_cfg.params)
+        term_cfg.func = mdp.ankle_femur_normalized
+        term_cfg.params = {
+          "asset_cfg": SceneEntityCfg("robot"),
+          "joint_order": joint_order,
+          "ankle_femur_pairs": ANKLE_FEMUR_JOINT_PAIRS,
+          "inner": inner_cfg,
+        }
 
   if model.lower_body:
     # No arm_* joints in this variant: the arm-specific keys the baseline
@@ -306,6 +327,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
   play: bool = False,
   transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -314,6 +336,7 @@ def pal_kangaroo_full_full_rough_env_cfg(
     play=play,
     transmission=transmission,
     lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
@@ -325,6 +348,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
   play: bool = False,
   transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -333,6 +357,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
     play=play,
     transmission=transmission,
     lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )

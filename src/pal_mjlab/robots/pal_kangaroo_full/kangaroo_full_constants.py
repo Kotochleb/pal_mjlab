@@ -224,6 +224,15 @@ KNEE_DISTANCE_MAP_LEGS: tuple[tuple[str, str, str], ...] = tuple(
   for side in ("left", "right")
 )
 
+# Ankle joint 4 (pitch) paired with its leg's femur joint, per leg -- the same
+# pairing mdp.rewards.joint_limits_convex_hull_ankle_femur_normalized applies
+# to the hull reward, reused by mdp.observations.ankle_femur_normalized so a
+# variant's observation and reward agree on what "ankle pitch" means. Joint 5
+# (roll) is not part of this: the shank rotation only couples into pitch.
+ANKLE_FEMUR_JOINT_PAIRS: tuple[tuple[str, str], ...] = tuple(
+  (f"leg_{side}_4_joint", f"leg_{side}_femur_joint") for side in ("left", "right")
+)
+
 for _path in (
   KANGAROO_FULL_XML,
   KANGAROO_FULL_XML_OVER_CONSTRAINED,

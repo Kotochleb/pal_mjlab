@@ -11,6 +11,7 @@ relation the deleted slider encodes.
 
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Sequence
 
@@ -165,4 +166,74 @@ class joint_state_with_mapped_leg_length:
       else:
         out[:, self.mapped_cols] = slope * data.joint_vel[:, self.knee_ids]
 
+    return out
+
+
+class ankle_femur_normalized:
+  """Another joint-position observation term, with each ankle joint 4 column
+  shifted by its leg's femur joint -- the observation-side counterpart to
+  ``mdp.rewards.joint_limits_convex_hull_ankle_femur_normalized``.
+
+  ``leg_.*_4_joint`` (ankle pitch) is measured off the shank, but on the full
+  and full-full models the shank itself rotates on ``leg_.*_femur_joint``
+  through the four-bar (or connect-loop) femur closure, so the ankle bar
+  mechanism's pitch relative to the shank -- the quantity a policy trained
+  against the simple model expects -- is ``leg_.*_4_joint - leg_.*_femur_joint``,
+  not ``leg_.*_4_joint`` alone.
+
+  ``inner`` is the ``ObservationTermCfg`` this variant would otherwise use for
+  the term -- stock ``joint_pos_rel`` when the model still has every
+  simple-model joint, ``joint_state_with_mapped_leg_length`` when the leg
+  length slot is reconstructed from the knee -- called unchanged first, so
+  the vector's order and every value but the ones ``ankle_femur_pairs`` names
+  are exactly what that term would already produce. The femur term is taken
+  relative to its own default, the same convention every other slot in the
+  vector already follows, so this column is still zero at the default pose
+  rather than picking up a constant offset equal to the default femur angle.
+  """
+
+  def __init__(self, cfg: ObservationTermCfg, env: ManagerBasedRlEnv):
+    inner: ObservationTermCfg = cfg.params["inner"]
+    for value in inner.params.values():
+      if isinstance(value, SceneEntityCfg):
+        value.resolve(env.scene)
+    self._inner_func = (
+      inner.func(cfg=inner, env=env) if inspect.isclass(inner.func) else inner.func
+    )
+    self._inner_params = inner.params
+
+    asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
+    asset = env.scene[asset_cfg.name]
+    joint_order: Sequence[str] = cfg.params["joint_order"]
+    ankle_femur_pairs: Sequence[tuple[str, str]] = cfg.params["ankle_femur_pairs"]
+
+    self.ankle_cols = torch.as_tensor(
+      [joint_order.index(ankle) for ankle, _ in ankle_femur_pairs],
+      device=env.device,
+      dtype=torch.long,
+    )
+    self.femur_ids = torch.as_tensor(
+      [asset.joint_names.index(femur) for _, femur in ankle_femur_pairs],
+      device=env.device,
+      dtype=torch.long,
+    )
+
+  def __call__(
+    self,
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    joint_order: Sequence[str],
+    ankle_femur_pairs: Sequence[tuple[str, str]],
+    inner: ObservationTermCfg,
+  ) -> torch.Tensor:
+    del joint_order, ankle_femur_pairs, inner  # Resolved once, in __init__.
+    out = self._inner_func(env, **self._inner_params).clone()
+
+    asset = env.scene[asset_cfg.name]
+    default_joint_pos = asset.data.default_joint_pos
+    assert default_joint_pos is not None
+    femur_rel = (
+      asset.data.joint_pos[:, self.femur_ids] - default_joint_pos[:, self.femur_ids]
+    )
+    out[:, self.ankle_cols] -= femur_rel
     return out

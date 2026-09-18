@@ -18,6 +18,7 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (  # noqa: F401
   get_kangaroo_robot_cfg,
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa: F401
+  ANKLE_FEMUR_JOINT_PAIRS,
   ARM_ACTION_SCALE_FACTOR,
   HIP_XY_TENDON_NAMES,
   HIP_Z_TENDON_NAMES,

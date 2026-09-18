@@ -12,10 +12,12 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
+from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots import (
+  ANKLE_FEMUR_JOINT_PAIRS,
   ARM_ACTION_SCALE_FACTOR,
   KANGAROO_TENDON_LENGTHS,
   KNEE_DISTANCE_MAP_CSV,
@@ -50,6 +52,7 @@ def pal_kangaroo_full_baseline_env_cfg(
   femur_closure: FemurClosure = "prismatic",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -143,21 +146,39 @@ def pal_kangaroo_full_baseline_env_cfg(
           joint_names=joint_order,
           preserve_order=True,
         )
-        continue
-      # No leg length joint to read in this variant: assemble the same vector
-      # by hand, with those two slots reconstructed from their knee angle
-      # through the displacement map.
-      params = {
-        "asset_cfg": SceneEntityCfg("robot"),
-        "joint_order": joint_order,
-        "csv_path": KNEE_DISTANCE_MAP_CSV,
-        "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
-        "mode": mode,
-      }
-      if "biased" in term_cfg.params:
-        params["biased"] = term_cfg.params["biased"]
-      term_cfg.func = mdp.joint_state_with_mapped_leg_length
-      term_cfg.params = params
+      else:
+        # No leg length joint to read in this variant: assemble the same
+        # vector by hand, with those two slots reconstructed from their knee
+        # angle through the displacement map.
+        params = {
+          "asset_cfg": SceneEntityCfg("robot"),
+          "joint_order": joint_order,
+          "csv_path": KNEE_DISTANCE_MAP_CSV,
+          "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
+          "mode": mode,
+        }
+        if "biased" in term_cfg.params:
+          params["biased"] = term_cfg.params["biased"]
+        term_cfg.func = mdp.joint_state_with_mapped_leg_length
+        term_cfg.params = params
+
+      # ankle_normalized re-expresses joint_pos's leg_.*_4_joint column
+      # relative to the shank (leg_.*_4_joint - leg_.*_femur_joint) instead
+      # of the femur link, matching the ankle hull reward's own correction --
+      # see mdp.observations.ankle_femur_normalized. Velocity is untouched:
+      # the hull reward this mirrors never normalizes a rate either.
+      # "tendons_over_constrained" keeps the raw term for the same reason the
+      # reward does: its extra closed loops already pin leg_.*_4_joint to the
+      # shank directly, so the correction would be wrong there.
+      if ankle_normalized and mode == "pos" and mjcf != "tendons_over_constrained":
+        inner_cfg = ObservationTermCfg(func=term_cfg.func, params=term_cfg.params)
+        term_cfg.func = mdp.ankle_femur_normalized
+        term_cfg.params = {
+          "asset_cfg": SceneEntityCfg("robot"),
+          "joint_order": joint_order,
+          "ankle_femur_pairs": ANKLE_FEMUR_JOINT_PAIRS,
+          "inner": inner_cfg,
+        }
 
   if not model.has_leg_length_joint:
     # The map fills the observation slot, but the baseline terms that act on
@@ -368,6 +389,7 @@ def pal_kangaroo_full_rough_env_cfg(
   femur_closure: FemurClosure = "prismatic",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -378,6 +400,7 @@ def pal_kangaroo_full_rough_env_cfg(
     femur_closure=femur_closure,
     mjcf=mjcf,
     lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
@@ -390,6 +413,7 @@ def pal_kangaroo_full_flat_env_cfg(
   femur_closure: FemurClosure = "prismatic",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -400,6 +424,7 @@ def pal_kangaroo_full_flat_env_cfg(
     femur_closure=femur_closure,
     mjcf=mjcf,
     lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
