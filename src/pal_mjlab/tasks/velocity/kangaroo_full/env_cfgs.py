@@ -10,7 +10,6 @@ entries.
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
-from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -43,11 +42,6 @@ from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
   configure_simple_model_encoder_bias,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
-from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
-  POLICY_STD_RANGE_END,
-  POLICY_STD_RANGE_START,
-  pal_kangaroo_full_ppo_runner_cfg,
-)
 
 
 def pal_kangaroo_full_baseline_env_cfg(
@@ -224,43 +218,6 @@ def pal_kangaroo_full_baseline_env_cfg(
       "leg_left_femur_joint",
       "leg_right_femur_joint",
     ]
-
-  # -- Curriculum
-  #
-  # Hold the posture term at six times its weight for the first 150 training
-  # iterations so the policy settles into the nominal pose before the other
-  # terms take over, then ramp it linearly back to the baseline weight by
-  # iteration 400. The ramp is keyed on env.common_step_counter, which
-  # advances once per env step across all parallel envs, so an iteration is
-  # the runner's num_steps_per_env env steps. Skipped in play mode, where the
-  # weight would never come back down.
-  if not play:
-    assert cfg.curriculum is not None
-    steps_per_iteration = pal_kangaroo_full_ppo_runner_cfg().num_steps_per_env
-    pose_weight = cfg.rewards["pose"].weight
-    cfg.curriculum["pose_weight"] = CurriculumTermCfg(
-      func=mdp.reward_weight_linear_ramp,
-      params={
-        "reward_name": "pose",
-        "start_step": 150 * steps_per_iteration,
-        "end_step": 400 * steps_per_iteration,
-        "start_weight": 7.0 * pose_weight,
-        "end_weight": pose_weight,
-      },
-    )
-    # Clamp on the policy's action std: keep the floor up so exploration can't
-    # collapse while the pose is being learned, then let it go. The runner
-    # cfg's std_range starts from the same value, and the
-    # KangarooFullOnPolicyRunner is what exposes the distribution to the term.
-    cfg.curriculum["policy_std_range"] = CurriculumTermCfg(
-      func=mdp.policy_std_range_linear_ramp,
-      params={
-        "start_step": 100 * steps_per_iteration,
-        "end_step": 200 * steps_per_iteration,
-        "start_range": POLICY_STD_RANGE_START,
-        "end_range": POLICY_STD_RANGE_END,
-      },
-    )
 
   # -- Metrics for the closed-loop constraints.
   #
