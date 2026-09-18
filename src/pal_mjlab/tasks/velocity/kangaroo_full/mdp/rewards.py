@@ -27,6 +27,7 @@ from pal_mjlab.tasks.velocity.kangaroo_full.mdp.observations import (
   _interpolate,
   load_knee_leg_length_map,
 )
+from pal_mjlab.tasks.velocity.mdp.rewards import joint_limits_convex_hull
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -211,4 +212,54 @@ class mapped_leg_length_vel_limits:
 
     env.extras["log"]["Metrics/joint_vel_max"] = torch.max(torch.abs(vel)).item()
     env.extras["log"]["Metrics/joint_vel_limit_violation"] = torch.mean(penalty).item()
+    return penalty
+
+
+class joint_limits_convex_hull_ankle_femur_normalized(joint_limits_convex_hull):
+  """``joint_limits_convex_hull``, for the ankle, normalized by the femur joint.
+
+  The simple model's ``leg_.*_4_joint`` (ankle pitch) is measured off the
+  shank, but on the full and full-full models the shank itself is free to
+  rotate on ``leg_.*_femur_joint`` -- the four-bar (or connect-loop) femur
+  closure -- so the ankle bar mechanism's pitch relative to the *shank*, the
+  quantity the hull was fit against, is ``leg_.*_4_joint - leg_.*_femur_joint``,
+  not ``leg_.*_4_joint`` alone. ``femur_joint_names`` pairs one femur joint
+  with each entry of ``joint_names_group``, in the same order; only the first
+  joint of each group (joint 4) is shifted, the second (joint 5, ankle roll)
+  is untouched.
+  """
+
+  def __call__(  # type: ignore[override]
+    self,
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    metrics_suffix: str,
+    margin: float,
+    joint_names_group: list[list[str]],
+    hull_points: torch.Tensor,
+    femur_joint_names: list[str],
+  ) -> torch.Tensor:
+    del margin, hull_points
+    penalty = torch.zeros(env.num_envs, device=env.device, dtype=torch.float32)
+    metrics_violation_dist = torch.zeros(
+      env.num_envs, device=env.device, dtype=torch.float32
+    )
+    for joint_group, femur_joint_name in zip(joint_names_group, femur_joint_names):
+      asset: Entity = env.scene[asset_cfg.name]
+      target_ids, _ = asset.find_joints(joint_group)
+      femur_id, _ = asset.find_joints([femur_joint_name])
+
+      joint_pos = asset.data.joint_pos[:, target_ids].clone()
+      joint_pos[:, 0] = joint_pos[:, 0] - asset.data.joint_pos[:, femur_id[0]]
+
+      dot_product_res = (
+        torch.matmul(joint_pos, self.equation_coeff_A.T) + self.equation_coeff_b
+      )
+      violation_dist = torch.clamp(dot_product_res, min=0.0).max(dim=1)[0]
+      penalty += torch.square(violation_dist)
+      metrics_violation_dist += violation_dist
+
+    env.extras["log"][f"Metrics/joint_limits_hull_{metrics_suffix}"] = torch.mean(
+      metrics_violation_dist
+    )
     return penalty

@@ -210,6 +210,21 @@ def pal_kangaroo_full_baseline_env_cfg(
   cfg.rewards["track_linear_velocity"].weight = 3.5
   cfg.rewards["track_angular_velocity"].weight = 3.0
 
+  # leg_.*_4_joint (ankle pitch) is measured off the shank, but on this model
+  # the shank itself rotates on leg_.*_femur_joint through the four-bar (or
+  # connect-loop) femur closure -- so the pitch the ankle hull was fit
+  # against is leg_.*_4_joint - leg_.*_femur_joint, not leg_.*_4_joint alone.
+  # "tendons_over_constrained" layers extra closed loops that already pin
+  # leg_.*_4_joint to the shank directly, so that variant keeps the baseline
+  # (un-normalized) term.
+  if mjcf != "tendons_over_constrained":
+    ankle_hull = cfg.rewards["convex_hull_joint_limits_ankle"]
+    ankle_hull.func = mdp.joint_limits_convex_hull_ankle_femur_normalized
+    ankle_hull.params["femur_joint_names"] = [
+      "leg_left_femur_joint",
+      "leg_right_femur_joint",
+    ]
+
   # -- Curriculum
   #
   # Hold the posture term at six times its weight for the first 150 training

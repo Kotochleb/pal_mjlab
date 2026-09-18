@@ -230,6 +230,19 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   cfg.rewards["track_linear_velocity"].weight = 3.5
   cfg.rewards["track_angular_velocity"].weight = 3.0
 
+  # leg_.*_4_joint (ankle pitch) is measured off the shank, but here the
+  # shank itself rotates on leg_.*_femur_joint through the four-bar femur
+  # closure -- so the pitch the ankle hull was fit against is
+  # leg_.*_4_joint - leg_.*_femur_joint, not leg_.*_4_joint alone. Unlike
+  # pal_kangaroo_full, this MJCF has no over-constrained variant that already
+  # normalizes it, so every full-full variant gets the normalized term.
+  ankle_hull = cfg.rewards["convex_hull_joint_limits_ankle"]
+  ankle_hull.func = mdp.joint_limits_convex_hull_ankle_femur_normalized
+  ankle_hull.params["femur_joint_names"] = [
+    "leg_left_femur_joint",
+    "leg_right_femur_joint",
+  ]
+
   # -- Curriculum
   #
   # Same schedule as pal_kangaroo_full: hold the posture term at seven times
