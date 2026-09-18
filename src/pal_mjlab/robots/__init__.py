@@ -37,6 +37,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   Transmission,
   get_kangaroo_full_model,
   get_kangaroo_full_spec,
+  simple_model_action_names,
 )
 from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (  # noqa: F401
   KangarooFullFullModel,

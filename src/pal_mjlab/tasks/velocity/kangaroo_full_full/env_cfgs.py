@@ -33,6 +33,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   LOWER_BODY_JOINT_ORDER,
   SIMPLE_MODEL_JOINT_ORDER,
   get_kangaroo_full_spec,
+  simple_model_action_names,
 )
 from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
@@ -90,17 +91,38 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # The "lut" transmission is commanded on the simple-model joints, so it
   # sits in the catch-all term exactly like the "joint" one -- except the
   # leg length: its target joint is the knee but its targets are leg lengths
-  # in metres, so it gets the mapped term below, which offsets and de-biases
-  # in that coordinate.
+  # in metres. The knee is therefore commanded through the mapped term, which
+  # offsets and de-biases in that coordinate -- and that term *is* the
+  # catch-all term, with every target listed explicitly in the simple
+  # model's joint order (the knee in leg_.*_length_joint's slot), so the
+  # action vector is laid out exactly like the "joint" transmission's on
+  # either MJCF. A separate knee term would trail the vector and permute
+  # every slot after the left hip against a "joint"-trained checkpoint.
 
-  cfg.actions = {
-    "joint_pos": JointPositionActionCfg(
-      entity_name="robot",
-      actuator_names=model.joint_actuator_names,
-      scale=model.joint_action_scale,
-      use_default_offset=True,
-    )
-  }
+  joint_order = LOWER_BODY_JOINT_ORDER if model.lower_body else SIMPLE_MODEL_JOINT_ORDER
+  if model.leg_length_action is None:
+    cfg.actions = {
+      "joint_pos": JointPositionActionCfg(
+        entity_name="robot",
+        actuator_names=model.joint_actuator_names,
+        scale=model.joint_action_scale,
+        use_default_offset=True,
+      )
+    }
+  else:
+    cfg.actions = {
+      "joint_pos": mdp.MappedLegLengthPositionActionCfg(
+        entity_name="robot",
+        actuator_names=simple_model_action_names(
+          joint_order, model.joint_actuator_names, model.leg_length_action
+        ),
+        preserve_order=True,
+        scale={**model.joint_action_scale, **model.leg_length_action.scale},
+        use_default_offset=True,
+        csv_path=KNEE_DISTANCE_MAP_CSV,
+        mapped_joints=LEG_LENGTH_FROM_KNEE_JOINTS,
+      )
+    }
   for name, slider_action in (
     ("hip_z_pos", model.hip_z_slider_action),
     ("hip_xy_pos", model.hip_xy_slider_action),
@@ -115,16 +137,6 @@ def pal_kangaroo_full_full_baseline_env_cfg(
       scale=slider_action.scale,
       use_default_offset=True,
     )
-  if model.leg_length_action is not None:
-    cfg.actions["leg_length_pos"] = mdp.MappedLegLengthPositionActionCfg(
-      entity_name="robot",
-      actuator_names=model.leg_length_action.actuator_names,
-      scale=model.leg_length_action.scale,
-      use_default_offset=True,
-      csv_path=KNEE_DISTANCE_MAP_CSV,
-      mapped_joints=LEG_LENGTH_FROM_KNEE_JOINTS,
-    )
-
   # -- Observations
   #
   # Exactly what the simple model's policy sees: the same 26 joints, in the
@@ -133,7 +145,6 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # pal_kangaroo_full this is unconditionally the knee-angle-mapped
   # reconstruction rather than a per-variant choice.
 
-  joint_order = LOWER_BODY_JOINT_ORDER if model.lower_body else SIMPLE_MODEL_JOINT_ORDER
   configure_simple_model_encoder_bias(cfg, joint_order, has_leg_length_joint=False)
 
   for group in ("actor", "critic"):

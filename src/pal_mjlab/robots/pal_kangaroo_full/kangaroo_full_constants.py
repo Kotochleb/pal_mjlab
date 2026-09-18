@@ -600,9 +600,13 @@ LEG_JOINT_PD: dict[str, tuple[float, float]] = {
 LEG_JOINT_PD_ARMATURE = 0.01
 # The leg length in the simple model's metres (N/m, N): the "joint"
 # transmission's PD on leg_.*_length_joint, and the "lut" one's PD in the
-# mapped distance, which runs softer.
+# mapped distance. The same gains on purpose: a unit action then commands the
+# same leg-length change *and* the same force, so a checkpoint trained on
+# "joint" plays on "lut" (the old semi_serial variant's softer 900 N/m kept
+# the force per unit action but not the stiffness, and a "joint" checkpoint
+# fell over on it within a few seconds).
 LEG_LENGTH_JOINT_PD = (1600.0, 1100.0)
-LEG_LENGTH_LUT_PD = (900.0, 1100.0)
+LEG_LENGTH_LUT_PD = LEG_LENGTH_JOINT_PD
 # The servo joint of the leg length, by which joint the MJCF has for it.
 LEG_LENGTH_JOINT_EXPR = r"leg_(left|right)_length_joint"
 KNEE_JOINT_EXPR = r"leg_(left|right)_knee_joint"
@@ -1064,6 +1068,52 @@ def split_joint_action_scales(
         joint_scale[name] = scales[name]
         joint_names += (name,)
   return joint_scale, joint_names, carved_scale, carved_names
+
+
+def simple_model_action_names(
+  joint_order: tuple[str, ...],
+  joint_actuator_names: tuple[str, ...],
+  leg_length_action: LegLengthAction,
+) -> tuple[str, ...]:
+  """The catch-all joint term's targets and the mapped leg-length term's
+  knees merged into one explicit, ordered target list.
+
+  The order is ``joint_order`` -- the simple model's joint order, the one the
+  observations already use -- with each knee standing in the slot of the
+  leg-length joint it serves (LEG_LENGTH_FROM_KNEE_JOINTS). That is exactly
+  where mjlab's natural-order JOINT term puts ``leg_.*_length_joint`` on the
+  MJCFs that have it (and where the "joint" transmission puts the knee on
+  the ones that don't), so a "lut" policy's action vector is laid out like a
+  "joint" one's and a checkpoint transfers between them slot for slot. With
+  two terms instead (joints, then knees) the knees would trail the vector
+  and every slot after the left hip would be permuted.
+  """
+  knee_of_length = dict(LEG_LENGTH_FROM_KNEE_JOINTS)
+  exprs = tuple(joint_actuator_names)
+  knee_exprs = tuple(leg_length_action.actuator_names)
+  names: tuple[str, ...] = ()
+  matched: set[str] = set()
+  for name in joint_order:
+    for expr in exprs:
+      if re.fullmatch(expr, name):
+        names += (name,)
+        matched.add(expr)
+        break
+    else:
+      knee = knee_of_length.get(name)
+      if knee is None:
+        continue
+      for expr in knee_exprs:
+        if re.fullmatch(expr, knee):
+          names += (knee,)
+          matched.add(expr)
+          break
+  unmatched = sorted(set(exprs + knee_exprs) - matched)
+  if unmatched:
+    raise ValueError(
+      f"action targets {unmatched} name no joint of joint_order {joint_order}"
+    )
+  return names
 
 
 def lut_leg_length_action(
