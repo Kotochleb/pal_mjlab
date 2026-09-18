@@ -242,8 +242,6 @@ def pal_kangaroo_full_full_baseline_env_cfg(
     "velocity_limits": velocity_limits,
     **mapped_leg_length,
   }
-  cfg.rewards["track_linear_velocity"].weight = 3.5
-  cfg.rewards["track_angular_velocity"].weight = 3.0
 
   # leg_.*_4_joint (ankle pitch) is measured off the shank, but here the
   # shank itself rotates on leg_.*_femur_joint through the four-bar femur
