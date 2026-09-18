@@ -6,11 +6,6 @@ from mjlab.rl import (
   RslRlPpoAlgorithmCfg,
 )
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
-
 def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   """Create RL runner configuration for PAL kangaroo_full velocity task."""
   return RslRlOnPolicyRunnerCfg(
