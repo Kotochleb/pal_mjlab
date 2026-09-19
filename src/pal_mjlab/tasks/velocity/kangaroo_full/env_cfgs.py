@@ -391,8 +391,11 @@ def pal_kangaroo_full_rough_env_cfg(
   actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
+  top_speed: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL rough terrain velocity configuration."""
+  del top_speed  # configure_kangaroo_rough_env deletes the speed curriculum
+  # outright -- rough terrain keeps its fixed, easier command range regardless.
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
     transmission=transmission,
@@ -417,6 +420,7 @@ def pal_kangaroo_full_flat_env_cfg(
   actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
+  top_speed: bool = False,
 ) -> ManagerBasedRlEnvCfg:
   """Create PAL Robotics KANGAROO FULL flat terrain velocity configuration."""
   cfg = pal_kangaroo_full_baseline_env_cfg(
@@ -446,27 +450,34 @@ def pal_kangaroo_full_flat_env_cfg(
   assert "terrain_levels" in cfg.curriculum
   del cfg.curriculum["terrain_levels"]
 
-  # TopSpeed: step lin_vel_x's upper bound up by +1 m/s every 2500 steps,
-  # capped at 12 m/s. Registered after "command_vel" so it overrides that
-  # term's own upper bound each step, while the lower bound and the y/yaw
-  # ranges keep following command_vel's existing staged ramp unchanged.
-  assert "command_vel" in cfg.curriculum
-  cfg.curriculum["top_speed"] = CurriculumTermCfg(
-    func=mdp.top_speed,
-    params={
-      "command_name": "twist",
-      "step_interval": 2500,
-      "increment": 1.0,
-      "start_speed": 1.0,
-      "max_speed": 12.0,
-    },
-  )
+  if top_speed:
+    # TopSpeed: step lin_vel_x's upper bound up by +1 m/s every 2500 steps,
+    # capped at 12 m/s. Registered after "command_vel" so it overrides that
+    # term's own upper bound each step, while the lower bound and the y/yaw
+    # ranges keep following command_vel's existing staged ramp unchanged.
+    assert "command_vel" in cfg.curriculum
+    cfg.curriculum["top_speed"] = CurriculumTermCfg(
+      func=mdp.top_speed,
+      params={
+        "command_name": "twist",
+        "step_interval": 2500,
+        "increment": 1.0,
+        "start_speed": 1.0,
+        "max_speed": 12.0,
+      },
+    )
+
+    # The joint velocity limits reward is tuned for the base command range --
+    # TopSpeed pushes lin_vel_x well past it on purpose, so the penalty would
+    # fight the curriculum instead of shaping gait.
+    cfg.rewards.pop("joint_vel_limits", None)
 
   if play:
     # Disable command curriculum.
     assert "command_vel" in cfg.curriculum
     del cfg.curriculum["command_vel"]
-    del cfg.curriculum["top_speed"]
+    if top_speed:
+      del cfg.curriculum["top_speed"]
 
     twist_cmd = cfg.commands["twist"]
     assert isinstance(twist_cmd, UniformVelocityCommandCfg)
