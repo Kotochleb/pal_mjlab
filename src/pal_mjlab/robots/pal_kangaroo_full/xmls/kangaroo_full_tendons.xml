@@ -634,7 +634,7 @@
                 </body>
                 <body name="right_butterfly_decoupler" pos="0.0725074 0.373018 0">
                   <inertial pos="0.0 0.0 0.0" mass="1e-04" diaginertia="1e-04 1e-04 1e-04"/>
-                  <joint name="right_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14" damping="0.0" />
+                  <joint name="right_butterfly_decoupler_joint" pos="0 0 0" axis="0 0 1" range="-3.14 3.14" damping="0.0"/>
                   <site name="right_ankle_virtual_motor_connect_a" pos="0.007837 -0.086340 0.0"/>
                   <body name="right_butterfly_l">
                     <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
