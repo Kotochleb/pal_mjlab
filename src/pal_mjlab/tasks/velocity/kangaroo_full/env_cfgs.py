@@ -28,6 +28,7 @@ from pal_mjlab.robots import (
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
   SIMPLE_MODEL_JOINT_ORDER,
+  ActuatorModel,
   FemurClosure,
   LowerBody,
   MjcfVariant,
@@ -53,6 +54,7 @@ def pal_kangaroo_full_baseline_env_cfg(
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -64,6 +66,7 @@ def pal_kangaroo_full_baseline_env_cfg(
     femur_closure=femur_closure,
     mjcf=mjcf,
     lower_body=lower_body,
+    actuator_model=actuator_model,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
@@ -384,6 +387,7 @@ def pal_kangaroo_full_rough_env_cfg(
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -395,6 +399,7 @@ def pal_kangaroo_full_rough_env_cfg(
     mjcf=mjcf,
     lower_body=lower_body,
     ankle_normalized=ankle_normalized,
+    actuator_model=actuator_model,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )
@@ -408,6 +413,7 @@ def pal_kangaroo_full_flat_env_cfg(
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> ManagerBasedRlEnvCfg:
@@ -419,6 +425,7 @@ def pal_kangaroo_full_flat_env_cfg(
     mjcf=mjcf,
     lower_body=lower_body,
     ankle_normalized=ankle_normalized,
+    actuator_model=actuator_model,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
   )

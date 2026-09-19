@@ -61,7 +61,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 
 import mujoco
-from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
+from mjlab.actuator import ActuatorCfg
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
@@ -75,6 +75,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   ARM_ACTION_SCALE_FACTOR,
   LEG_ACTION_SCALE_FACTOR,
   LEG_SCREW_PD,
+  ActuatorModel,
   LegLengthAction,
   LowerBody,
   Transmission,
@@ -85,8 +86,8 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   lut_leg_length_action,
   print_actuators,
   print_leg_length_action,
+  screw_actuator_cfg,
   screw_element,
-  screw_pd_params,
   split_joint_action_scales,
 )
 
@@ -293,42 +294,48 @@ def get_kangaroo_full_full_spec(lower_body: LowerBody = False) -> mujoco.MjSpec:
 ##
 
 
-def _slider_pd_actuator(
-  target_names_expr: str, map_actuator: str
-) -> BuiltinPositionActuatorCfg:
-  return BuiltinPositionActuatorCfg(
-    target_names_expr=(target_names_expr,), **screw_pd_params(map_actuator)
+# The hip/ankle slider actuators' (target_names_expr, map_actuator) pairs, in
+# the simple model's order; the leg length screw is appended separately below
+# since its target isn't one of _SLIDER_ACTUATOR_KEYS.
+_SLIDER_ACTUATOR_TARGETS: tuple[tuple[str, str], ...] = (
+  (r"leg_(left|right)_1_actuator$", "leg_right_1_actuator"),
+  (r"leg_(left|right)_[23]_actuator$", "leg_right_2_actuator"),
+  (r"leg_(left|right)_[45]_actuator$", "leg_right_4_actuator"),
+)
+
+# The target_names_expr of the three hip/ankle slider configs, i.e. the keys
+# _build_action_scales hands back for them; get_kangaroo_full_full_model
+# routes these into per-mechanism SliderActions instead of the catch-all term.
+_SLIDER_ACTUATOR_KEYS = frozenset(expr for expr, _ in _SLIDER_ACTUATOR_TARGETS)
+
+
+def _actuator_transmission_actuators(
+  actuator_model: ActuatorModel,
+) -> tuple[ActuatorCfg, ...]:
+  """The "actuator" transmission: a PD on every screw, ordered like the
+  simple model's actuators (hip yaw, hip pitch/roll, ankle, leg length) --
+  the native <position> element ("builtin") or DcMotorActuatorCfg's
+  torque-speed curve ("dc_motor")."""
+  return tuple(
+    screw_actuator_cfg((expr,), map_actuator, actuator_model)
+    for expr, map_actuator in _SLIDER_ACTUATOR_TARGETS
+  ) + (
+    screw_actuator_cfg(
+      (r"leg_(left|right)_length_actuator$",),
+      "leg_right_length_actuator",
+      actuator_model,
+    ),
   )
 
 
-# The "actuator" transmission: a PD on every screw, ordered like the simple
-# model's actuators (hip yaw, hip pitch/roll, ankle, leg length).
-_ACTUATOR_TRANSMISSION_ACTUATORS: tuple[ActuatorCfg, ...] = (
-  _slider_pd_actuator(r"leg_(left|right)_1_actuator$", "leg_right_1_actuator"),
-  _slider_pd_actuator(r"leg_(left|right)_[23]_actuator$", "leg_right_2_actuator"),
-  _slider_pd_actuator(r"leg_(left|right)_[45]_actuator$", "leg_right_4_actuator"),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=(r"leg_(left|right)_length_actuator$",),
-    **screw_pd_params("leg_right_length_actuator"),
-  ),
-)
-
-# The target_names_expr of the three hip/ankle slider configs above, i.e. the
-# keys _build_action_scales hands back for them; get_kangaroo_full_full_model
-# routes these into per-mechanism SliderActions instead of the catch-all term.
-_SLIDER_ACTUATOR_KEYS = frozenset(
-  name
-  for actuator in _ACTUATOR_TRANSMISSION_ACTUATORS[:3]
-  for name in actuator.target_names_expr
-)
-
-
-def _leg_actuators(transmission: Transmission) -> tuple[ActuatorCfg, ...]:
+def _leg_actuators(
+  transmission: Transmission, actuator_model: ActuatorModel
+) -> tuple[ActuatorCfg, ...]:
   """The leg actuators of one variant, in the simple model's actuator order."""
   if transmission == "joint":
     return joint_pd_actuators("knee", INIT_STATE.joint_pos["leg_.*_knee_joint"])
   if transmission == "actuator":
-    return _ACTUATOR_TRANSMISSION_ACTUATORS
+    return _actuator_transmission_actuators(actuator_model)
   if transmission == "lut":
     # The "lut" transmission's <motor>s sit on the sliders that carry the
     # map actuators' own names.
@@ -376,6 +383,7 @@ class KangarooFullFullModel:
 
   transmission: Transmission
   lower_body: LowerBody
+  actuator_model: ActuatorModel
   arm_action_scale_factor: float
   leg_action_scale_factor: float
 
@@ -407,6 +415,7 @@ class KangarooFullFullModel:
 def get_kangaroo_full_full_model(
   transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> KangarooFullFullModel:
@@ -430,7 +439,7 @@ def get_kangaroo_full_full_model(
   "lut" transmission that is the servo joint's effort and stiffness, so a unit
   action means the same thing as on the "joint" one.
   """
-  leg_actuators = _leg_actuators(transmission)
+  leg_actuators = _leg_actuators(transmission, actuator_model)
   upper_body_actuators = (
     _LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS
   )
@@ -468,6 +477,7 @@ def get_kangaroo_full_full_model(
   return KangarooFullFullModel(
     transmission=transmission,
     lower_body=lower_body,
+    actuator_model=actuator_model,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
     articulation=articulation,
@@ -488,6 +498,7 @@ def get_kangaroo_full_full_model(
 def main(
   transmission: Transmission = "actuator",
   lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
   launch_viewer: bool = True,
 ) -> None:
   """Inspect one actuation variant of the connect-linkage KANGAROO model.
@@ -504,10 +515,14 @@ def main(
     lower_body: Delete both arms (everything from arm_(left|right)_base_link
       down) and servo only the waist where the full model would otherwise
       also drive the arms.
+    actuator_model: Only matters for transmission="actuator": the native
+      <position> element ("builtin") or DcMotorActuatorCfg's torque-speed
+      curve, saturating at the screw's stall torque and dropping to zero at
+      its no-load speed ("dc_motor").
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_full_model(
-    transmission=transmission, lower_body=lower_body
+    transmission=transmission, lower_body=lower_body, actuator_model=actuator_model
   )
 
   # Go through Entity rather than compiling make_spec() directly:
@@ -523,7 +538,10 @@ def main(
   mujoco.mj_resetDataKeyframe(model, data, model.key("init_state").id)
   mujoco.mj_forward(model, data)
 
-  print(f"transmission={transmission} lower_body={lower_body}")
+  print(
+    f"transmission={transmission} lower_body={lower_body} "
+    f"actuator_model={actuator_model}"
+  )
   if entity.is_fixed_base:
     print("  base:    FIXED (no freejoint in the MJCF -- pinned to a mocap body)")
   else:

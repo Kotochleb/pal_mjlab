@@ -67,7 +67,7 @@ from typing import Literal, NamedTuple
 
 import mujoco
 import torch
-from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg
+from mjlab.actuator import ActuatorCfg, BuiltinPositionActuatorCfg, DcMotorActuatorCfg
 from mjlab.actuator.actuator import TransmissionType
 from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
@@ -329,6 +329,13 @@ KANGAROO_TENDON_LENGTHS: dict[str, float] = {
 
 Transmission = Literal["joint", "actuator", "lut"]
 FemurClosure = Literal["linkage", "prismatic"]
+# Which actuator model backs the "actuator" transmission's screws: the native,
+# compiled <position> element ("builtin") or DcMotorActuatorCfg's
+# velocity-saturated torque-speed curve ("dc_motor"), peaking at
+# LEG_SCREW_DC_MOTOR_PD's stall torque and dropping to zero at its no-load
+# speed. No effect on the "joint" or "lut" transmissions -- neither puts a
+# screw actuator in the model.
+ActuatorModel = Literal["builtin", "dc_motor"]
 # Not an actuation choice like the axes above -- whether the arms exist at
 # all -- but still a `Literal` alongside them rather than a bare `bool` so it
 # reads the same way at every call site and export.
@@ -624,7 +631,6 @@ KNEE_JOINT_EXPR = r"leg_(left|right)_knee_joint"
 # keyed by the map actuator it drives. Hip pitch/roll and the ankle are pairs
 # with identical screws.
 LEG_SCREW_PD: dict[str, tuple[float, float, float]] = {
-  # saturation_effort=4334.0, velocity_limit=0.314
   # Sum of linear inertia of the screw and inertia of nut plus motor rotor
   # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
   "leg_right_1_actuator": (62500.0, 2000.0, 0.1),
@@ -634,13 +640,25 @@ LEG_SCREW_PD: dict[str, tuple[float, float, float]] = {
   # armature=0.155 + 0.00004559 * (2.0 * math.pi / 0.005) ** 2,
   "leg_right_4_actuator": (25000.0, 2000.0, 0.1),
   "leg_right_5_actuator": (25000.0, 2000.0, 0.1),
-  # saturation_effort=10443.0, velocity_limit=0.288
   # Assuming nut is a cylinder of mass 0.26 Kg, hollow shaft of 10 mm and
   # external diameter of 40 mm. Inertia of a screw is still captured by the
   # model; second value is inertia of motor rotor. Everything multiplied by
   # pitch to make it a linear inertia:
   # armature=(0.000221 + 0.000098) * (2.0 * math.pi / 0.01) ** 2,
   "leg_right_length_actuator": (23000.0, 5000.0, 1.0),
+}
+
+# Each screw's DC motor stall torque (N, saturation_effort) and no-load speed
+# (m/s, velocity_limit), for ActuatorModel="dc_motor" -- see DcMotorActuatorCfg.
+# Hip yaw, hip pitch/roll and the ankle share one motor/screw; the leg length
+# screw is a bigger motor with its own curve.
+LEG_SCREW_DC_MOTOR_PD: dict[str, tuple[float, float]] = {
+  "leg_right_1_actuator": (4334.0, 0.314),
+  "leg_right_2_actuator": (4334.0, 0.314),
+  "leg_right_3_actuator": (4334.0, 0.314),
+  "leg_right_4_actuator": (4334.0, 0.314),
+  "leg_right_5_actuator": (4334.0, 0.314),
+  "leg_right_length_actuator": (10443.0, 0.288),
 }
 
 
@@ -757,31 +775,70 @@ def _tendon_screws() -> dict[str, ScrewElement]:
   return screws
 
 
-def _tendon_pd_actuator(
-  target_names_expr: tuple[str, ...], map_actuator: str
-) -> BuiltinPositionActuatorCfg:
-  return BuiltinPositionActuatorCfg(
-    transmission_type=TransmissionType.TENDON,
+def screw_actuator_cfg(
+  target_names_expr: tuple[str, ...],
+  map_actuator: str,
+  actuator_model: ActuatorModel,
+  transmission_type: TransmissionType = TransmissionType.JOINT,
+) -> ActuatorCfg:
+  """One "actuator" transmission screw's PD: the native, compiled
+  ``<position>`` element ("builtin") or a ``DcMotorActuatorCfg`` with that
+  screw's stall torque and no-load speed ("dc_motor"; see
+  :data:`LEG_SCREW_DC_MOTOR_PD`). Same PD gains either way."""
+  params = screw_pd_params(map_actuator)
+  if actuator_model == "builtin":
+    return BuiltinPositionActuatorCfg(
+      transmission_type=transmission_type,
+      target_names_expr=target_names_expr,
+      **params,
+    )
+  saturation_effort, velocity_limit = LEG_SCREW_DC_MOTOR_PD[map_actuator]
+  return DcMotorActuatorCfg(
+    transmission_type=transmission_type,
     target_names_expr=target_names_expr,
-    **screw_pd_params(map_actuator),
+    saturation_effort=saturation_effort,
+    velocity_limit=velocity_limit,
+    **params,
   )
 
 
-# The "actuator" transmission: tendon-space PD on the hip yaw, hip pitch/roll
-# and ankle screws (their tendons), and the knee screw's prismatic joint.
-_ACTUATOR_TRANSMISSION_ACTUATORS: tuple[ActuatorCfg, ...] = (
-  _tendon_pd_actuator((r"(left|right)_hip_z_slider$",), "leg_right_1_actuator"),
-  _tendon_pd_actuator((r"(left|right)_hip_xy_(l|r)_slider$",), "leg_right_2_actuator"),
-  _tendon_pd_actuator((r"(left|right)_ankle_(l|r)_slider$",), "leg_right_4_actuator"),
-  BuiltinPositionActuatorCfg(
-    target_names_expr=(r"leg_(left|right)_length_actuator$",),
-    **screw_pd_params("leg_right_length_actuator"),
-  ),
-)
+def _actuator_transmission_actuators(
+  actuator_model: ActuatorModel,
+) -> tuple[ActuatorCfg, ...]:
+  """The "actuator" transmission: tendon-space PD on the hip yaw, hip
+  pitch/roll and ankle screws (their tendons), and the knee screw's
+  prismatic joint."""
+  return (
+    screw_actuator_cfg(
+      (r"(left|right)_hip_z_slider$",),
+      "leg_right_1_actuator",
+      actuator_model,
+      TransmissionType.TENDON,
+    ),
+    screw_actuator_cfg(
+      (r"(left|right)_hip_xy_(l|r)_slider$",),
+      "leg_right_2_actuator",
+      actuator_model,
+      TransmissionType.TENDON,
+    ),
+    screw_actuator_cfg(
+      (r"(left|right)_ankle_(l|r)_slider$",),
+      "leg_right_4_actuator",
+      actuator_model,
+      TransmissionType.TENDON,
+    ),
+    screw_actuator_cfg(
+      (r"leg_(left|right)_length_actuator$",),
+      "leg_right_length_actuator",
+      actuator_model,
+    ),
+  )
 
 
 def _leg_actuators(
-  transmission: Transmission, femur_closure: FemurClosure
+  transmission: Transmission,
+  femur_closure: FemurClosure,
+  actuator_model: ActuatorModel,
 ) -> tuple[ActuatorCfg, ...]:
   """The leg actuators of one variant, ordered like the simple pal_kangaroo
   model's (hip yaw, hip pitch/roll, ankle, leg length) so the action vector
@@ -794,7 +851,7 @@ def _leg_actuators(
       leg_length_servo, INIT_STATE.joint_pos["leg_.*_knee_joint"]
     )
   if transmission == "actuator":
-    return _ACTUATOR_TRANSMISSION_ACTUATORS
+    return _actuator_transmission_actuators(actuator_model)
   if transmission == "lut":
     return (
       lut_actuator(_tendon_screws(), leg_length_servo, LEG_LENGTH_JOINT_TO_DISTANCE),
@@ -961,6 +1018,7 @@ class KangarooFullModel:
   femur_closure: FemurClosure
   mjcf: MjcfVariant
   lower_body: LowerBody
+  actuator_model: ActuatorModel
   arm_action_scale_factor: float
   leg_action_scale_factor: float
 
@@ -1157,6 +1215,7 @@ def get_kangaroo_full_model(
   femur_closure: FemurClosure = "prismatic",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
   arm_action_scale_factor: float = ARM_ACTION_SCALE_FACTOR,
   leg_action_scale_factor: float = LEG_ACTION_SCALE_FACTOR,
 ) -> KangarooFullModel:
@@ -1177,7 +1236,7 @@ def get_kangaroo_full_model(
   Cached because the tendon offsets require compiling the model, and every task
   registration asks for the same handful of variants.
   """
-  leg_actuators = _leg_actuators(transmission, femur_closure)
+  leg_actuators = _leg_actuators(transmission, femur_closure, actuator_model)
   upper_body_actuators = (
     _LOWER_BODY_UPPER_BODY_ACTUATORS if lower_body else _UPPER_BODY_ACTUATORS
   )
@@ -1236,6 +1295,7 @@ def get_kangaroo_full_model(
     femur_closure=femur_closure,
     mjcf=mjcf,
     lower_body=lower_body,
+    actuator_model=actuator_model,
     arm_action_scale_factor=arm_action_scale_factor,
     leg_action_scale_factor=leg_action_scale_factor,
     articulation=articulation,
@@ -1300,6 +1360,7 @@ def main(
   femur_closure: FemurClosure = "prismatic",
   mjcf: MjcfVariant = "tendons",
   lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
   launch_viewer: bool = True,
 ) -> None:
   """Inspect one actuation variant of the full KANGAROO model.
@@ -1326,12 +1387,17 @@ def main(
     lower_body: Delete both arms (everything from arm_(left|right)_base_link
       down) and servo only the waist where the full model would otherwise
       also drive the arms.
+    actuator_model: Only matters for transmission="actuator": the native
+      <position> element ("builtin") or DcMotorActuatorCfg's torque-speed
+      curve, saturating at the screw's stall torque and dropping to zero at
+      its no-load speed ("dc_motor").
     launch_viewer: Open the MuJoCo viewer. Pass False for the summary only.
   """
   model_cfg = get_kangaroo_full_model(
     transmission=transmission,
     femur_closure=femur_closure,
     mjcf=mjcf,
+    actuator_model=actuator_model,
     lower_body=lower_body,
   )
 
@@ -1352,7 +1418,7 @@ def main(
 
   print(
     f"transmission={transmission} femur_closure={femur_closure} mjcf={mjcf} "
-    f"lower_body={lower_body}"
+    f"lower_body={lower_body} actuator_model={actuator_model}"
   )
   # Called out because it is silent otherwise and changes what you are looking
   # at completely: with the base freejoint commented out in the MJCF, mjlab
