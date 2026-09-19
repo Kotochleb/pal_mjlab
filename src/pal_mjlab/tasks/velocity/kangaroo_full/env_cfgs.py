@@ -10,6 +10,7 @@ entries.
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
+from mjlab.managers.curriculum_manager import CurriculumTermCfg
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationTermCfg
@@ -445,10 +446,27 @@ def pal_kangaroo_full_flat_env_cfg(
   assert "terrain_levels" in cfg.curriculum
   del cfg.curriculum["terrain_levels"]
 
+  # TopSpeed: step lin_vel_x's upper bound up by +1 m/s every 2500 steps,
+  # capped at 12 m/s. Registered after "command_vel" so it overrides that
+  # term's own upper bound each step, while the lower bound and the y/yaw
+  # ranges keep following command_vel's existing staged ramp unchanged.
+  assert "command_vel" in cfg.curriculum
+  cfg.curriculum["top_speed"] = CurriculumTermCfg(
+    func=mdp.top_speed,
+    params={
+      "command_name": "twist",
+      "step_interval": 2500,
+      "increment": 1.0,
+      "start_speed": 1.0,
+      "max_speed": 12.0,
+    },
+  )
+
   if play:
     # Disable command curriculum.
     assert "command_vel" in cfg.curriculum
     del cfg.curriculum["command_vel"]
+    del cfg.curriculum["top_speed"]
 
     twist_cmd = cfg.commands["twist"]
     assert isinstance(twist_cmd, UniformVelocityCommandCfg)
