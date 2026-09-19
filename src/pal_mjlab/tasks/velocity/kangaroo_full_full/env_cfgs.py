@@ -397,7 +397,7 @@ def pal_kangaroo_full_full_flat_env_cfg(
       func=mdp.top_speed,
       params={
         "command_name": "twist",
-        "step_interval": 2500,
+        "step_interval": 2500 * 24,
         "increment": 1.0,
         "start_speed": 1.0,
         "max_speed": 12.0,
