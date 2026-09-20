@@ -713,7 +713,6 @@ def screw_pd_params(map_actuator: str) -> dict:
     armature = 72.09
   params = _calc_linear_leg_params(stiffness=stiffness, effort=effort, armature=armature)
   if map_actuator == "leg_right_length_actuator":
-    params["damping"] = 589.4603
     params["frictionloss"] = 11.7333
     params["viscous_damping"] = 589.4603
   return params
