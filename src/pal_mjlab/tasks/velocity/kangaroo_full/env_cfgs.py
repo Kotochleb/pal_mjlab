@@ -45,6 +45,9 @@ from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
   configure_simple_model_encoder_bias,
 )
+from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.leg_joint_friction import (
+  configure_leg_joint_friction_dr,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
 
 
@@ -140,6 +143,7 @@ def pal_kangaroo_full_baseline_env_cfg(
   # deleted), so the policy's joint vector drops those slots too rather than
   # reading zeros for a limb that doesn't exist.
   configure_simple_model_encoder_bias(cfg, joint_order, model.has_leg_length_joint)
+  configure_leg_joint_friction_dr(cfg, transmission)
 
   for group in ("actor", "critic"):
     for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):

@@ -53,6 +53,9 @@ from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
   configure_simple_model_encoder_bias,
 )
+from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.leg_joint_friction import (
+  configure_leg_joint_friction_dr,
+)
 
 
 def pal_kangaroo_full_full_baseline_env_cfg(
@@ -147,6 +150,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
   # reconstruction rather than a per-variant choice.
 
   configure_simple_model_encoder_bias(cfg, joint_order, has_leg_length_joint=False)
+  configure_leg_joint_friction_dr(cfg, transmission)
 
   for group in ("actor", "critic"):
     for term, mode in (("joint_pos", "pos"), ("joint_vel", "vel")):

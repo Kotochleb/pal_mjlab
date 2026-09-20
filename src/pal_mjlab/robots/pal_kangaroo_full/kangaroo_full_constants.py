@@ -627,6 +627,45 @@ LEG_LENGTH_LUT_PD = LEG_LENGTH_JOINT_PD
 LEG_LENGTH_JOINT_EXPR = r"leg_(left|right)_length_joint"
 KNEE_JOINT_EXPR = r"leg_(left|right)_knee_joint"
 
+# Per-joint viscous damping (N m s/rad or N s/m), frictionloss (N m or N) and
+# armature (kg m^2 or kg) reflected onto each simple pal_kangaroo joint
+# through its screw/tendon transmission -- measured by sweeping each
+# actuator's full range and reading the equivalent joint-space values back
+# out (frition_results.txt, one measurement per swept pose). Only meaningful
+# for the "joint" transmission, whose PD acts on these DOFs directly; the
+# "actuator" and "lut" transmissions carry their own screw-space friction in
+# LEG_SCREW_PD / screw_pd_params below instead. Keyed like LEG_JOINT_PD, plus
+# a LEG_LENGTH_JOINT_EXPR entry for the leg-length joint. Each value is
+# ``(median, (min, max))``: joint_pd_actuators() applies the median as the
+# nominal value, and mdp.dr.leg_joint_friction randomizes within the range
+# once per environment at startup (manufacturing variance, not per-episode).
+LegFrictionParam = tuple[float, tuple[float, float]]
+
+LEG_JOINT_VISCOUS_DAMPING: dict[str, LegFrictionParam] = {
+  r"leg_(left|right)_1_joint": (0.883277, (0.383261, 0.943999)),
+  r"leg_(left|right)_2_joint": (0.139702, (0.109445, 0.142368)),
+  r"leg_(left|right)_3_joint": (0.043319, (0.0161558, 0.048999)),
+  r"leg_(left|right)_4_joint": (0.0462673, (0.0235464, 0.0494274)),
+  r"leg_(left|right)_5_joint": (0.0136559, (0.00751496, 0.0157335)),
+}
+LEG_JOINT_FRICTIONLOSS: dict[str, LegFrictionParam] = {
+  r"leg_(left|right)_1_joint": (0.464305, (0.305846, 0.48)),
+  r"leg_(left|right)_2_joint": (0.058994, (0.0522175, 0.06275)),
+  r"leg_(left|right)_3_joint": (0.0329185, (0.0147257, 0.0349997)),
+  r"leg_(left|right)_4_joint": (0.0341677, (0.024373, 0.0361297)),
+  r"leg_(left|right)_5_joint": (0.0185659, (0.013674, 0.0198523)),
+}
+LEG_JOINT_ARMATURE: dict[str, LegFrictionParam] = {
+  r"leg_(left|right)_1_joint": (0.074854, (0.0324797, 0.0799999)),
+  r"leg_(left|right)_2_joint": (0.502929, (0.394001, 0.512527)),
+  r"leg_(left|right)_3_joint": (0.155948, (0.058161, 0.176397)),
+  r"leg_(left|right)_4_joint": (0.166562, (0.0847671, 0.177939)),
+  r"leg_(left|right)_5_joint": (0.0491612, (0.0270539, 0.0566406)),
+}
+LEG_LENGTH_JOINT_VISCOUS_DAMPING: LegFrictionParam = (161.39, (140.891, 165.646))
+LEG_LENGTH_JOINT_FRICTIONLOSS: LegFrictionParam = (3.2825, (2.86559, 3.36908))
+LEG_LENGTH_JOINT_ARMATURE: LegFrictionParam = (3.74127, (2.85125, 3.94121))
+
 # Each screw's <position> stiffness (N/m), force limit (N) and armature (kg),
 # keyed by the map actuator it drives. Hip pitch/roll and the ankle are pairs
 # with identical screws.
@@ -690,13 +729,24 @@ def joint_pd_actuators(
     if leg_length_servo == "knee"
     else BuiltinPositionActuatorCfg(
       target_names_expr=(LEG_LENGTH_JOINT_EXPR,),
-      **_calc_leg_params(*LEG_LENGTH_JOINT_PD, LEG_JOINT_PD_ARMATURE, None, None),
+      **_calc_leg_params(
+        *LEG_LENGTH_JOINT_PD,
+        LEG_LENGTH_JOINT_ARMATURE[0],
+        LEG_LENGTH_JOINT_FRICTIONLOSS[0],
+        LEG_LENGTH_JOINT_VISCOUS_DAMPING[0],
+      ),
     )
   )
   return tuple(
     BuiltinPositionActuatorCfg(
       target_names_expr=(expr,),
-      **_calc_leg_params(stiffness, effort, LEG_JOINT_PD_ARMATURE, None, None),
+      **_calc_leg_params(
+        stiffness,
+        effort,
+        LEG_JOINT_ARMATURE[expr][0],
+        LEG_JOINT_FRICTIONLOSS[expr][0],
+        LEG_JOINT_VISCOUS_DAMPING[expr][0],
+      ),
     )
     for expr, (stiffness, effort) in LEG_JOINT_PD.items()
   ) + (leg_length,)
