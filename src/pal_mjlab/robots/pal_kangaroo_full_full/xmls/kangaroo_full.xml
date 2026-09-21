@@ -336,7 +336,7 @@
             <joint name="left_hip_xy_motor_l" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
             <body name="left_hip_xy_l_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_left_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
+              <joint name="leg_left_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
               <geom material="mtl_left_hip_xy_slider_l" mesh="left_hip_xy_slider_l" class="visual" pos="" quat=""/>
               <site name="left_hip_xy_slider_l_connect_a" pos="0 0 0.0934432715608783" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -352,7 +352,7 @@
             <joint name="left_hip_xy_motor_r" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
             <body name="left_hip_xy_r_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_left_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
+              <joint name="leg_left_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
               <geom material="mtl_left_hip_xy_slider_r" mesh="left_hip_xy_slider_r" class="visual" pos="" quat=""/>
               <site name="left_hip_xy_slider_r_connect_a" pos="0 0 0.0934432715608789" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -384,7 +384,7 @@
                 <joint name="left_ankle_motor_l" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                 <body name="left_ankle_l_slider">
                   <inertial pos="-4.2e-05 -0.031044 -4.2e-05" quat="0.707107 0.707107 0 0" mass="0.124259" diaginertia="0.000177 0.000174 5e-06"/>
-                  <joint name="leg_left_4_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.02192931472550568 0.02445207441988786"/>
+                  <joint name="leg_left_5_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.02192931472550568 0.02445207441988786"/>
                   <geom material="mtl_ankle_slider_l" mesh="ankle_slider_l" class="visual" pos="" quat=""/>
                   <site name="left_ankle_slider_l_connect_a" pos="0 -0.0789216548465015 0" quat="1.0 0 0 0"/>
                 </body>
@@ -395,7 +395,7 @@
                 <joint name="left_ankle_motor_r" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                 <body name="left_ankle_r_slider">
                   <inertial pos="4.2e-05 -0.031044 4.2e-05" quat="0.707107 0.707107 0 0" mass="0.124259" diaginertia="0.000177 0.000174 5e-06"/>
-                  <joint name="leg_left_5_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.022076542827469015 0.024483882393239422"/>
+                  <joint name="leg_left_4_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.022076542827469015 0.024483882393239422"/>
                   <geom material="mtl_ankle_slider_r" mesh="ankle_slider_r" class="visual" pos="" quat=""/>
                   <site name="left_ankle_slider_r_connect_a" pos="0 -0.0789216548465007 0" quat="1.0 0 0 0"/>
                 </body>
@@ -453,7 +453,7 @@
                   <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                   <joint name="left_butterfly_l" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                   <body name="left_ankle_tibia_bar_l1" pos="-0.0521478 -0.0296751 0.043" quat="0.999966 0 0 -0.00819572">
-                    <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
                     <joint name="left_ankle_tibia_bar_l1" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                     <body name="left_ankle_tibia_bar_l2">
                       <inertial pos="-0.0990659 0.162066 -0.00455" quat="0.339508 0.603541 -0.351802 0.629847" mass="0.088" diaginertia="0.000901543 0.000900922 1.32769e-06"/>
@@ -470,7 +470,7 @@
                   <inertial pos="-0.024179 0.002209 -0.047126" quat="0.176413 0.575994 -0.182144 0.777131" mass="0.251901" diaginertia="0.000173396 0.000107843 7.77611e-05"/>
                   <joint name="left_butterfly_r" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                   <body name="left_ankle_tibia_bar_r1" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572">
-                    <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
                     <joint name="left_ankle_tibia_bar_r1" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                     <body name="left_ankle_tibia_bar_r2">
                       <inertial pos="-0.099066 0.162066 0.00455" quat="0.35272 0.630528 -0.338457 0.602885" mass="0.089131" diaginertia="0.00150188 0.00150084 1.27796e-06"/>
@@ -633,7 +633,7 @@
             <inertial pos="-0.016275 -0.046831 -0.035549" quat="0.559272 0.244308 -0.72367 0.322226" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
             <joint name="leg_right_3_joint" pos="0 0 0" axis="-1 0 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_cross_r" pos="0.05965 -0.035 0" quat="0 0.707107 -0.707107 0">
-              <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+              <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
               <joint name="right_hip_xy_cross_r" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
               <site name="right_hip_xy_slider_r_connect_b" pos="0 0 0" quat="1.0 0 0 0"/>
             </body>
@@ -721,7 +721,7 @@
                   <inertial pos="-0.024634 0.002294 0.047211" quat="0.193392 0.777307 -0.182618 0.570126" mass="0.246594" diaginertia="0.000169633 0.000105324 7.6043e-05"/>
                   <joint name="right_butterfly_l" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                   <body name="right_ankle_tibia_bar_l1" pos="-0.0521478 -0.0296751 0.043" quat="0.999966 0 0 -0.00819572">
-                    <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
                     <joint name="right_ankle_tibia_bar_l1" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                     <body name="right_ankle_tibia_bar_l2">
                       <inertial pos="-0.0990659 0.162066 -0.00455" quat="0.339508 0.603541 -0.351802 0.629847" mass="0.088" diaginertia="0.000901543 0.000900922 1.32769e-06"/>
@@ -739,7 +739,7 @@
                   <inertial pos="-0.024179 0.002209 -0.047126" quat="0.176413 0.575994 -0.182144 0.777131" mass="0.251901" diaginertia="0.000173396 0.000107843 7.77611e-05"/>
                   <joint name="right_butterfly_r" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
                   <body name="right_ankle_tibia_bar_r1" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572">
-                    <inertial pos="1e-05 1e-05 1e-05" mass="1e-05" diaginertia="1e-05 1e-05 1e-05"/>
+                    <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
                     <joint name="right_ankle_tibia_bar_r1" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                     <body name="right_ankle_tibia_bar_r2">
                       <inertial pos="-0.099066 0.162066 0.00455" quat="0.35272 0.630528 -0.338457 0.602885" mass="0.089131" diaginertia="0.00150188 0.00150084 1.27796e-06"/>

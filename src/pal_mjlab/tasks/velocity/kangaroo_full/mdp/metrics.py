@@ -1,23 +1,9 @@
-"""Metrics for kangaroo_full closed-loop equality constraints.
-
-Three kinds of equality can hold this model together, and their violations are
-not the same shape, hence one metric term each:
-
-* ``<tendon>`` -- a scalar length, how far the tendon is from its rest length.
-* ``<connect>`` -- a 3-D displacement between the two anchor points it pins
-  together, reported per world axis or as a total.
-* ``<joint>`` -- a scalar in the coupled joint's own units (radians for a
-  hinge), how far it has drifted from the angle its partner prescribes.
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Sequence
 
 import mujoco
-import numpy as np
 import torch
 from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
@@ -399,109 +385,3 @@ class joint_equality_constraint_violation:
       env, self.eq_ids, self.qpos_adr1, self.qpos_adr2, self.has_second
     )
     return _reduce(error if signed else error.abs(), reduction)  # (num_envs,)
-
-
-def load_knee_distance_map(csv_path: str | Path) -> torch.Tensor:
-  """Load ``knee_distance_map.csv`` as a ``(N, 3)`` table, sorted by knee angle.
-
-  Columns are ``(knee_rad, displacement_x_m, displacement_z_m)``; the CSV's
-  ``knee_deg`` and ``distance_m`` columns are redundant and dropped.
-  """
-  data = np.loadtxt(csv_path, delimiter=",", skiprows=1, dtype=np.float32)
-  table = torch.from_numpy(data[:, [0, 2, 3]])
-  return table[torch.argsort(table[:, 0])]
-
-
-def _interpolate_rows(x: torch.Tensor, table: torch.Tensor) -> torch.Tensor:
-  """Linearly interpolate every value column of ``table`` at ``x``.
-
-  ``table`` is ``(N, 1 + C)``: an ascending key column followed by C value
-  columns. Queries outside the key range are clamped to the end rows rather
-  than extrapolated, so a knee angle past the mapped sweep reports the
-  deviation from the nearest mapped point instead of a fabricated one.
-
-  Returns:
-    Interpolated values, shape ``x.shape + (C,)``.
-  """
-  keys = table[:, 0].contiguous()
-  values = table[:, 1:]
-
-  x_clamped = torch.clamp(x, keys[0], keys[-1])
-  idx = torch.clamp(
-    torch.searchsorted(keys, x_clamped.contiguous()), 1, keys.numel() - 1
-  )
-
-  lo, hi = keys[idx - 1], keys[idx]
-  t = ((x_clamped - lo) / (hi - lo)).unsqueeze(-1)
-  return values[idx - 1] + t * (values[idx] - values[idx - 1])
-
-
-class knee_distance_map_error:
-  """Deviation of the knee mechanism from its measured displacement map.
-
-  ``knee_distance_map.csv`` records where ``leg_.*_length_connect_b`` sits
-  relative to the ``leg_.*_femur_joint`` anchor as the knee folds, swept over
-  the model itself: one row per knee angle, holding the displacement's x and z
-  components. This metric measures the same displacement live and reports how
-  far it has drifted from the row the current knee angle interpolates to --
-  i.e. how far the simulated mechanism has departed from its own kinematics,
-  whether because a constraint is being violated or because a variant's spec
-  edits changed the chain.
-
-  Both components are world-frame, as the map is: the displacement rotates
-  with the base, so the numbers are only comparable to the map while the base
-  holds the pose the sweep was taken in.
-  """
-
-  def __init__(self, cfg: MetricsTermCfg, env: ManagerBasedRlEnv):
-    if cfg.params.get("signed") and cfg.params.get("axis") is None:
-      raise ValueError(
-        "knee_distance_map_error: 'signed' needs an axis -- the total "
-        "deviation is a norm, and has no sign to report."
-      )
-    asset_cfg: SceneEntityCfg = cfg.params["asset_cfg"]
-    asset = env.scene[asset_cfg.name]
-    self.table = load_knee_distance_map(cfg.params["csv_path"]).to(env.device)
-
-    femur_ids: list[int] = []
-    knee_q_adr: list[int] = []
-    site_ids: list[int] = []
-    for femur_joint, knee_joint, site in cfg.params["legs"]:
-      femur_ids.append(
-        int(asset.indexing.joint_ids[asset.joint_names.index(femur_joint)])
-      )
-      knee_q_adr.append(
-        int(asset.indexing.joint_q_adr[asset.joint_names.index(knee_joint)])
-      )
-      site_ids.append(int(asset.indexing.site_ids[asset.site_names.index(site)]))
-
-    self.femur_ids = _index_tensor(env, femur_ids)
-    self.knee_q_adr = _index_tensor(env, knee_q_adr)
-    self.site_ids = _index_tensor(env, site_ids)
-
-  def __call__(
-    self,
-    env: ManagerBasedRlEnv,
-    asset_cfg: SceneEntityCfg,
-    csv_path: str | Path,
-    legs: Sequence[tuple[str, str, str]],
-    axis: Literal["x", "z"] | None = None,
-    reduction: Reduction = "mean",
-    signed: bool = False,
-  ) -> torch.Tensor:
-    del asset_cfg, csv_path, legs  # Resolved once, in __init__.
-    data = env.sim.data
-
-    # (num_envs, num_legs, 3), femur joint anchor to connect site.
-    displacement = data.site_xpos[:, self.site_ids] - data.xanchor[:, self.femur_ids]
-    measured = displacement[..., [0, 2]]
-    expected = _interpolate_rows(data.qpos[:, self.knee_q_adr], self.table)
-    error = measured - expected  # (num_envs, num_legs, 2)
-
-    if axis is None:
-      values = torch.linalg.vector_norm(error, dim=-1)
-    else:
-      values = error[..., 0 if axis == "x" else 1]
-      if not signed:
-        values = values.abs()
-    return _reduce(values, reduction)  # (num_envs,)

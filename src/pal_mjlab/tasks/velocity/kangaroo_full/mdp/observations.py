@@ -1,24 +1,16 @@
-"""Observations that keep the full model's policy input identical to the
-simple ``pal_kangaroo`` model's.
-
-The full model does not always carry a ``leg_.*_length_joint``: the "linkage"
-femur closure describes the femur with the real four-bar instead, and deletes
-the straight-line slider. The policy still has to see a leg length in that slot
--- same 26 joints, same order, same layout -- so it is reconstructed from the
-knee angle through the swept ``knee_distance_map.csv``, which is exactly the
-relation the deleted slider encodes.
-"""
-
 from __future__ import annotations
 
 import inspect
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Sequence
 
-import numpy as np
 import torch
 from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
+
+from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  load_transmission_maps,
+)
+from pal_mjlab.robots.pal_kangaroo_full.lut_maps import LegLengthMap
 
 from .dr.encoder_bias import mapped_leg_length_encoder_bias
 
@@ -26,40 +18,19 @@ if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
 
-def load_knee_leg_length_map(csv_path: str | Path) -> torch.Tensor:
-  """Load ``knee_distance_map.csv`` as a ``(N, 2)`` ``(knee_rad, length_m)``.
-
-  ``distance_m`` -- the femur joint to connect site distance -- *is* the leg
-  length the slider would have measured, and it runs the same way as the
-  simple model's ``leg_.*_length_joint``: longest with the knee straight.
-  """
-  data = np.loadtxt(csv_path, delimiter=",", skiprows=1, dtype=np.float32)
-  table = torch.from_numpy(data[:, [0, 4]])
-  return table[torch.argsort(table[:, 0])]
-
-
-def _interpolate(
-  x: torch.Tensor, table: torch.Tensor
+def _leg_length_and_slope(
+  leg: LegLengthMap, knee: torch.Tensor
 ) -> tuple[torch.Tensor, torch.Tensor]:
-  """Linear interpolation of ``table``'s value column at ``x``.
+  """Leg length (in ``leg_.*_length_joint``'s own metres) and its slope with
+  respect to the knee angle, from ``leg_length_map.npz``.
 
   Returns:
-    ``(value, slope)`` -- the interpolated value and the slope of the segment
-    it landed in, the latter being what turns a knee velocity into a leg
-    length rate. Queries outside the swept range clamp to the end rows, whose
-    slope is that of the last segment.
+    ``(value, slope)`` -- the leg length at ``knee`` and ``d(length)/d(knee)``,
+    the latter being what turns a knee velocity into a leg length rate.
   """
-  keys = table[:, 0].contiguous()
-  values = table[:, 1]
-
-  x_clamped = torch.clamp(x, keys[0], keys[-1])
-  idx = torch.clamp(
-    torch.searchsorted(keys, x_clamped.contiguous()), 1, keys.numel() - 1
-  )
-
-  lo, hi = keys[idx - 1], keys[idx]
-  slope = (values[idx] - values[idx - 1]) / (hi - lo)
-  return values[idx - 1] + (x_clamped - lo) * slope, slope
+  s = leg.slider_of_knee(knee)
+  slope = 1.0 / (leg.jacobian(s) * leg.dknee_dslider(s))
+  return leg.distance(s), slope
 
 
 class joint_state_with_mapped_leg_length:
@@ -86,7 +57,7 @@ class joint_state_with_mapped_leg_length:
     asset = env.scene[asset_cfg.name]
     joint_order: Sequence[str] = cfg.params["joint_order"]
     self.num_joints = len(joint_order)
-    self.table = load_knee_leg_length_map(cfg.params["csv_path"]).to(env.device)
+    self.leg = load_transmission_maps().leg_length.to(env.device)
 
     present_cols: list[int] = []
     present_ids: list[int] = []
@@ -129,12 +100,11 @@ class joint_state_with_mapped_leg_length:
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg,
     joint_order: Sequence[str],
-    csv_path: str | Path,
     mapped_joints: Sequence[tuple[str, str]],
     mode: Literal["pos", "vel"] = "pos",
     biased: bool = False,
   ) -> torch.Tensor:
-    del joint_order, csv_path, mapped_joints  # Resolved once, in __init__.
+    del joint_order, mapped_joints  # Resolved once, in __init__.
     asset = env.scene[asset_cfg.name]
     data = asset.data
 
@@ -155,11 +125,13 @@ class joint_state_with_mapped_leg_length:
 
     if self.mapped_cols.numel():
       knee = data.joint_pos[:, self.knee_ids]
-      length, slope = _interpolate(knee, self.table)
+      length, slope = _leg_length_and_slope(self.leg, knee)
       if mode == "pos":
         default_knee = data.default_joint_pos
         assert default_knee is not None
-        length_default, _ = _interpolate(default_knee[:, self.knee_ids], self.table)
+        length_default, _ = _leg_length_and_slope(
+          self.leg, default_knee[:, self.knee_ids]
+        )
         out[:, self.mapped_cols] = length - length_default
         if biased and self.length_encoder_bias is not None:
           out[:, self.mapped_cols] += self.length_encoder_bias[:, self.length_bias_ids]

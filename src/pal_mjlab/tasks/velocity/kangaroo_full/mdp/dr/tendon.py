@@ -1,5 +1,3 @@
-"""Reset events for tendon equality constraints."""
-
 from __future__ import annotations
 
 import re

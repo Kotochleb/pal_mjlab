@@ -1,5 +1,3 @@
-"""Encoder calibration errors in the simple Kangaroo's joint coordinates."""
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

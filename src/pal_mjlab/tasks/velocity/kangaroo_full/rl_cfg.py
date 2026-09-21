@@ -1,5 +1,3 @@
-"""RL configuration for PAL Robotics' kangaroo_full velocity task."""
-
 from mjlab.rl import (
   RslRlModelCfg,
   RslRlOnPolicyRunnerCfg,
@@ -7,7 +5,6 @@ from mjlab.rl import (
 )
 
 def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
-  """Create RL runner configuration for PAL kangaroo_full velocity task."""
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
       hidden_dims=(512, 256, 128),

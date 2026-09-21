@@ -1,19 +1,5 @@
-"""Rewards for variants that have no ``leg_.*_length_joint`` to act on.
-
-The baseline puts three terms on the leg length joint: the posture term holds
-it, ``joint_pos_limits`` keeps it inside its range, ``joint_vel_limits`` caps
-its rate. A variant without that joint (the connect-linkage MJCF) still has a
-leg length -- it is a function of the knee angle through the same
-``knee_distance_map.csv`` the observation term reconstructs it from -- so the
-terms here take that route: leg length as ``map(knee)`` and its rate as
-``d map/d knee * knee_vel``, then the baseline's own formula on top. Each is
-built to give the same number the baseline term would on the variants that do
-have the joint, so a run on either kind of variant is scored the same way.
-"""
-
 from __future__ import annotations
 
-from pathlib import Path
 from typing import TYPE_CHECKING, Sequence
 
 import torch
@@ -23,9 +9,11 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp.rewards import variable_posture
 from mjlab.utils.lab_api.string import resolve_matching_names_values
 
+from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  load_transmission_maps,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.observations import (
-  _interpolate,
-  load_knee_leg_length_map,
+  _leg_length_and_slope,
 )
 from pal_mjlab.tasks.velocity.mdp.rewards import joint_limits_convex_hull
 
@@ -43,12 +31,11 @@ class _MappedLegLength:
   def __init__(
     self,
     asset: Entity,
-    csv_path: str | Path,
     mapped_joints: Sequence[tuple[str, str]],
     device: str,
   ) -> None:
     self.names = [length for length, _ in mapped_joints]
-    self.table = load_knee_leg_length_map(csv_path).to(device)
+    self.leg = load_transmission_maps().leg_length.to(device)
     self.knee_ids = torch.as_tensor(
       [asset.joint_names.index(knee) for _, knee in mapped_joints],
       device=device,
@@ -56,24 +43,26 @@ class _MappedLegLength:
     )
     default = asset.data.default_joint_pos
     assert default is not None
-    self.length_default, _ = _interpolate(default[:, self.knee_ids], self.table)
+    self.length_default, _ = _leg_length_and_slope(self.leg, default[:, self.knee_ids])
     # The slider's zero is the fully extended leg, which is the knee at zero:
     # its range tops out at 0.0 exactly where the knee's bottoms out.
-    self.length_at_zero, _ = _interpolate(torch.zeros(1, device=device), self.table)
+    self.length_at_zero, _ = _leg_length_and_slope(
+      self.leg, torch.zeros(1, device=device)
+    )
 
   def length(self, asset: Entity) -> torch.Tensor:
     """Leg length in the slider's own coordinate: zero fully extended."""
-    length, _ = _interpolate(asset.data.joint_pos[:, self.knee_ids], self.table)
+    length, _ = _leg_length_and_slope(self.leg, asset.data.joint_pos[:, self.knee_ids])
     return length - self.length_at_zero
 
   def length_rel(self, asset: Entity) -> torch.Tensor:
     """Leg length relative to its default, as the observation reports it."""
-    length, _ = _interpolate(asset.data.joint_pos[:, self.knee_ids], self.table)
+    length, _ = _leg_length_and_slope(self.leg, asset.data.joint_pos[:, self.knee_ids])
     return length - self.length_default
 
   def velocity(self, asset: Entity) -> torch.Tensor:
     """Leg length rate: the map's local slope carrying the knee rate."""
-    _, slope = _interpolate(asset.data.joint_pos[:, self.knee_ids], self.table)
+    _, slope = _leg_length_and_slope(self.leg, asset.data.joint_pos[:, self.knee_ids])
     return slope * asset.data.joint_vel[:, self.knee_ids]
 
 
@@ -89,9 +78,7 @@ class variable_posture_with_mapped_leg_length(variable_posture):
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
     asset: Entity = env.scene[cfg.params["asset_cfg"].name]
-    self.mapped = _MappedLegLength(
-      asset, cfg.params["csv_path"], cfg.params["mapped_joints"], env.device
-    )
+    self.mapped = _MappedLegLength(asset, cfg.params["mapped_joints"], env.device)
     # The base resolves each std dict against the entity's joint names; do
     # the same here against those names plus the mapped ones, in the order
     # the error vector is assembled below (present joints, then mapped).
@@ -114,12 +101,11 @@ class variable_posture_with_mapped_leg_length(variable_posture):
     std_running,
     asset_cfg: SceneEntityCfg,
     command_name: str,
-    csv_path: str | Path,
     mapped_joints: Sequence[tuple[str, str]],
     walking_threshold: float = 0.5,
     running_threshold: float = 1.5,
   ) -> torch.Tensor:
-    del std_standing, std_walking, std_running, csv_path, mapped_joints
+    del std_standing, std_walking, std_running, mapped_joints
 
     asset: Entity = env.scene[asset_cfg.name]
     command = env.command_manager.get_command(command_name)
@@ -158,9 +144,7 @@ class mapped_leg_length_pos_limits:
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
     asset: Entity = env.scene[cfg.params["asset_cfg"].name]
-    self.mapped = _MappedLegLength(
-      asset, cfg.params["csv_path"], cfg.params["mapped_joints"], env.device
-    )
+    self.mapped = _MappedLegLength(asset, cfg.params["mapped_joints"], env.device)
     lo, hi = cfg.params["joint_range"]
     mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo) * cfg.params["soft_limit_factor"]
     self.soft_limits = (mid - half, mid + half)
@@ -169,12 +153,11 @@ class mapped_leg_length_pos_limits:
     self,
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg,
-    csv_path: str | Path,
     mapped_joints: Sequence[tuple[str, str]],
     joint_range: tuple[float, float],
     soft_limit_factor: float,
   ) -> torch.Tensor:
-    del csv_path, mapped_joints, joint_range, soft_limit_factor
+    del mapped_joints, joint_range, soft_limit_factor
     length = self.mapped.length(env.scene[asset_cfg.name])
     out_of_limits = -(length - self.soft_limits[0]).clip(max=0.0)
     out_of_limits += (length - self.soft_limits[1]).clip(min=0.0)
@@ -190,9 +173,7 @@ class mapped_leg_length_vel_limits:
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
     asset: Entity = env.scene[cfg.params["asset_cfg"].name]
-    self.mapped = _MappedLegLength(
-      asset, cfg.params["csv_path"], cfg.params["mapped_joints"], env.device
-    )
+    self.mapped = _MappedLegLength(asset, cfg.params["mapped_joints"], env.device)
     lo, hi = cfg.params["velocity_limits"]
     self.soft_vel_limits = (0.9 * lo, 0.9 * hi)
 
@@ -200,11 +181,10 @@ class mapped_leg_length_vel_limits:
     self,
     env: ManagerBasedRlEnv,
     asset_cfg: SceneEntityCfg,
-    csv_path: str | Path,
     mapped_joints: Sequence[tuple[str, str]],
     velocity_limits: tuple[float, float],
   ) -> torch.Tensor:
-    del csv_path, mapped_joints, velocity_limits
+    del mapped_joints, velocity_limits
     vel = self.mapped.velocity(env.scene[asset_cfg.name])
     out_of_limits = -(vel - self.soft_vel_limits[0]).clip(max=0.0)
     out_of_limits += (vel - self.soft_vel_limits[1]).clip(min=0.0)

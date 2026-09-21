@@ -1,21 +1,6 @@
-"""Joint position action term that keeps the configured target order.
-
-mjlab's ``JointPositionAction`` resolves its ``actuator_names`` through
-``Entity.find_joints_by_actuator_names``, which always returns the matched
-joints in the MJCF's natural order and ignores ``preserve_order`` (only the
-TENDON and SITE transmissions honour it). That is fine for one catch-all
-term, but not when a slider-driven mechanism has to occupy the same action
-slots as the tendon-driven version of the same mechanism in
-``pal_kangaroo_full`` -- there the tendon terms are explicit, order-preserved
-name lists, and the sliders' natural order in ``kangaroo_full.xml`` does not
-always agree with them (the right ankle's ``leg_right_4_actuator`` precedes
-``leg_right_5_actuator`` in the tree, the tendon order is r then l).
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
@@ -89,7 +74,7 @@ class MappedLegLengthPositionAction(OrderedJointPositionAction):
 
   def __init__(self, cfg: MappedLegLengthPositionActionCfg, env: ManagerBasedRlEnv):
     super().__init__(cfg=cfg, env=env)
-    from .observations import _interpolate, load_knee_leg_length_map
+    from .observations import _leg_length_and_slope
 
     length_of_knee = {knee: length for length, knee in cfg.mapped_joints}
     knee_cols = [i for i, n in enumerate(self._target_names) if n in length_of_knee]
@@ -101,15 +86,21 @@ class MappedLegLengthPositionAction(OrderedJointPositionAction):
     self._knee_cols = torch.as_tensor(knee_cols, dtype=torch.long, device=self.device)
     self._knee_ids = self._target_ids[self._knee_cols]
 
-    self._table = load_knee_leg_length_map(cfg.csv_path).to(self.device)
-    self._interpolate = _interpolate
+    from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+      load_transmission_maps,
+    )
+
+    self._leg = load_transmission_maps().leg_length.to(self.device)
+    self._leg_length_and_slope = _leg_length_and_slope
     if cfg.use_default_offset:
       # The parent set every column to the joint's default position; the
       # knee columns are re-expressed through the map.
       assert isinstance(self._offset, torch.Tensor)
       offset = self._offset.clone()
       default_knee = self._entity.data.default_joint_pos[:, self._knee_ids]
-      offset[:, self._knee_cols], _ = self._interpolate(default_knee, self._table)
+      offset[:, self._knee_cols], _ = self._leg_length_and_slope(
+        self._leg, default_knee
+      )
       self._offset = offset
 
     from .dr.encoder_bias import mapped_leg_length_encoder_bias
@@ -141,10 +132,8 @@ class MappedLegLengthPositionAction(OrderedJointPositionAction):
 @dataclass(kw_only=True)
 class MappedLegLengthPositionActionCfg(OrderedJointPositionActionCfg):
   """``OrderedJointPositionActionCfg`` whose knee targets are leg lengths
-  applied through ``knee_distance_map.csv``."""
-
-  csv_path: str | Path
-  """The knee-to-leg-length map (see ``observations.load_knee_leg_length_map``)."""
+  applied through ``leg_length_map.npz`` (see
+  ``observations._leg_length_and_slope``)."""
 
   mapped_joints: tuple[tuple[str, str], ...]
   """``(leg length joint, knee joint)`` pairs, as for the observation term;

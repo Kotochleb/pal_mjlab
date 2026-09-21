@@ -1,37 +1,3 @@
-"""Torch port of ``lut_transmission/transmission_maps.py``: the leg
-transmissions of the KANGAROO screw mechanisms as lookup tables, evaluated
-batched on the GPU. The maps ship in ``pal_kangaroo_full/lut_transmission/``
-(:class:`TransmissionMaps` loads the set) and are driven by the
-``"lut"`` transmission of ``pal_kangaroo_full.lut_actuator`` on both MJCFs of
-the full robot.
-
-The maps store the actuation Jacobian ``J = d(actuators)/d(joints)`` (and,
-for the 1-D mechanisms, the actuator position and a few companion tables)
-on a non-uniform tensor grid, and the reference reads them with
-tensor-product natural cubic splines (``method="cubic"``) or multilinear
-interpolation (``method="linear"``), then solves ``tau = J^T F`` for the
-actuator forces. Everything here is that computation, item for item, with
-one difference in *how* the spline is evaluated: the reference recomputes
-the natural-spline second derivatives of the reduced array along each axis
-per query, while :class:`SplineTensorMap` precomputes the ``2^K`` mixed
-second-derivative tables once and evaluates a local ``4^K``-term stencil --
-the two are the same linear map (see the class docstring), so they agree to
-rounding. The map classes keep the reference's names and conventions:
-
-    hip = HipXyMap.load(path)                 # hip_xy_jacobian_map.npz
-    F = hip.forces(q, tau)                    # q, tau (..., 2) -> F (..., 2)
-    ankle = AnkleMap.load(path)               # ankle_xy_jacobian_map.npz
-    F = ankle.forces(q, s, tau)               # s: leg_*_length_actuator position (m)
-    leg = LegLengthMap.load(path)             # leg_length_map.npz
-    s = leg.slider_of_knee(knee); d = leg.distance(s); F_s = leg.actuator_force(s, F_d)
-    yaw = HipZMap.load(path)                  # hip_z_map.npz
-    F = yaw.force(q, tau)                     # tau / J(q)
-
-Queries outside a map are clamped to its edge, as in the reference. Every
-map lives on one device (``to``) and is shared by both legs -- the files
-are built from the right leg, and the callers handle the mirroring.
-"""
-
 from __future__ import annotations
 
 import itertools
@@ -169,7 +135,6 @@ class SplineTensorMap:
     return clone
 
   def inside(self, *coords: torch.Tensor) -> torch.Tensor:
-    """True where every coordinate lies within the grid."""
     ok = torch.ones(
       torch.broadcast_shapes(*[c.shape for c in coords]),
       dtype=torch.bool,
@@ -702,7 +667,6 @@ class TransmissionMaps:
 
   @staticmethod
   def available(directory: str | Path) -> bool:
-    """Whether every map is in ``directory``."""
     return all((Path(directory) / name).exists() for name in TRANSMISSION_MAP_NAMES)
 
   def to(self, device: str | torch.device) -> TransmissionMaps:
@@ -738,12 +702,11 @@ TRANSMISSION_MAP_NAMES = (
   "ankle_xy_jacobian_map.npz",
   "leg_length_map.npz",
 )
-"""The files :meth:`TransmissionMaps.load` reads, relative to its directory."""
 
 
 def reside(name: str, side: str, reference_side: str = "right") -> str:
-  """``leg_right_2_joint`` -> ``leg_left_2_joint``, ``right_hip_z_slider`` ->
-  ``left_hip_z_slider`` for ``side="left"``: the first ``_``-separated
+  """``leg_right_2_joint`` -> ``leg_left_2_joint``, ``leg_right_1_actuator``
+  -> ``leg_left_1_actuator`` for ``side="left"``: the first ``_``-separated
   component equal to ``reference_side`` is replaced."""
   parts = name.split("_")
   if reference_side not in parts:

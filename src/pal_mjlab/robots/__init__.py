@@ -18,22 +18,15 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (  # noqa: F401
   get_kangaroo_robot_cfg,
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa: F401
-  ANKLE_FEMUR_JOINT_PAIRS,
-  ARM_ACTION_SCALE_FACTOR,
   HIP_XY_TENDON_NAMES,
   HIP_Z_TENDON_NAMES,
   KANGAROO_TENDON_LENGTHS,
-  KNEE_DISTANCE_MAP_CSV,
-  KNEE_DISTANCE_MAP_LEGS,
-  LEG_ACTION_SCALE_FACTOR,
-  LEG_LENGTH_FROM_KNEE_JOINTS,
   LOWER_BODY_JOINT_ORDER,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
   SIMPLE_MODEL_JOINT_ORDER,
   ActuatorModel,
   FemurClosure,
-  KangarooFullModel,
   LowerBody,
   MjcfVariant,
   Transmission,
@@ -42,7 +35,6 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   simple_model_action_names,
 )
 from pal_mjlab.robots.pal_kangaroo_full_full.kangaroo_full_constants import (  # noqa: F401
-  KangarooFullFullModel,
   get_kangaroo_full_full_model,
   get_kangaroo_full_full_spec,
 )

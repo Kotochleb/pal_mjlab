@@ -1,22 +1,13 @@
-"""Startup domain randomization for the "joint" transmission's per-joint
-viscous damping, frictionloss and armature (see kangaroo_full_constants'
-LEG_JOINT_VISCOUS_DAMPING / LEG_JOINT_FRICTIONLOSS / LEG_JOINT_ARMATURE)."""
-
 from __future__ import annotations
 
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.managers.event_manager import EventTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
-
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   LEG_JOINT_ARMATURE,
   LEG_JOINT_FRICTIONLOSS,
   LEG_JOINT_VISCOUS_DAMPING,
-  LEG_LENGTH_JOINT_ARMATURE,
-  LEG_LENGTH_JOINT_EXPR,
-  LEG_LENGTH_JOINT_FRICTIONLOSS,
-  LEG_LENGTH_JOINT_VISCOUS_DAMPING,
   Transmission,
 )
 
@@ -37,10 +28,8 @@ def configure_leg_joint_friction_dr(
 
   asset_cfg = SceneEntityCfg("robot", joint_names=(".*",))
 
-  def _ranges(per_joint: dict, leg_length: tuple) -> dict[str, tuple[float, float]]:
-    ranges = {expr: rng for expr, (_, rng) in per_joint.items()}
-    ranges[LEG_LENGTH_JOINT_EXPR] = leg_length[1]
-    return ranges
+  def _ranges(per_joint: dict) -> dict[str, tuple[float, float]]:
+    return {expr: rng for expr, (_, rng) in per_joint.items()}
 
   cfg.events["leg_joint_viscous_damping"] = EventTermCfg(
     mode="startup",
@@ -48,7 +37,7 @@ def configure_leg_joint_friction_dr(
     params={
       "asset_cfg": asset_cfg,
       "operation": "abs",
-      "ranges": _ranges(LEG_JOINT_VISCOUS_DAMPING, LEG_LENGTH_JOINT_VISCOUS_DAMPING),
+      "ranges": _ranges(LEG_JOINT_VISCOUS_DAMPING),
     },
   )
   cfg.events["leg_joint_frictionloss"] = EventTermCfg(
@@ -57,7 +46,7 @@ def configure_leg_joint_friction_dr(
     params={
       "asset_cfg": asset_cfg,
       "operation": "abs",
-      "ranges": _ranges(LEG_JOINT_FRICTIONLOSS, LEG_LENGTH_JOINT_FRICTIONLOSS),
+      "ranges": _ranges(LEG_JOINT_FRICTIONLOSS),
     },
   )
   cfg.events["leg_joint_armature"] = EventTermCfg(
@@ -66,6 +55,6 @@ def configure_leg_joint_friction_dr(
     params={
       "asset_cfg": asset_cfg,
       "operation": "abs",
-      "ranges": _ranges(LEG_JOINT_ARMATURE, LEG_LENGTH_JOINT_ARMATURE),
+      "ranges": _ranges(LEG_JOINT_ARMATURE),
     },
   )

@@ -775,15 +775,16 @@
   </equality>
 
   <tendon>
-    <spatial name="right_hip_z_slider" range="0.06622257764 0.102222577639" class="tendon_actuator">
+    <spatial name="leg_right_1_actuator" range="0.06622257764 0.102222577639" class="tendon_actuator">
       <site site="right_hip_z_slider_connect_a"/>
       <site site="right_hip_z_slider_connect_b"/>
     </spatial>
-    <spatial name="right_hip_xy_r_slider" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
+    <!-- The right hip actuator assignments are intentionally flipped relative to the LUT geometry. -->
+    <spatial name="leg_right_2_actuator" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
       <site site="right_hip_xy_r_slider_connect_a"/>
       <site site="right_hip_xy_r_slider_connect_b"/>
     </spatial>
-    <spatial name="right_hip_xy_l_slider" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
+    <spatial name="leg_right_3_actuator" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
       <site site="right_hip_xy_l_slider_connect_a"/>
       <site site="right_hip_xy_l_slider_connect_b"/>
     </spatial>
@@ -807,24 +808,24 @@
       <site site="right_ankle_tibia_bar_r_connect_a"/>
       <site site="right_ankle_tibia_bar_r_connect_b"/>
     </spatial>
-    <spatial name="right_ankle_l_slider" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
+    <spatial name="leg_right_4_actuator" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_l_connect_b"/>
     </spatial>
-    <spatial name="right_ankle_r_slider" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
+    <spatial name="leg_right_5_actuator" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_r_connect_b"/>
     </spatial>
 
-    <spatial name="left_hip_z_slider" range="0.06622257764 0.102222577639" class="tendon_actuator">
+    <spatial name="leg_left_1_actuator" range="0.06622257764 0.102222577639" class="tendon_actuator">
       <site site="left_hip_z_slider_connect_a"/>
       <site site="left_hip_z_slider_connect_b"/>
     </spatial>
-    <spatial name="left_hip_xy_r_slider" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
+    <spatial name="leg_left_3_actuator" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
       <site site="left_hip_xy_r_slider_connect_a"/>
       <site site="left_hip_xy_r_slider_connect_b"/>
     </spatial>
-    <spatial name="left_hip_xy_l_slider" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
+    <spatial name="leg_left_2_actuator" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
       <site site="left_hip_xy_l_slider_connect_a"/>
       <site site="left_hip_xy_l_slider_connect_b"/>
     </spatial>
@@ -848,11 +849,11 @@
       <site site="left_ankle_tibia_bar_r_connect_a"/>
       <site site="left_ankle_tibia_bar_r_connect_b"/>
     </spatial>
-    <spatial name="left_ankle_l_slider" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
+    <spatial name="leg_left_5_actuator" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
       <site site="left_ankle_virtual_motor_connect_a"/>
       <site site="left_ankle_virtual_motor_l_connect_b"/>
     </spatial>
-    <spatial name="left_ankle_r_slider" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
+    <spatial name="leg_left_4_actuator" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
       <site site="left_ankle_virtual_motor_connect_a"/>
       <site site="left_ankle_virtual_motor_r_connect_b"/>
     </spatial>
