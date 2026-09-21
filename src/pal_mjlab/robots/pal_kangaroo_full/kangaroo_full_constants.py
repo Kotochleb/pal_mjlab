@@ -288,33 +288,33 @@ LegFrictionParam = tuple[float, tuple[float, float]]
 
 LEG_JOINT_VISCOUS_DAMPING: dict[str, LegFrictionParam] = {
   r"leg_(left|right)_1_joint": (0.883277, (0.383261, 0.943999)),
-  r"leg_(left|right)_2_joint": (0.139702, (0.109445, 0.142368)),
-  r"leg_(left|right)_3_joint": (0.043319, (0.0161558, 0.048999)),
-  r"leg_(left|right)_4_joint": (0.0462673, (0.0235464, 0.0494274)),
-  r"leg_(left|right)_5_joint": (0.0136559, (0.00751496, 0.0157335)),
+  r"leg_(left|right)_2_joint": (4.11424, (3.22315, 4.19275)),
+  r"leg_(left|right)_3_joint": (1.27574, (0.475789, 1.44302)),
+  r"leg_(left|right)_4_joint": (1.36257, (0.693442, 1.45564)),
+  r"leg_(left|right)_5_joint": (0.402166, (0.221316, 0.463352)),
   LEG_LENGTH_JOINT_EXPR: (161.39, (140.891, 165.646)),
 }
 LEG_JOINT_FRICTIONLOSS: dict[str, LegFrictionParam] = {
   r"leg_(left|right)_1_joint": (0.464305, (0.305846, 0.48)),
-  r"leg_(left|right)_2_joint": (0.058994, (0.0522175, 0.06275)),
-  r"leg_(left|right)_3_joint": (0.0329185, (0.0147257, 0.0349997)),
-  r"leg_(left|right)_4_joint": (0.0341677, (0.024373, 0.0361297)),
-  r"leg_(left|right)_5_joint": (0.0185659, (0.013674, 0.0198523)),
+  r"leg_(left|right)_2_joint": (0.69495, (0.615122, 0.739195)),
+  r"leg_(left|right)_3_joint": (0.38778, (0.173468, 0.412296)),
+  r"leg_(left|right)_4_joint": (0.402496, (0.287114, 0.425607)),
+  r"leg_(left|right)_5_joint": (0.218706, (0.161079, 0.23386)),
   LEG_LENGTH_JOINT_EXPR: (3.2825, (2.86559, 3.36908)),
 }
 LEG_JOINT_ARMATURE: dict[str, LegFrictionParam] = {
-  r"leg_(left|right)_1_joint": (0.074854, (0.0324797, 0.0799999)),
+  r"leg_(left|right)_1_joint": (0.0759319, (0.0329474, 0.0811519)),
   r"leg_(left|right)_2_joint": (0.502929, (0.394001, 0.512527)),
   r"leg_(left|right)_3_joint": (0.155948, (0.058161, 0.176397)),
   r"leg_(left|right)_4_joint": (0.166562, (0.0847671, 0.177939)),
   r"leg_(left|right)_5_joint": (0.0491612, (0.0270539, 0.0566406)),
-  LEG_LENGTH_JOINT_EXPR: (3.74127, (2.85125, 3.94121)),
+  LEG_LENGTH_JOINT_EXPR: (3.79514, (2.89231, 3.99796)),
 }
 
 LEG_1_JOINT_PARAMS = dict(
   stiffness=100.0,
   effort=80.0,
-  armature=0.074854,
+  armature=0.0759319,
   frictionloss=0.464305,
   viscous_damping=0.883277,
 )
@@ -322,34 +322,34 @@ LEG_2_JOINT_PARAMS = dict(
   stiffness=100.0,
   effort=230.0,
   armature=0.502929,
-  frictionloss=0.058994,
-  viscous_damping=0.139702,
+  frictionloss=0.69495,
+  viscous_damping=4.11424,
 )
 LEG_3_JOINT_PARAMS = dict(
   stiffness=100.0,
   effort=139.0,
   armature=0.155948,
-  frictionloss=0.0329185,
-  viscous_damping=0.043319,
+  frictionloss=0.38778,
+  viscous_damping=1.27574,
 )
 LEG_4_JOINT_PARAMS = dict(
   stiffness=30.0,
   effort=140.0,
   armature=0.166562,
-  frictionloss=0.0341677,
-  viscous_damping=0.0462673,
+  frictionloss=0.402496,
+  viscous_damping=1.36257,
 )
 LEG_5_JOINT_PARAMS = dict(
   stiffness=30.0,
   effort=82.0,
   armature=0.0491612,
-  frictionloss=0.0185659,
-  viscous_damping=0.0136559,
+  frictionloss=0.218706,
+  viscous_damping=0.402166,
 )
 LEG_LENGTH_JOINT_PARAMS = dict(
   stiffness=1600.0,
   effort=1100.0,
-  armature=3.74127,
+  armature=3.79514,
   frictionloss=3.2825,
   viscous_damping=161.39,
 )
@@ -465,13 +465,23 @@ def actuator_pd_actuators(
     ),
     actuator_cfg(
       transmission_type=TransmissionType.TENDON,
-      target_names_expr=(r"leg_(left|right)_[23]_actuator$",),
+      target_names_expr=(r"leg_(left|right)_2_actuator$",),
       **calc_params(**LEG_2_SCREW_PARAMS),
     ),
     actuator_cfg(
       transmission_type=TransmissionType.TENDON,
-      target_names_expr=(r"leg_(left|right)_[45]_actuator$",),
+      target_names_expr=(r"leg_(left|right)_3_actuator$",),
+      **calc_params(**LEG_3_SCREW_PARAMS),
+    ),
+    actuator_cfg(
+      transmission_type=TransmissionType.TENDON,
+      target_names_expr=(r"leg_(left|right)_4_actuator$",),
       **calc_params(**LEG_4_SCREW_PARAMS),
+    ),
+    actuator_cfg(
+      transmission_type=TransmissionType.TENDON,
+      target_names_expr=(r"leg_(left|right)_5_actuator$",),
+      **calc_params(**LEG_5_SCREW_PARAMS),
     ),
     actuator_cfg(
       target_names_expr=(r"leg_(left|right)_length_actuator$",),
