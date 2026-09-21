@@ -21,8 +21,8 @@ _ANKLE_OBS_VARIANTS = {"AnkleRaw": False, "AnkleNormalized": True}
 # DcMotorActuatorCfg's velocity-saturated torque-speed curve ("DcMotor"), on
 # the "Actuator" transmission's screws directly and, the same way, on the
 # "Lut" transmission's own screw <motor>s. "Joint" has no screw actuator in
-# the model, so the two values are identical for it -- kept as a full axis
-# anyway so a task id always spells out every variant the same way.
+# the model -- it's always the builtin native actuator -- so it doesn't get
+# this axis at all; see the _transmission == "joint" special case below.
 _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
 
 for _terrain, _env_cfg_fn in (
@@ -37,6 +37,15 @@ for _terrain, _env_cfg_fn in (
         # constants.py's _leg_actuators raises for this combo).
         continue
       for _mjcf_name, _mjcf in _MJCF_VARIANTS.items():
+        if _femur_closure == "linkage" and _mjcf == "tendons_over_constrained":
+          # kangaroo_full_tendons_over_constarined.xml never defines the
+          # hip_xy_link/femur_rod tendons that close the leg-length loop
+          # under "linkage" (only kangaroo_full_tendons.xml does) -- with
+          # them absent, get_kangaroo_full_spec still deletes the
+          # leg_.*_length_connect equality and leg_.*_length_joint for
+          # "linkage", leaving that loop with nothing to close it at all.
+          # Not a valid combination until the XML gets those tendons.
+          continue
         # ankle_normalized is only a real choice for "tendons" -- env_cfgs.py
         # ignores it for "tendons_over_constrained" (its extra closed loops
         # already pin leg_.*_4_joint to the shank directly, see the
@@ -50,10 +59,18 @@ for _terrain, _env_cfg_fn in (
         )
         for _body_name, _lower_body in _BODY_VARIANTS.items():
           for _ankle_obs_name, _ankle_normalized in _ankle_obs_items:
+            # "joint" transmission is always the builtin native actuator --
+            # it has no screw for ActuatorModel to vary -- so don't spell
+            # out that axis in its task id at all.
+            _actuator_model_items = (
+              (("", "builtin"),)
+              if _transmission == "joint"
+              else _ACTUATOR_MODEL_VARIANTS.items()
+            )
             for (
               _actuator_model_name,
               _actuator_model,
-            ) in _ACTUATOR_MODEL_VARIANTS.items():
+            ) in _actuator_model_items:
               _variant = {
                 "transmission": _transmission,
                 "femur_closure": _femur_closure,
@@ -62,6 +79,11 @@ for _terrain, _env_cfg_fn in (
                 "ankle_normalized": _ankle_normalized,
                 "actuator_model": _actuator_model,
               }
+              _actuator_model_suffix = (
+                f"-ActuatorModel-{_actuator_model_name}"
+                if _actuator_model_name
+                else ""
+              )
               register_mjlab_task(
                 task_id=(
                   f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
@@ -70,7 +92,7 @@ for _terrain, _env_cfg_fn in (
                   f"-Mjcf-{_mjcf_name}"
                   f"-Body-{_body_name}"
                   f"-AnkleObs-{_ankle_obs_name}"
-                  f"-ActuatorModel-{_actuator_model_name}"
+                  f"{_actuator_model_suffix}"
                 ),
                 env_cfg=_env_cfg_fn(**_variant),
                 play_env_cfg=_env_cfg_fn(play=True, **_variant),
