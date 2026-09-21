@@ -525,7 +525,9 @@ class _JacobianMap(_LutMap):
 class HipXyMap(_JacobianMap):
   """Hip pitch/roll (``leg_right_2_joint``, ``leg_right_3_joint``) <->
   ``leg_right_2_actuator``, ``leg_right_3_actuator``, from
-  ``hip_xy_jacobian_map.npz`` (axes: joint 2, joint 3)."""
+  ``hip_xy_jacobian_map.npz`` (axes: joint 2, joint 3). Actuator rows follow
+  the tendon model: actuator 2 uses the right hip slider, actuator 3 the
+  left hip slider. Joint columns retain their original order."""
 
   @classmethod
   def load(

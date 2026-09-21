@@ -16,9 +16,9 @@ from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
 )
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   _ARM_BASE_LINK_NAMES,
-  _build_action_scales,
   ActuatorModel,
   LowerBody,
+  _build_action_scales,
   lut_actuator,
   lut_leg_length_action_scale,
   screw_actuator_cfg,
@@ -67,10 +67,10 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "leg_.*_1_joint": -0.0121160711,
     ".*_hip_xy_bracket_l": -0.0002925489,
     "(left_hip_xy_motor_l|right_hip_xy_motor_r)": -0.0023228059,
-    "(leg_left_2_actuator|leg_right_3_actuator)": 0.0016356406,
+    "(leg_left_3_actuator|leg_right_2_actuator)": 0.0016356406,
     ".*_hip_xy_bracket_r": 0.0002925520,
     "(left_hip_xy_motor_r|right_hip_xy_motor_l)": 0.0074219151,
-    "(leg_left_3_actuator|leg_right_2_actuator)": 0.0043910614,
+    "(leg_left_2_actuator|leg_right_3_actuator)": 0.0043910614,
     "leg_.*_2_joint": 0.0511187509,
     "leg_left_3_joint": -0.0399909712,
     "leg_right_3_joint": 0.0400007786,

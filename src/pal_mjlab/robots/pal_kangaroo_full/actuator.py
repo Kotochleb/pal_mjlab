@@ -135,14 +135,13 @@ class LutTransmissionActuatorCfg(ActuatorCfg):
     ("leg_length", 1),
   )
 
-  joint_sign: dict[str, float] = field(
-    default_factory=lambda: {"leg_left_1_joint": -1.0}
-  )
+  joint_sign: dict[str, float] = field(default_factory=dict)
   """Sign of a servo joint's coordinates relative to the map's, keyed by
   regexes over the re-sided joint names; unlisted joints are ``+1``. The
-  default is the hip yaw mirror. A knee sign flips only the measured knee
-  angle/rate before lookup: its targets already describe the virtual leg
-  length in metres, metres/second and newtons, not the knee angle/torque."""
+  KANGAROO defaults are set in ``kangaroo_full_constants.lut_actuator``.
+  A knee sign flips only the measured knee angle/rate before lookup: its
+  targets already describe the virtual leg length in metres, metres/second
+  and newtons, not the knee angle/torque."""
 
   def __post_init__(self) -> None:
     super().__post_init__()

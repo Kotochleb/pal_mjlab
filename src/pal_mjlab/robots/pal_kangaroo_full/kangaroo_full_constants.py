@@ -89,6 +89,12 @@ _MJCF_XML_PATHS: dict[MjcfVariant, Path] = {
 
 LUT_TRANSMISSION_DIR = KANGAROO_FULL_PATH.parent / "transmission"
 
+LUT_JOINT_SIGN = {
+  "leg_left_1_joint": -1.0,
+  "leg_left_3_joint": -1.0,
+  "leg_left_5_joint": -1.0,
+}
+
 
 @lru_cache(maxsize=None)
 def load_transmission_maps() -> TransmissionMaps:
@@ -549,7 +555,7 @@ def lut_actuator(
     },
     sides=("left", "right"),
     reference_side="right",
-    joint_sign={"leg_left_1_joint": -1.0},
+    joint_sign=dict(LUT_JOINT_SIGN),
     joint_params={
       r"leg_(left|right)_1_joint": _calc_lut_joint_params(**LEG_1_JOINT_PARAMS),
       r"leg_(left|right)_2_joint": _calc_lut_joint_params(**LEG_2_JOINT_PARAMS),

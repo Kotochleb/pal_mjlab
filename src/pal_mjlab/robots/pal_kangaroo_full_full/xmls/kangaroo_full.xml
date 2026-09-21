@@ -336,7 +336,7 @@
             <joint name="left_hip_xy_motor_l" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
             <body name="left_hip_xy_l_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_left_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
+              <joint name="leg_left_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
               <geom material="mtl_left_hip_xy_slider_l" mesh="left_hip_xy_slider_l" class="visual" pos="" quat=""/>
               <site name="left_hip_xy_slider_l_connect_a" pos="0 0 0.0934432715608783" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -352,7 +352,7 @@
             <joint name="left_hip_xy_motor_r" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
             <body name="left_hip_xy_r_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_left_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
+              <joint name="leg_left_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
               <geom material="mtl_left_hip_xy_slider_r" mesh="left_hip_xy_slider_r" class="visual" pos="" quat=""/>
               <site name="left_hip_xy_slider_r_connect_a" pos="0 0 0.0934432715608789" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -601,7 +601,7 @@
             <joint name="right_hip_xy_motor_r" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_r_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_right_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
+              <joint name="leg_right_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
               <geom material="mtl_left_hip_xy_slider_l" mesh="left_hip_xy_slider_l" class="visual" pos="" quat=""/>
               <site name="right_hip_xy_slider_r_connect_a" pos="0 0 0.0934432715608783" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -617,7 +617,7 @@
             <joint name="right_hip_xy_motor_l" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_l_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_right_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
+              <joint name="leg_right_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
               <geom material="mtl_left_hip_xy_slider_r" mesh="left_hip_xy_slider_r" class="visual" pos="" quat=""/>
               <site name="right_hip_xy_slider_l_connect_a" pos="0 0 0.0934432715608789" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
