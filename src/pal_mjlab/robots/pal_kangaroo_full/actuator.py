@@ -44,15 +44,12 @@ class ScrewParams:
 
   armature: float | None = None
   viscous_damping: float | None = None
-  """Overrides of the screw's ``<motor>`` actuator element (``armature``,
-  ``damping``) -- the motor's own rotor inertia and friction, additive to
-  the target joint/tendon's own. None keeps the actuator's default (0)."""
-
   frictionloss: float | None = None
-  """Override of the screw's own joint/tendon ``frictionloss``; None keeps
-  the XML value. MuJoCo actuators have no per-actuator frictionloss, so
-  unlike ``armature``/``viscous_damping`` this cannot live on the ``<motor>``
-  element."""
+  """Overrides of the screw's own joint/tendon ``armature``, ``damping`` and
+  ``frictionloss`` (the motor's rotor inertia and friction, reflected to the
+  screw coordinate); None keeps the XML value. They must live on the target,
+  not on the ``<motor>`` element: mujoco_warp has no ``actuator_armature`` /
+  ``actuator_damping``, so values set there are silently dropped."""
 
   saturation_effort: float | None = None
   """Peak screw force at zero screw velocity (stall force), N. None (with
@@ -347,23 +344,17 @@ class LutTransmissionActuator(Actuator[LutTransmissionActuatorCfg]):
       self._screw_transmission_type_list,
       strict=True,
     ):
-      # armature/viscous_damping are the motor's own properties, so they go
-      # on the <motor> element itself (MuJoCo's per-actuator armature/damping)
-      # rather than through create_motor_actuator's joint/tendon overrides.
-      # frictionloss has no actuator-level counterpart, so it still goes
-      # through to the screw's own joint/tendon.
-      actuator = create_motor_actuator(
-        spec,
-        name,
-        effort_limit=effort_limit,
-        frictionloss=frictionloss,
-        transmission_type=trn_type,
+      self._mjs_actuators.append(
+        create_motor_actuator(
+          spec,
+          name,
+          effort_limit=effort_limit,
+          armature=armature,
+          frictionloss=frictionloss,
+          viscous_damping=viscous_damping,
+          transmission_type=trn_type,
+        )
       )
-      if armature is not None:
-        actuator.armature = armature
-      if viscous_damping is not None:
-        actuator.damping[0] = viscous_damping
-      self._mjs_actuators.append(actuator)
 
   def initialize(
     self,
