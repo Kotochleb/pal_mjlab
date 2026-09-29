@@ -82,6 +82,10 @@ def pal_kangaroo_full_full_baseline_env_cfg(
         mapped_joints=LEG_LENGTH_FROM_KNEE_JOINTS,
       )
     }
+  if transmission != "lut":
+     cfg.actions["joint_pos"].use_default_offset = False
+     cfg.actions["joint_pos"].offset = 0.0
+
   for name, slider_action in (
     ("hip_z_pos", model["hip_z_slider_action"]),
     ("hip_xy_pos", model["hip_xy_slider_action"]),
