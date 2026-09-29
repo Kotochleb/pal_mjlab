@@ -214,7 +214,7 @@ def _calc_linear_leg_params(
   saturation_effort: float,
   velocity_limit: float,
 ) -> dict:
-  damping = round(2.0 * DAMPING_RATIO * armature * NATURAL_FREQ, 3)
+  damping = round(2.0 * DAMPING_RATIO * stiffness / NATURAL_FREQ, 3)
   return {
     "armature": armature,
     "stiffness": stiffness,
