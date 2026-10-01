@@ -75,6 +75,21 @@ LOWER_BODY_JOINT_ORDER: tuple[str, ...] = tuple(
   name for name in SIMPLE_MODEL_JOINT_ORDER if not name.startswith("arm_")
 )
 
+# Joints fed to the policy as joint_pos/joint_vel observations: the joint
+# order minus the passive femur/knee coordinates (butterflies and actuator
+# sliders are never in it to begin with).
+_UNOBSERVED_JOINT_SUFFIXES = ("_femur_joint", "_knee_joint")
+SIMPLE_MODEL_OBSERVED_JOINT_ORDER: tuple[str, ...] = tuple(
+  name
+  for name in SIMPLE_MODEL_JOINT_ORDER
+  if not name.endswith(_UNOBSERVED_JOINT_SUFFIXES)
+)
+LOWER_BODY_OBSERVED_JOINT_ORDER: tuple[str, ...] = tuple(
+  name
+  for name in LOWER_BODY_JOINT_ORDER
+  if not name.endswith(_UNOBSERVED_JOINT_SUFFIXES)
+)
+
 KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_full_tendons.xml"
 KANGAROO_FULL_XML_OVER_CONSTRAINED = (
