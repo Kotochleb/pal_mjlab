@@ -75,21 +75,6 @@ LOWER_BODY_JOINT_ORDER: tuple[str, ...] = tuple(
   name for name in SIMPLE_MODEL_JOINT_ORDER if not name.startswith("arm_")
 )
 
-# Joints fed to the policy as joint_pos/joint_vel observations: the joint
-# order minus the passive femur/knee coordinates (butterflies and actuator
-# sliders are never in it to begin with).
-_UNOBSERVED_JOINT_SUFFIXES = ("_femur_joint", "_knee_joint")
-SIMPLE_MODEL_OBSERVED_JOINT_ORDER: tuple[str, ...] = tuple(
-  name
-  for name in SIMPLE_MODEL_JOINT_ORDER
-  if not name.endswith(_UNOBSERVED_JOINT_SUFFIXES)
-)
-LOWER_BODY_OBSERVED_JOINT_ORDER: tuple[str, ...] = tuple(
-  name
-  for name in LOWER_BODY_JOINT_ORDER
-  if not name.endswith(_UNOBSERVED_JOINT_SUFFIXES)
-)
-
 KANGAROO_FULL_PATH = PAL_MJLAB_SRC_PATH / "robots" / "pal_kangaroo_full" / "xmls"
 KANGAROO_FULL_XML = KANGAROO_FULL_PATH / "kangaroo_full_tendons.xml"
 KANGAROO_FULL_XML_OVER_CONSTRAINED = (
@@ -552,14 +537,23 @@ def lut_actuator(
         source_joint_names=("leg_right_1_joint",),
         target_actuator_names=("leg_right_1_actuator",),
       ),
+      # Both legs name their hip-xy / ankle screws alike in the MJCFs, while
+      # the LUT rows follow the right leg's mechanism and the left leg is its
+      # mirror (LUT_JOINT_SIGN): the mirrored rows land on the other screw.
       "hip_xy": LutMechanismCfg(
         source_joint_names=("leg_right_2_joint", "leg_right_3_joint"),
         target_actuator_names=("leg_right_2_actuator", "leg_right_3_actuator"),
+        side_target_actuator_names={
+          "left": ("leg_left_3_actuator", "leg_left_2_actuator"),
+        },
       ),
       "ankle": LutMechanismCfg(
         source_joint_names=("leg_right_4_joint", "leg_right_5_joint"),
-        target_actuator_names=("leg_right_4_actuator", "leg_right_5_actuator"),
+        target_actuator_names=("leg_right_5_actuator", "leg_right_4_actuator"),
         context_joint_names=("leg_right_knee_joint",),
+        side_target_actuator_names={
+          "left": ("leg_left_4_actuator", "leg_left_5_actuator"),
+        },
       ),
       "leg_length": LutMechanismCfg(
         # The policy commands virtual leg_right_length_joint metres; this
@@ -622,13 +616,13 @@ INIT_STATE = EntityCfg.InitialStateCfg(
     "leg_left_1_joint": -0.012074,
     "leg_right_1_joint": 0.012072,
     "leg_.*_2_joint": 0.052192,
-    "leg_left_3_joint": -0.039992,
-    "leg_right_3_joint": 0.040002,
-    "leg_.*_length_joint": -0.125030,
+    "leg_left_3_joint": 0.039992,
+    "leg_right_3_joint": -0.040002,
+    "leg_.*_length_joint": 0.605301,
     "leg_.*_4_joint": -0.352785,
     "leg_.*_5_joint": 0.000001,
     "leg_.*_femur_joint": -0.296368,
-    "leg_.*_knee_joint": 0.597794,
+    "leg_.*_knee_joint": -0.597794,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
     "arm_.*_2_joint": 1.32,

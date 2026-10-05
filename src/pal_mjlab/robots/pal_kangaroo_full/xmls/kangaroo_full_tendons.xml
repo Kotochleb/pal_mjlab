@@ -358,7 +358,7 @@
           <joint name="leg_left_2_joint" axis="0 1 0" range="-0.742 0.772"/>
           <body name="leg_left_3_link">
             <inertial pos="-0.016275 0.046831 -0.035549" quat="0.244308 0.559272 -0.322226 0.72367" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_left_3_joint" axis="-1 0 0" range="-0.413 0.467"/>
+            <joint name="leg_left_3_joint" axis="1 0 0" range="-0.467 0.413"/>
             <site name="left_hip_xy_r_slider_connect_b" pos="0.05965 -0.035 0" quat="1.0 0 0 0"/>
             <site name="left_hip_xy_l_slider_connect_b" pos="0.05965 0.035 0" quat="1.0 0 0 0"/>
             <body name="left_hip_xy_cross_l" pos="0.05965 0.035 0" quat="0 0.707107 -0.707107 0">
@@ -408,9 +408,9 @@
                 <geom material="mtl_hip_xy_link" mesh="hip_xy_link" class="visual" pos="" quat=""/>
               </body>
               <site name="left_hip_xy_link_connect_a" pos="-0.07583 -0.08646 0" quat="0.6666418021136001 0 0 0.7453782312857893"/>
-              <body name="leg_left_lenght_link" pos="-0.124556481362453 0.714166 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
+              <body name="leg_left_length_link" pos="0.000925140579638 -0.00530445256618 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
                 <inertial mass="0.01" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
-                <joint name="leg_left_length_joint" type="slide" range="-0.582193 0.0"/>
+                <joint name="leg_left_length_joint" type="slide" range="0.148138 0.730331"/>
                 <site name="leg_left_length_connect_a"/>
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
               </body>
@@ -455,7 +455,7 @@
                 <body name="leg_left_knee_link" pos="0.0725074 0.373018 0">
                   <!-- Mass of this link is tibia link + two tibia bars plus half of knee rods -->
                   <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="1.1" diaginertia="0.011253 0.0110503 0.000445683"/>
-                  <joint name="leg_left_knee_joint" axis="0 0 1" range="0.0 1.95"/>
+                  <joint name="leg_left_knee_joint" axis="0 0 -1" range="-1.95 0"/>
                   <body name="left_leg_ankle_cross" pos="-0.192846 0.32743 0" quat="0.683416 -0.683416 -0.181501 0.181501">
                     <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
                     <body name="left_ankle">
@@ -573,7 +573,7 @@
           <joint name="leg_right_2_joint" axis="0 1 0" range="-0.742 0.772"/>
           <body name="leg_right_3_link">
             <inertial pos="-0.016275 -0.046831 -0.035549" quat="0.559272 0.244308 -0.72367 0.322226" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_right_3_joint" axis="-1 0 0" range="-0.413 0.467"/>
+            <joint name="leg_right_3_joint" axis="1 0 0" range="-0.467 0.413"/>
             <site name="right_hip_xy_r_slider_connect_b" pos="0.05965 -0.035 0" quat="1.0 0 0 0"/>
             <site name="right_hip_xy_l_slider_connect_b" pos="0.05965 0.035 0" quat="1.0 0 0 0"/>
             <body name="right_femur_bearing" pos="0 -0.0669 -0.09" quat="0.704553 -0.704549 -0.0600671 -0.0600668">
@@ -615,9 +615,9 @@
               </body>
 
               <site name="right_hip_xy_link_connect_a" pos="-0.07583 -0.08646 0" quat="0.6666418021136001 0 0 0.7453782312857893"/>
-              <body name="leg_right_lenght_link" pos="-0.124556481362453 0.714166 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
+              <body name="leg_right_length_link" pos="0.000925140579638 -0.00530445256618 0" quat="0.704473079775370 -0.704473079775370 -0.060972779761178 0.060972779761178">
                 <inertial mass="0.01" pos="0 0 0" diaginertia="8.58333e-05 8.58333e-05 5e-06"/>
-                <joint name="leg_right_length_joint" type="slide" range="-0.582193 0.0"/>
+                <joint name="leg_right_length_joint" type="slide" range="0.148138 0.730331"/>
                 <site name="leg_right_length_connect_a"/>
                 <geom size="5e-05 0.291097" pos="0 0 -0.291097" type="cylinder" class="visual"/>
               </body>
@@ -665,7 +665,7 @@
                 <body name="leg_right_knee_link" pos="0.0725074 0.373018 0">
                   <!-- Mass of this link is tibia link + two tibia bars plus half of knee rods -->
                   <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="1.1" diaginertia="0.011253 0.0110503 0.000445683"/>
-                  <joint name="leg_right_knee_joint" axis="0 0 1" range="0.0 1.95"/>
+                  <joint name="leg_right_knee_joint" axis="0 0 -1" range="-1.95 0"/>
                   <body name="right_leg_ankle_cross" pos="-0.192846 0.32743 0" quat="0.683416 -0.683416 -0.181501 0.181501">
                     <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
                     <body name="right_ankle">
@@ -779,12 +779,12 @@
       <site site="right_hip_z_slider_connect_a"/>
       <site site="right_hip_z_slider_connect_b"/>
     </spatial>
-    <!-- The right hip actuator assignments are intentionally flipped relative to the LUT geometry. -->
-    <spatial name="leg_right_2_actuator" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
+    <!-- Actuator 2/3 and 4/5 names follow the full-full model (pal_kangaroo_full_full/xmls/kangaroo_full.xml). -->
+    <spatial name="leg_right_3_actuator" range="0.04617439711976012 0.13655259455142932" class="tendon_actuator">
       <site site="right_hip_xy_r_slider_connect_a"/>
       <site site="right_hip_xy_r_slider_connect_b"/>
     </spatial>
-    <spatial name="leg_right_3_actuator" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
+    <spatial name="leg_right_2_actuator" range="0.047463521321891196 0.13677358662132647" class="tendon_actuator">
       <site site="right_hip_xy_l_slider_connect_a"/>
       <site site="right_hip_xy_l_slider_connect_b"/>
     </spatial>
@@ -808,11 +808,11 @@
       <site site="right_ankle_tibia_bar_r_connect_a"/>
       <site site="right_ankle_tibia_bar_r_connect_b"/>
     </spatial>
-    <spatial name="leg_right_4_actuator" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
+    <spatial name="leg_right_5_actuator" range="0.056992340120995015 0.10337372926638856" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_l_connect_b"/>
     </spatial>
-    <spatial name="leg_right_5_actuator" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
+    <spatial name="leg_right_4_actuator" range="0.05684511201903168 0.10340553723974012" class="tendon_actuator">
       <site site="right_ankle_virtual_motor_connect_a"/>
       <site site="right_ankle_virtual_motor_r_connect_b"/>
     </spatial>

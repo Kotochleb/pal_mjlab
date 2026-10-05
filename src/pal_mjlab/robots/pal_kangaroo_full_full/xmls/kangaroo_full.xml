@@ -365,7 +365,7 @@
           <joint name="leg_left_2_joint" axis="0 1 0" range="-0.741765 0.663225"/>
           <body name="leg_left_3_link">
             <inertial pos="-0.016275 0.046831 -0.035549" quat="0.244308 0.559272 -0.322226 0.72367" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_left_3_joint" pos="0 0 0" axis="-1 0 0" range="-3.14159 3.14159"/>
+            <joint name="leg_left_3_joint" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/>
             <body name="left_hip_xy_cross_l" pos="0.05965 0.035 0" quat="0 0.707107 -0.707107 0">
               <inertial pos="0.000484 0.000292 0.000547" quat="0.5 0.5 -0.5 0.5" mass="0.064784" diaginertia="1.8e-05 1.7e-05 3e-06"/>
               <joint name="left_hip_xy_cross_l" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
@@ -476,13 +476,12 @@
                       <inertial pos="-0.099066 0.162066 0.00455" quat="0.35272 0.630528 -0.338457 0.602885" mass="0.089131" diaginertia="0.00150188 0.00150084 1.27796e-06"/>
                       <joint name="left_ankle_tibia_bar_r2" pos="0 0 0" axis="0.853225 0.521543 0" range="-3.14159 3.14159"/>
                       <geom material="mtl_ankle_tibia_bar_r" mesh="ankle_tibia_bar_r" class="visual" pos="" quat=""/>
-                      <site name="left_ankle_tibia_bar_r_conenct_a" pos="-0.198131731601772 0.324131156991243 0.0090999999999922" quat="0 -0.0931145555743388 0.9956554020042242 0"/>
+                      <site name="left_ankle_tibia_bar_r_connect_a" pos="-0.198131731601772 0.324131156991243 0.0090999999999922" quat="0 -0.0931145555743388 0.9956554020042242 0"/>
                     </body>
                   </body>
                   <geom material="mtl_butterfly_r" mesh="butterfly_r" class="visual" pos="" quat=""/>
                   <site name="left_ankle_femur_bar_r_connect_b" pos="-0.0517732616638352 0.0303237427882473 -0.0659999999999991" quat="0.9999664145182386 0 0 -0.008195720562472138"/>
                   <site name="left_ankle_virtual_motor_r_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
-                  <site name="left_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                 </body>
                 <body name="left_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
                   <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
@@ -498,7 +497,7 @@
                 </body>
                 <body name="leg_left_knee_link" pos="0.0725074 0.373018 0">
                   <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="0.766071" diaginertia="0.011253 0.0110503 0.000445683"/>
-                  <joint name="leg_left_knee_joint" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
+                  <joint name="leg_left_knee_joint" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                   <body name="left_leg_ankle_cross" pos="-0.192846 0.32743 0" quat="0.683416 -0.683416 -0.181501 0.181501">
                     <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
                     <body name="left_ankle">
@@ -601,7 +600,7 @@
             <joint name="right_hip_xy_motor_r" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_r_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_right_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
+              <joint name="leg_right_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.047268874441118776 0.04310932299055044"/>
               <geom material="mtl_left_hip_xy_slider_l" mesh="left_hip_xy_slider_l" class="visual" pos="" quat=""/>
               <site name="right_hip_xy_slider_r_connect_a" pos="0 0 0.0934432715608783" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -617,7 +616,7 @@
             <joint name="right_hip_xy_motor_l" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_l_slider">
               <inertial pos="-3.7e-05 -0.000655 0.033339" quat="0.999954 0.0096105 0 0" mass="0.143457" diaginertia="0.000322 0.000319115 6.88466e-06"/>
-              <joint name="leg_right_3_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
+              <joint name="leg_right_2_actuator" pos="0 0 0" axis="0 0 1" type="slide" range="-0.0459797502389877 0.04333031506044758"/>
               <geom material="mtl_left_hip_xy_slider_r" mesh="left_hip_xy_slider_r" class="visual" pos="" quat=""/>
               <site name="right_hip_xy_slider_l_connect_a" pos="0 0 0.0934432715608789" quat="0.7056044680840776 -0.04606880310778746 0.04606880310778761 -0.7056044680840803"/>
             </body>
@@ -631,7 +630,7 @@
           <joint name="leg_right_2_joint" pos="0 0 0" axis="0 1 0" range="-3.14159 3.14159"/>
           <body name="leg_right_3_link">
             <inertial pos="-0.016275 -0.046831 -0.035549" quat="0.559272 0.244308 -0.72367 0.322226" mass="1.6493" diaginertia="0.00978748 0.00714003 0.00458248"/>
-            <joint name="leg_right_3_joint" pos="0 0 0" axis="-1 0 0" range="-3.14159 3.14159"/>
+            <joint name="leg_right_3_joint" pos="0 0 0" axis="1 0 0" range="-3.14159 3.14159"/>
             <body name="right_hip_xy_cross_r" pos="0.05965 -0.035 0" quat="0 0.707107 -0.707107 0">
               <inertial pos="1e-03 1e-03 1e-03" mass="1e-03" diaginertia="1e-03 1e-03 1e-03"/>
               <joint name="right_hip_xy_cross_r" pos="0 0 0" axis="0 -1 0" range="-3.14159 3.14159"/>
@@ -649,7 +648,7 @@
                 <joint name="right_ankle_motor_l" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                 <body name="right_ankle_l_slider">
                   <inertial pos="-4.2e-05 -0.031044 -4.2e-05" quat="0.707107 0.707107 0 0" mass="0.124259" diaginertia="0.000177 0.000174 5e-06"/>
-                  <joint name="leg_right_4_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.02192931472550568 0.02445207441988786"/>
+                  <joint name="leg_right_5_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.02192931472550568 0.02445207441988786"/>
                   <geom material="mtl_ankle_slider_l" mesh="ankle_slider_l" class="visual" pos="" quat=""/>
                   <site name="right_ankle_slider_l_connect_a" pos="0 -0.0789216548465015 0" quat="1.0 0 0 0"/>
                 </body>
@@ -660,7 +659,7 @@
                 <joint name="right_ankle_motor_r" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                 <body name="right_ankle_r_slider">
                   <inertial pos="4.2e-05 -0.031044 4.2e-05" quat="0.707107 0.707107 0 0" mass="0.124259" diaginertia="0.000177 0.000174 5e-06"/>
-                  <joint name="leg_right_5_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.022076542827469015 0.024483882393239422"/>
+                  <joint name="leg_right_4_actuator" pos="0 0 0" axis="0 -1 0" type="slide" range="-0.022076542827469015 0.024483882393239422"/>
                   <geom material="mtl_ankle_slider_r" mesh="ankle_slider_r" class="visual" pos="" quat=""/>
                   <site name="right_ankle_slider_r_connect_a" pos="0 -0.0789216548465007 0" quat="1.0 0 0 0"/>
                 </body>
@@ -745,14 +744,13 @@
                       <inertial pos="-0.099066 0.162066 0.00455" quat="0.35272 0.630528 -0.338457 0.602885" mass="0.089131" diaginertia="0.00150188 0.00150084 1.27796e-06"/>
                       <joint name="right_ankle_tibia_bar_r2" pos="0 0 0" axis="0.853225 0.521543 0" range="-3.14159 3.14159"/>
                       <geom material="mtl_ankle_tibia_bar_r" mesh="ankle_tibia_bar_r" class="visual" pos="" quat=""/>
-                      <site name="right_ankle_tibia_bar_r_conenct_a" pos="-0.198131731601772 0.324131156991243 0.0090999999999922" quat="0 -0.0931145555743388 0.9956554020042242 0"/>
+                      <site name="right_ankle_tibia_bar_r_connect_a" pos="-0.198131731601772 0.324131156991243 0.0090999999999922" quat="0 -0.0931145555743388 0.9956554020042242 0"/>
                     </body>
                   </body>
                   <geom material="mtl_butterfly_r" mesh="butterfly_r" class="visual" pos="" quat=""/>
                   <site name="right_ankle_femur_bar_r_connect_b" pos="-0.0517732616638352 0.0303237427882473 -0.0659999999999991" quat="0.9999664145182386 0 0 -0.008195720562472138"/>
                   <site name="right_ankle_virtual_motor_r_connect_b" pos="-0.03041955 -0.01731048 0.0"/>
                   <site name="right_butterfly_r" pos="0 0 0" quat="1.0 0 0 0"/>
-                  <site name="right_ankle_tibia_bar_r_connect_a" pos="-0.0521478 -0.0296751 -0.043" quat="0.999966 0 0 -0.00819572"/>
                 </body>
                 <body name="right_femur_slider" pos="0.0305074 0.245497 0" quat="0 0 -0.707107 -0.707107">
                   <inertial pos="-0.001557 0.000208 -0.034495" quat="0.995827 -0.00689425 -0.0640447 0.0646438" mass="0.582003" diaginertia="0.000350609 0.000343893 0.000138497"/>
@@ -768,7 +766,7 @@
                 </body>
                 <body name="leg_right_knee_link" pos="0.0725074 0.373018 0">
                   <inertial pos="-0.043384 0.113356 -5.8e-05" quat="0.333064 0.622893 -0.333075 0.624606" mass="0.766071" diaginertia="0.011253 0.0110503 0.000445683"/>
-                  <joint name="leg_right_knee_joint" pos="0 0 0" axis="0 0 1" range="-3.14159 3.14159"/>
+                  <joint name="leg_right_knee_joint" pos="0 0 0" axis="0 0 -1" range="-3.14159 3.14159"/>
                   <body name="right_leg_ankle_cross" pos="-0.192846 0.32743 0" quat="0.683416 -0.683416 -0.181501 0.181501">
                     <inertial pos="-0.007727 0 0" quat="0 0.707107 0 0.707107" mass="0.086323" diaginertia="3.7e-05 3.5e-05 6e-06"/>
                     <body name="right_ankle">
@@ -872,7 +870,7 @@
     <connect name="left_hip_xy_link" site1="left_hip_xy_link_connect_a" site2="left_hip_xy_link_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="left_ankle_slider_l" site1="left_ankle_slider_l_connect_a" site2="left_ankle_slider_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="left_ankle_slider_r" site1="left_ankle_slider_r_connect_a" site2="left_ankle_slider_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
-    <connect name="left_ankle_tibia_bar_r" site1="left_ankle_tibia_bar_r_conenct_a" site2="left_ankle_tibia_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
+    <connect name="left_ankle_tibia_bar_r" site1="left_ankle_tibia_bar_r_connect_a" site2="left_ankle_tibia_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="left_ankle_tibia_bar_l" site1="left_ankle_tibia_bar_l_connect_a" site2="left_ankle_tibia_bar_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="left_ankle_femur_bar_r" site1="left_ankle_femur_bar_r_connect_a" site2="left_ankle_femur_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="left_ankle_femur_bar_l" site1="left_ankle_femur_bar_l_connect_a" site2="left_ankle_femur_bar_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
@@ -884,7 +882,7 @@
     <connect name="right_hip_xy_link" site1="right_hip_xy_link_connect_a" site2="right_hip_xy_link_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="right_ankle_slider_l" site1="right_ankle_slider_l_connect_a" site2="right_ankle_slider_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="right_ankle_slider_r" site1="right_ankle_slider_r_connect_a" site2="right_ankle_slider_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
-    <connect name="right_ankle_tibia_bar_r" site1="right_ankle_tibia_bar_r_conenct_a" site2="right_ankle_tibia_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
+    <connect name="right_ankle_tibia_bar_r" site1="right_ankle_tibia_bar_r_connect_a" site2="right_ankle_tibia_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="right_ankle_tibia_bar_l" site1="right_ankle_tibia_bar_l_connect_a" site2="right_ankle_tibia_bar_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="right_ankle_femur_bar_r" site1="right_ankle_femur_bar_r_connect_a" site2="right_ankle_femur_bar_r_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>
     <connect name="right_ankle_femur_bar_l" site1="right_ankle_femur_bar_l_connect_a" site2="right_ankle_femur_bar_l_connect_b" solimp="0.99 0.99 0.001" solref="0.002 1"/>

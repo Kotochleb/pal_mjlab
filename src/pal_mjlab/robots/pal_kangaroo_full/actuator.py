@@ -89,6 +89,11 @@ class LutMechanismCfg:
   target_actuator_names: tuple[str, ...]
   context_joint_names: tuple[str, ...] = ()
 
+  side_target_actuator_names: dict[str, tuple[str, ...]] = field(default_factory=dict)
+  """Explicit target actuators of one side, in the LUT's row order, used
+  verbatim instead of re-siding ``target_actuator_names`` -- for a side whose
+  screws are wired in a different order than the reference side's."""
+
 
 @dataclass(kw_only=True)
 class LutTransmissionActuatorCfg(ActuatorCfg):
@@ -170,12 +175,21 @@ class LutTransmissionActuatorCfg(ActuatorCfg):
       )
       if mechanism.context_joint_names != expected_context:
         raise ValueError(f"{name}.context_joint_names must be {expected_context}")
-    for label, names in (
-      ("source joints", self.reference_joint_names),
-      ("target actuators", self.reference_actuator_names),
-    ):
+      for side, names in mechanism.side_target_actuator_names.items():
+        if side not in self.sides:
+          raise ValueError(f"{name}.side_target_actuator_names: unknown side {side!r}")
+        if len(names) != size:
+          raise ValueError(f"{name} must bind {size} source joints to {size} actuators")
+    if len(set(self.reference_joint_names)) != len(self.reference_joint_names):
+      raise ValueError("mechanisms must have distinct source joints")
+    for side in self.sides:
+      names = [
+        n
+        for name, _ in self._MECHANISM_SIZES
+        for n in self.mechanisms_for_side(side)[name].target_actuator_names
+      ]
       if len(set(names)) != len(names):
-        raise ValueError(f"mechanisms must have distinct {label}")
+        raise ValueError("mechanisms must have distinct target actuators")
 
   @property
   def reference_joint_names(self) -> tuple[str, ...]:
@@ -197,10 +211,16 @@ class LutTransmissionActuatorCfg(ActuatorCfg):
     def names(values: tuple[str, ...]) -> tuple[str, ...]:
       return tuple(reside(n, side, self.reference_side) for n in values)
 
+    def targets(mechanism: LutMechanismCfg) -> tuple[str, ...]:
+      explicit = mechanism.side_target_actuator_names.get(side)
+      if explicit is not None:
+        return tuple(explicit)
+      return names(mechanism.target_actuator_names)
+
     return {
       name: LutMechanismCfg(
         source_joint_names=names(self.mechanisms[name].source_joint_names),
-        target_actuator_names=names(self.mechanisms[name].target_actuator_names),
+        target_actuator_names=targets(self.mechanisms[name]),
         context_joint_names=names(self.mechanisms[name].context_joint_names),
       )
       for name, _ in self._MECHANISM_SIZES
@@ -254,7 +274,10 @@ class LutTransmissionActuator(Actuator[LutTransmissionActuatorCfg]):
     # from the explicit configuration, independently of NPZ name metadata.
     self.servo_names = [reside(n, side, ref) for side in cfg.sides for n in ref_joints]
     self.screw_names = [
-      reside(n, side, ref) for side in cfg.sides for n in cfg.reference_actuator_names
+      n
+      for side in cfg.sides
+      for name, _ in cfg._MECHANISM_SIZES
+      for n in cfg.mechanisms_for_side(side)[name].target_actuator_names
     ]
     if sorted(target_names) != sorted(self.servo_names):
       raise ValueError(

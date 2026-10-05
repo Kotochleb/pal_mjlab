@@ -10,9 +10,7 @@ from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
   LOWER_BODY_JOINT_ORDER,
-  LOWER_BODY_OBSERVED_JOINT_ORDER,
   SIMPLE_MODEL_JOINT_ORDER,
-  SIMPLE_MODEL_OBSERVED_JOINT_ORDER,
   get_kangaroo_full_spec,
   simple_model_action_names,
 )
@@ -62,11 +60,6 @@ def pal_kangaroo_full_full_baseline_env_cfg(
 
   joint_order = (
     LOWER_BODY_JOINT_ORDER if model["lower_body"] else SIMPLE_MODEL_JOINT_ORDER
-  )
-  observed_joint_order = (
-    LOWER_BODY_OBSERVED_JOINT_ORDER
-    if model["lower_body"]
-    else SIMPLE_MODEL_OBSERVED_JOINT_ORDER
   )
   leg_length_action = model["leg_length_action"]
   if leg_length_action is None:
@@ -122,7 +115,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
       term_cfg = cfg.observations[group].terms[term]
       params = {
         "asset_cfg": SceneEntityCfg("robot"),
-        "joint_order": observed_joint_order,
+        "joint_order": joint_order,
         "mapped_joints": LEG_LENGTH_FROM_KNEE_JOINTS,
         "mode": mode,
       }
@@ -136,7 +129,7 @@ def pal_kangaroo_full_full_baseline_env_cfg(
         term_cfg.func = mdp.ankle_femur_normalized
         term_cfg.params = {
           "asset_cfg": SceneEntityCfg("robot"),
-          "joint_order": observed_joint_order,
+          "joint_order": joint_order,
           "ankle_femur_pairs": ANKLE_FEMUR_JOINT_PAIRS,
           "inner": inner_cfg,
         }
