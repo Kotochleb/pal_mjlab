@@ -7,6 +7,7 @@ from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 
 from pal_mjlab.robots import (
+  FEMUR_JOINT_REF,
   KANGAROO_TENDON_LENGTHS,
   LOWER_BODY_JOINT_ORDER,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
@@ -175,6 +176,7 @@ def pal_kangaroo_full_baseline_env_cfg(
       "leg_left_femur_joint",
       "leg_right_femur_joint",
     ]
+    ankle_hull.params["femur_offset"] = FEMUR_JOINT_REF
 
   entity_cfg = SceneEntityCfg("robot")
 

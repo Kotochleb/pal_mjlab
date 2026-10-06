@@ -609,28 +609,42 @@ _UPPER_BODY_ACTUATORS = (
 )
 _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 
+# The tendon MJCFs' femur joint ``ref``: its reading with the femur at the zero
+# of the old (pre-ref) coordinate, which the ankle-hull femur normalization
+# was fit against.
+FEMUR_JOINT_REF = 1.206077
+
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.91),
   rot=(1.0, 0.0, 0.0, 0.0),
+  # Leg length, femur and knee read in the simple model's coordinates (joint
+  # refs in the tendon MJCFs). leg_*_4_joint is still measured off the shank:
+  # q4 = q4_simple - femur + knee - 1.211271.
   joint_pos={
-    "leg_left_1_joint": -0.012074,
-    "leg_right_1_joint": 0.012072,
-    "leg_.*_2_joint": 0.052192,
-    "leg_left_3_joint": 0.039992,
-    "leg_right_3_joint": -0.040002,
-    "leg_.*_length_joint": 0.605301,
-    "leg_.*_4_joint": -0.352785,
-    "leg_.*_5_joint": 0.000001,
-    "leg_.*_femur_joint": -0.296368,
-    "leg_.*_knee_joint": -0.597794,
+    "leg_left_1_joint": 0.000145,
+    "leg_right_1_joint": -0.000179,
+    "leg_left_2_joint": 0.060076,
+    "leg_right_2_joint": 0.060163,
+    "leg_left_3_joint": 0.008375,
+    "leg_right_3_joint": -0.008862,
+    "leg_left_length_joint": 0.577749,
+    "leg_right_length_joint": 0.577365,
+    "leg_left_4_joint": -0.423300,
+    "leg_right_4_joint": -0.424201,
+    "leg_left_5_joint": 0.002416,
+    "leg_right_5_joint": -0.001908,
+    "leg_left_femur_joint": 0.863559,
+    "leg_right_femur_joint": 0.862781,
+    "leg_left_knee_joint": 1.727239,
+    "leg_right_knee_joint": 1.725683,
     "arm_left_1_joint": 0.24,
     "arm_right_1_joint": -0.24,
     "arm_.*_2_joint": 1.32,
     "arm_left_3_joint": 1.57,
     "arm_right_3_joint": -1.57,
     "arm_.*_4_joint": 0.8,
-    "pelvis_1_joint": 0.0,
-    "pelvis_2_joint": 0.0,
+    "pelvis_1_joint": -0.000729,
+    "pelvis_2_joint": -0.000011,
   },
   joint_vel={".*": 0.0},
 )

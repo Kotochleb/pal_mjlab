@@ -206,7 +206,8 @@ class joint_limits_convex_hull_ankle_femur_normalized(joint_limits_convex_hull):
   not ``leg_.*_4_joint`` alone. ``femur_joint_names`` pairs one femur joint
   with each entry of ``joint_names_group``, in the same order; only the first
   joint of each group (joint 4) is shifted, the second (joint 5, ankle roll)
-  is untouched.
+  is untouched. ``femur_offset`` is the femur reading at the zero the hull
+  expects (the tendon MJCFs' femur ``ref``), subtracted from the femur first.
   """
 
   def __call__(  # type: ignore[override]
@@ -218,6 +219,7 @@ class joint_limits_convex_hull_ankle_femur_normalized(joint_limits_convex_hull):
     joint_names_group: list[list[str]],
     hull_points: torch.Tensor,
     femur_joint_names: list[str],
+    femur_offset: float = 0.0,
   ) -> torch.Tensor:
     del margin, hull_points
     penalty = torch.zeros(env.num_envs, device=env.device, dtype=torch.float32)
@@ -230,7 +232,8 @@ class joint_limits_convex_hull_ankle_femur_normalized(joint_limits_convex_hull):
       femur_id, _ = asset.find_joints([femur_joint_name])
 
       joint_pos = asset.data.joint_pos[:, target_ids].clone()
-      joint_pos[:, 0] = joint_pos[:, 0] - asset.data.joint_pos[:, femur_id[0]]
+      femur = asset.data.joint_pos[:, femur_id[0]] - femur_offset
+      joint_pos[:, 0] = joint_pos[:, 0] - femur
 
       dot_product_res = (
         torch.matmul(joint_pos, self.equation_coeff_A.T) + self.equation_coeff_b
