@@ -5,6 +5,7 @@ from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
+from mjlab.terrains.config import TerrainGeneratorCfg, flat, pyramid_stairs
 
 from pal_mjlab.robots import (
   FEMUR_JOINT_REF,
@@ -67,7 +68,6 @@ def pal_kangaroo_full_baseline_env_cfg(
     actuator_model=actuator_model,
   )
   cfg.scene.entities = {"robot": model["robot_cfg"]}
-
 
   joint_order = (
     LOWER_BODY_JOINT_ORDER if model["lower_body"] else SIMPLE_MODEL_JOINT_ORDER
@@ -157,7 +157,6 @@ def pal_kangaroo_full_baseline_env_cfg(
       cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_1_.*", None)
       cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_4_.*", None)
       cfg.rewards["pose"].params[pose_type].pop(r"arm_.*_(?![14]_joint)\d+_joint", None)
-
 
   cfg.rewards["dof_pos_limits"].params["asset_cfg"] = SceneEntityCfg(
     "robot", joint_names=REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY
@@ -294,6 +293,70 @@ def pal_kangaroo_full_rough_env_cfg(
     actuator_model=actuator_model,
   )
   return configure_kangaroo_rough_env(cfg, play=play)
+
+
+def pal_kangaroo_full_stairs_rough_env_cfg(
+  play: bool = False,
+  transmission: Transmission = "actuator",
+  femur_closure: FemurClosure = "prismatic",
+  mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
+) -> ManagerBasedRlEnvCfg:
+  cfg = pal_kangaroo_full_baseline_env_cfg(
+    play=play,
+    transmission=transmission,
+    femur_closure=femur_closure,
+    mjcf=mjcf,
+    lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
+    actuator_model=actuator_model,
+  )
+  cfg = configure_kangaroo_rough_env(cfg, play=play)
+  cfg.observations["actor"].terms["height_scan"] = ObservationTermCfg(
+    func=mdp.height_scan,
+    params={"sensor_name": "terrain_scan"},
+    scale=1 / 2.0,
+  )
+  cfg.scene.terrain.terrain_generator = TerrainGeneratorCfg(
+    size=(8.0, 8.0),
+    border_width=20.0,
+    num_rows=10,
+    num_cols=4,
+    curriculum=True,
+    sub_terrains={
+      "flat": flat(proportion=0.25),
+      "easy_stairs": pyramid_stairs(
+        proportion=0.35,
+        step_height_range=(0.02, 0.05),
+        step_width=0.40,
+      ),
+      "moderate_stairs": pyramid_stairs(
+        proportion=0.25,
+        step_height_range=(0.05, 0.08),
+        step_width=0.35,
+        platform_width=2.5,
+        border_width=0.8,
+      ),
+      "challenging_stairs": pyramid_stairs(
+        proportion=0.15,
+        step_height_range=(0.08, 0.10),
+        step_width=0.30,
+        platform_width=2.0,
+        border_width=0.5,
+      ),
+      "very_challenging_stairs": pyramid_stairs(
+        proportion=0.15,
+        step_height_range=(0.10, 0.20),
+        step_width=0.30,
+        platform_width=2.0,
+        border_width=0.5,
+      ),
+    },
+    add_lights=True,
+  )
+  return cfg
 
 
 def pal_kangaroo_full_flat_env_cfg(

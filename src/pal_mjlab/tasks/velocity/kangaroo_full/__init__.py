@@ -4,6 +4,7 @@ from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
 from .env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
   pal_kangaroo_full_rough_env_cfg,
+  pal_kangaroo_full_stairs_rough_env_cfg,
 )
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
@@ -28,6 +29,7 @@ _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
 for _terrain, _env_cfg_fn in (
   ("Flat", pal_kangaroo_full_flat_env_cfg),
   ("Rough", pal_kangaroo_full_rough_env_cfg),
+  ("Stairs", pal_kangaroo_full_stairs_rough_env_cfg),
 ):
   for _transmission_name, _transmission in _TRANSMISSION_VARIANTS.items():
     for _femur_closure_name, _femur_closure in _FEMUR_CLOSURE_VARIANTS.items():
@@ -53,9 +55,7 @@ for _terrain, _env_cfg_fn in (
         # produce two task ids for the same env. Collapse to the one raw
         # variant there instead.
         _ankle_obs_items = (
-          _ANKLE_OBS_VARIANTS.items()
-          if _mjcf == "tendons"
-          else (("AnkleRaw", False),)
+          _ANKLE_OBS_VARIANTS.items() if _mjcf == "tendons" else (("AnkleRaw", False),)
         )
         for _body_name, _lower_body in _BODY_VARIANTS.items():
           for _ankle_obs_name, _ankle_normalized in _ankle_obs_items:
@@ -80,9 +80,7 @@ for _terrain, _env_cfg_fn in (
                 "actuator_model": _actuator_model,
               }
               _actuator_model_suffix = (
-                f"-ActuatorModel-{_actuator_model_name}"
-                if _actuator_model_name
-                else ""
+                f"-ActuatorModel-{_actuator_model_name}" if _actuator_model_name else ""
               )
               register_mjlab_task(
                 task_id=(
