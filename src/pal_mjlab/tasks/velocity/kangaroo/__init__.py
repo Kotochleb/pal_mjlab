@@ -59,17 +59,17 @@ register_mjlab_task(
 )
 
 register_mjlab_task(
-  task_id="Mjlab-Velocity-Stairs-Pal-Kangaroo",
-  env_cfg=pal_kangaroo_stairs_rough_env_cfg(),
-  play_env_cfg=pal_kangaroo_stairs_rough_env_cfg(play=True),
+  task_id="Mjlab-Velocity-Rough-Pal-Kangaroo-Lower-Body",
+  env_cfg=pal_kangaroo_lower_body_rough_env_cfg(),
+  play_env_cfg=pal_kangaroo_lower_body_rough_env_cfg(play=True),
   rl_cfg=pal_kangaroo_ppo_runner_cfg(),
   runner_cls=VelocityOnPolicyRunner,
 )
 
 register_mjlab_task(
-  task_id="Mjlab-Velocity-Rough-Pal-Kangaroo-Lower-Body",
-  env_cfg=pal_kangaroo_lower_body_rough_env_cfg(),
-  play_env_cfg=pal_kangaroo_lower_body_rough_env_cfg(play=True),
+  task_id="Mjlab-Velocity-Stairs-Pal-Kangaroo",
+  env_cfg=pal_kangaroo_stairs_rough_env_cfg(),
+  play_env_cfg=pal_kangaroo_stairs_rough_env_cfg(play=True),
   rl_cfg=pal_kangaroo_ppo_runner_cfg(),
   runner_cls=VelocityOnPolicyRunner,
 )
