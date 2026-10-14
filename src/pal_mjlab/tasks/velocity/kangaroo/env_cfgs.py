@@ -647,7 +647,7 @@ def pal_kangaroo_stairs_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCf
   # More forward-only commands (x > 0, y = yaw = 0) for pure stair traversal
   twist_cmd = cfg.commands["twist"]
   assert isinstance(twist_cmd, mdp.UniformVelocityCommandCfg)
-  twist_cmd.rel_forward_envs = 0.5  # default 0.2
+  twist_cmd.rel_forward_envs = 0.5  # 33 % of envs (because of the other rels)
 
   ### REWARDS
 
