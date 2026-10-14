@@ -642,6 +642,13 @@ def pal_kangaroo_stairs_rough_env_cfg(play: bool = False) -> ManagerBasedRlEnvCf
 
   cfg.scene.sensors = (cfg.scene.sensors or ()) + (shin_ground_cfg,)
 
+  ### COMMANDS
+
+  # More forward-only commands (x > 0, y = yaw = 0) for pure stair traversal
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, mdp.UniformVelocityCommandCfg)
+  twist_cmd.rel_forward_envs = 0.5  # default 0.2
+
   ### REWARDS
 
   # Higher swing apex so 20 cm risers aren't penalized
