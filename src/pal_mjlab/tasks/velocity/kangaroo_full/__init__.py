@@ -1,6 +1,8 @@
 from mjlab.tasks.registry import register_mjlab_task
 from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
 
+from pal_mjlab.tasks.velocity.lp_acrl_runner import LpAcrlVelocityOnPolicyRunner
+
 from .env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
   pal_kangaroo_full_rough_env_cfg,
@@ -8,8 +10,8 @@ from .env_cfgs import (
 )
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
-# One task per actuation variant, on flat and on rough terrain. The name spells
-# out all six axes so a run is identifiable from its task id alone.
+# Task variants on flat, rough and stairs terrain. Names identify six model
+# axes plus the curriculum (the legacy default has no curriculum suffix).
 _TRANSMISSION_VARIANTS = {"Joint": "joint", "Actuator": "actuator", "Lut": "lut"}
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
 _MJCF_VARIANTS = {
@@ -25,6 +27,9 @@ _ANKLE_OBS_VARIANTS = {"AnkleRaw": False, "AnkleNormalized": True}
 # the model -- it's always the builtin native actuator -- so it doesn't get
 # this axis at all; see the _transmission == "joint" special case below.
 _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
+
+# Keep existing ids for the default curriculum; add an independent LP-ACRL axis.
+_CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
 
 for _terrain, _env_cfg_fn in (
   ("Flat", pal_kangaroo_full_flat_env_cfg),
@@ -82,18 +87,29 @@ for _terrain, _env_cfg_fn in (
               _actuator_model_suffix = (
                 f"-ActuatorModel-{_actuator_model_name}" if _actuator_model_name else ""
               )
-              register_mjlab_task(
-                task_id=(
-                  f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
-                  f"-Transmission-{_transmission_name}"
-                  f"-Femur-{_femur_closure_name}"
-                  f"-Mjcf-{_mjcf_name}"
-                  f"-Body-{_body_name}"
-                  f"-AnkleObs-{_ankle_obs_name}"
-                  f"{_actuator_model_suffix}"
-                ),
-                env_cfg=_env_cfg_fn(**_variant),
-                play_env_cfg=_env_cfg_fn(play=True, **_variant),
-                rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
-                runner_cls=VelocityOnPolicyRunner,
-              )
+              for _curriculum_name, _curriculum in _CURRICULUM_VARIANTS.items():
+                _curriculum_suffix = (
+                  f"-Curriculum-{_curriculum_name}" if _curriculum_name else ""
+                )
+                register_mjlab_task(
+                  task_id=(
+                    f"Mjlab-Velocity-{_terrain}-Pal-Kangaroo-Full"
+                    f"-Transmission-{_transmission_name}"
+                    f"-Femur-{_femur_closure_name}"
+                    f"-Mjcf-{_mjcf_name}"
+                    f"-Body-{_body_name}"
+                    f"-AnkleObs-{_ankle_obs_name}"
+                    f"{_actuator_model_suffix}"
+                    f"{_curriculum_suffix}"
+                  ),
+                  env_cfg=_env_cfg_fn(curriculum=_curriculum, **_variant),
+                  play_env_cfg=_env_cfg_fn(
+                    play=True, curriculum=_curriculum, **_variant
+                  ),
+                  rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
+                  runner_cls=(
+                    LpAcrlVelocityOnPolicyRunner
+                    if _curriculum == "lp_acrl"
+                    else VelocityOnPolicyRunner
+                  ),
+                )

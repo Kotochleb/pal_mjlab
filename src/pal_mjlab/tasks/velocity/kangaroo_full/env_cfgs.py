@@ -27,16 +27,17 @@ from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
   pal_kangaroo_baseline_env_cfg,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full import mdp
-from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
-  configure_simple_model_encoder_bias,
-)
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.actuator_friction import (
   configure_actuator_friction_dr,
+)
+from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.encoder_bias import (
+  configure_simple_model_encoder_bias,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.leg_joint_friction import (
   configure_leg_joint_friction_dr,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
+from pal_mjlab.tasks.velocity.mdp.lp_acrl import Curriculum, configure_lp_acrl
 
 LEG_LENGTH_FROM_KNEE_JOINTS: tuple[tuple[str, str], ...] = (
   ("leg_left_length_joint", "leg_left_knee_joint"),
@@ -282,6 +283,7 @@ def pal_kangaroo_full_rough_env_cfg(
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
   actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
 ) -> ManagerBasedRlEnvCfg:
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
@@ -292,7 +294,8 @@ def pal_kangaroo_full_rough_env_cfg(
     ankle_normalized=ankle_normalized,
     actuator_model=actuator_model,
   )
-  return configure_kangaroo_rough_env(cfg, play=play)
+  cfg = configure_kangaroo_rough_env(cfg, play=play)
+  return configure_lp_acrl(cfg, curriculum, play=play)
 
 
 def pal_kangaroo_full_stairs_rough_env_cfg(
@@ -303,6 +306,7 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
   actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
 ) -> ManagerBasedRlEnvCfg:
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
@@ -356,7 +360,7 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
     },
     add_lights=True,
   )
-  return cfg
+  return configure_lp_acrl(cfg, curriculum, play=play)
 
 
 def pal_kangaroo_full_flat_env_cfg(
@@ -367,6 +371,7 @@ def pal_kangaroo_full_flat_env_cfg(
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
   actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
 ) -> ManagerBasedRlEnvCfg:
   cfg = pal_kangaroo_full_baseline_env_cfg(
     play=play,
@@ -400,4 +405,4 @@ def pal_kangaroo_full_flat_env_cfg(
     twist_cmd.ranges.lin_vel_x = (-1.5, 2.0)
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
-  return cfg
+  return configure_lp_acrl(cfg, curriculum, play=play)
