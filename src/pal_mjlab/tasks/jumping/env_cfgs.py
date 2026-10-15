@@ -67,11 +67,11 @@ def configure_vertical_jump(
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
   # These costs must remain active after the height input becomes zero, and
   # must not interpret a one-dimensional height as a three-dimensional twist.
-  cfg.rewards["soft_landing"].params["command_name"] = None
   slip = cfg.rewards["foot_slip"]
   slip.func = mdp.feet_slip
   slip.params.pop("command_name", None)
   slip.params.pop("command_threshold", None)
+  slip.params.pop("soft_landing", None)
   cfg.rewards.update(
     {
       "jump_height": RewardTermCfg(
@@ -86,7 +86,7 @@ def configure_vertical_jump(
       ),
       "pose": RewardTermCfg(
         func=mdp.height_variable_posture,
-        weight=1.0,
+        weight=0.2,
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
@@ -112,7 +112,7 @@ def configure_vertical_jump(
       ),
       "landing_drift": RewardTermCfg(
         func=mdp.landing_drift_l2,
-        weight=-2.0,
+        weight=-0.05,
         params={"command_name": "jump_height"},
       ),
     }
