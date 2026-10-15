@@ -29,6 +29,7 @@ HEIGHT_STAGES = (
   (2_000 * 24, 0.05, 0.25),
   (5_000 * 24, 0.05, 0.40),
   (10_000 * 24, 0.05, 0.60),
+  (15_000 * 24, 0.05, 0.80),
 )
 
 # LP-ACRL splits the final stage's range into equal-width tasks instead.
@@ -84,7 +85,7 @@ def configure_vertical_jump(
       ),
       "pose": RewardTermCfg(
         func=mdp.height_variable_posture,
-        weight=0.2,
+        weight=1.0,
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
@@ -110,7 +111,7 @@ def configure_vertical_jump(
       ),
       "landing_drift": RewardTermCfg(
         func=mdp.landing_drift_l2,
-        weight=-0.05,
+        weight=-0.01,
         params={"command_name": "jump_height"},
       ),
     }
@@ -129,11 +130,11 @@ def configure_vertical_jump(
     _configure_lp_acrl(cfg, play=play)
   elif curriculum != "default":
     raise ValueError(f"Unknown curriculum: {curriculum!r}")
-  cfg.episode_length_s = 5.0
+  cfg.episode_length_s = 15.0
   cfg.terminations["jump_finished"] = TerminationTermCfg(
     func=mdp.jump_finished,
     time_out=True,
-    params={"command_name": "jump_height", "settle_time": 0.5},
+    params={"command_name": "jump_height", "settle_time": 2.0},
   )
   # External impulses would contaminate ballistic height tracking.
   cfg.events.pop("push_robot", None)
