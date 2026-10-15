@@ -352,6 +352,7 @@ def configure_top_speed(cfg: ManagerBasedRlEnvCfg) -> ManagerBasedRlEnvCfg:
   ranges.ang_vel_z = (2 * ranges.ang_vel_z[0], 2 * ranges.ang_vel_z[1])
   twist.lp_acrl.velocity_bins = TOP_SPEED_VELOCITY_BINS
   twist.__post_init__()
+  cfg.rewards["track_linear_velocity"].weight *= 2
   # "last" logs the value at the reset step: the current maximum over all envs.
   for axis, name in enumerate(("lin_vel_x", "lin_vel_y", "ang_vel_z")):
     cfg.metrics[f"max_abs_command_{name}"] = MetricsTermCfg(
