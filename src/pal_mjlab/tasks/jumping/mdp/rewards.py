@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
 
-from .commands import FLIGHT, JumpHeightCommand
+from .commands import FLIGHT, LANDED, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -131,3 +131,36 @@ def horizontal_velocity(
   return torch.exp(-speed / std**2)
 
 
+
+
+def feet_slip(
+  env: ManagerBasedRlEnv, sensor_name: str, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+  """Squared xy speed of feet in contact, in every phase (no command gating)."""
+  in_contact = (env.scene[sensor_name].data.found > 0).float()
+  robot = env.scene[asset_cfg.name]
+  speed = robot.data.site_lin_vel_w[:, asset_cfg.site_ids, :2].norm(dim=-1)
+  mean_speed = (speed * in_contact).sum() / in_contact.sum().clamp_min(1)
+  env.extras["log"]["Metrics/slip_velocity_mean"] = mean_speed
+  return (speed.square() * in_contact).sum(dim=-1)
+
+
+def ground_force_l2(
+  env: ManagerBasedRlEnv, sensor_name: str, force_scale: float = 500.0
+) -> torch.Tensor:
+  """Sum of squared foot-ground contact forces, normalized by force_scale."""
+  force = env.scene[sensor_name].data.force
+  return (force.norm(dim=-1) / force_scale).square().sum(dim=-1)
+
+
+def soft_impact(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  max_acceleration: float = 100.0,
+  window: float = 0.3,
+) -> torch.Tensor:
+  """1 - deceleration / max_acceleration, clamped, for window s after touchdown."""
+  term = _jump(env, command_name)
+  landing = (term.phase == LANDED) & (term.landed_time < window)
+  value = (1 - term.impact_deceleration / max_acceleration).clamp(0, 1)
+  return value * landing
