@@ -103,11 +103,11 @@ uv run train Mjlab-Jump-Vertical-Pal-Kangaroo-Full-Curriculum-LpAcrl --env.scene
 ## Rewards
 
 The only retained velocity rewards are `upright`, `body_ang_vel`,
-`angular_momentum`, `dof_pos_limits`, `action_rate_l2`, `soft_landing`, and
-`foot_slip`, with their existing weights. `upright` replaces the paper's
-orientation-error term. Angular-velocity and momentum regularization use the
-existing velocity implementation. Slip and soft-landing costs are active in
-every phase, including after the command becomes zero.
+`angular_momentum`, `dof_pos_limits`, `action_rate_l2`, and `foot_slip`,
+with their existing weights. `upright` replaces the paper's orientation-error
+term. Angular-velocity and momentum regularization use the existing velocity
+implementation. The slip cost is active in every phase, including after the
+command becomes zero.
 
 The additional rewards are:
 

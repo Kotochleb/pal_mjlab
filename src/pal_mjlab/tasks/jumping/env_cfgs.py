@@ -40,7 +40,6 @@ VELOCITY_REWARDS = (
   "angular_momentum",
   "dof_pos_limits",
   "action_rate_l2",
-  "soft_landing",
   "foot_slip",
 )
 
@@ -71,7 +70,6 @@ def configure_vertical_jump(
   slip.func = mdp.feet_slip
   slip.params.pop("command_name", None)
   slip.params.pop("command_threshold", None)
-  slip.params.pop("soft_landing", None)
   cfg.rewards.update(
     {
       "jump_height": RewardTermCfg(
