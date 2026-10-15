@@ -142,7 +142,7 @@ def configure_vertical_jump(
   cfg.events["reset_base"].params["pose_range"] = {
     "x": (-0.2, 0.2),
     "y": (-0.2, 0.2),
-    "z": (0.0, 0.01),
+    "z": (0.0, 0.5),
     "yaw": (-3.14, 3.14),
   }
   cfg.events["reset_base"].params["velocity_range"] = {}
