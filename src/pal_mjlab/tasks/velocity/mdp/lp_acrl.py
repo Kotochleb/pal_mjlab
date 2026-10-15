@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 import torch
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
+from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.tasks.velocity.mdp.velocity_command import (
   UniformVelocityCommand,
   UniformVelocityCommandCfg,
@@ -351,4 +352,19 @@ def configure_top_speed(cfg: ManagerBasedRlEnvCfg) -> ManagerBasedRlEnvCfg:
   ranges.ang_vel_z = (2 * ranges.ang_vel_z[0], 2 * ranges.ang_vel_z[1])
   twist.lp_acrl.velocity_bins = TOP_SPEED_VELOCITY_BINS
   twist.__post_init__()
+  # "last" logs the value at the reset step: the current maximum over all envs.
+  for axis, name in enumerate(("lin_vel_x", "lin_vel_y", "ang_vel_z")):
+    cfg.metrics[f"max_abs_command_{name}"] = MetricsTermCfg(
+      func=max_abs_velocity_command,
+      params={"command_name": "twist", "axis": axis},
+      reduce="last",
+    )
   return cfg
+
+
+def max_abs_velocity_command(
+  env: ManagerBasedRlEnv, command_name: str, axis: int
+) -> torch.Tensor:
+  """Largest |command| on one axis over all envs, broadcast to every env."""
+  command = env.command_manager.get_command(command_name)
+  return command[:, axis].abs().max().expand(env.num_envs)
