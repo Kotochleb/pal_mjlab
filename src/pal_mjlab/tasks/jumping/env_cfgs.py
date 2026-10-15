@@ -110,6 +110,11 @@ def configure_vertical_jump(
         weight=1.0,
         params={"command_name": "jump_height", "max_acceleration": 100.0},
       ),
+      "landing_drift": RewardTermCfg(
+        func=mdp.landing_drift_l2,
+        weight=-2.0,
+        params={"command_name": "jump_height"},
+      ),
     }
   )
   cfg.curriculum = (

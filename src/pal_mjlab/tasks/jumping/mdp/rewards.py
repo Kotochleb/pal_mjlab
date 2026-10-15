@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
 
-from .commands import FLIGHT, LANDED, JumpHeightCommand
+from .commands import FLIGHT, LANDED, STANCE, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -131,8 +131,6 @@ def horizontal_velocity(
   return torch.exp(-speed / std**2)
 
 
-
-
 def feet_slip(
   env: ManagerBasedRlEnv, sensor_name: str, asset_cfg: SceneEntityCfg
 ) -> torch.Tensor:
@@ -164,3 +162,15 @@ def soft_impact(
   landing = (term.phase == LANDED) & (term.landed_time < window)
   value = (1 - term.impact_deceleration / max_acceleration).clamp(0, 1)
   return value * landing
+
+
+def landing_drift_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+  """Squared horizontal COM distance from its takeoff position, after takeoff.
+
+  Active in flight and after touchdown, so the policy must land, and settle,
+  where it took off. Tilt is not penalized; only where the COM ends up is.
+  """
+  term = _jump(env, command_name)
+  airborne_or_landed = term.phase != STANCE
+  drift = (term.com_xy - term.takeoff_com_xy).square().sum(dim=-1)
+  return drift * airborne_or_landed

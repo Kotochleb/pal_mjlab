@@ -44,6 +44,8 @@ class JumpHeightCommand(CommandTerm):
     self.settled_time = torch.zeros_like(self.target_height)
     self.impact_deceleration = torch.zeros_like(self.target_height)
     self.previous_velocity = torch.zeros((self.num_envs, 3), device=self.device)
+    # Horizontal whole-body COM at takeoff; the landing-drift cost reference.
+    self.takeoff_com_xy = torch.zeros((self.num_envs, 2), device=self.device)
     self.seen_contact = torch.zeros_like(self.target_height, dtype=torch.bool)
     self.apex_reached = torch.zeros_like(self.seen_contact)
     self.just_apex = torch.zeros_like(self.seen_contact)
@@ -68,6 +70,12 @@ class JumpHeightCommand(CommandTerm):
   def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:
     self._update_metrics()
     return super().reset(env_ids)
+
+  @property
+  def com_xy(self) -> torch.Tensor:
+    """Whole-robot center of mass (root subtree), world-frame xy."""
+    data = self.robot.data
+    return data.data.subtree_com[:, data.indexing.root_body_id, :2]
 
   @property
   def height(self) -> torch.Tensor:
@@ -96,6 +104,7 @@ class JumpHeightCommand(CommandTerm):
     ):
       value[env_ids] = 0
     self.previous_velocity[env_ids] = 0
+    self.takeoff_com_xy[env_ids] = 0
     # Reset observations must not count as a physics step or a takeoff.
     self._last_step[env_ids] = self._env.common_step_counter
     self._initialize_flight(env_ids)
@@ -152,6 +161,10 @@ class JumpHeightCommand(CommandTerm):
       & (velocity[:, 2] > self.cfg.takeoff_velocity)
     )
     self.phase[takeoff] = FLIGHT
+    # Simulator state is stale at reset, so ballistic starts anchor on their
+    # first physics step instead; that is their equivalent of takeoff.
+    anchor = takeoff | (fresh & self.initialized_in_flight & (self.air_time == 0))
+    self.takeoff_com_xy[anchor] = self.com_xy[anchor]
     flying = fresh & (self.phase == FLIGHT)
     self.air_time[flying] += dt
     self.peak_height[flying] = torch.maximum(self.peak_height, height)[flying]
