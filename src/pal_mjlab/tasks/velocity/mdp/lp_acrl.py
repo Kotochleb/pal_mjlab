@@ -333,3 +333,22 @@ def configure_lp_acrl(
     # the LP sampler, rather than terrain_levels_vel, chooses cells in this grid.
     cfg.scene.terrain.terrain_generator.curriculum = True
   return cfg
+
+
+TOP_SPEED_LIN_VEL_X_MAX = 10.0
+# Bin widths match the flat LP-ACRL space (~0.6 m/s in vx, 2 m/s in vy,
+# 0.35 rad/s in yaw) after widening vx to (-2, 10) and doubling vy/yaw.
+TOP_SPEED_VELOCITY_BINS = (20, 3, 8)
+
+
+def configure_top_speed(cfg: ManagerBasedRlEnvCfg) -> ManagerBasedRlEnvCfg:
+  """Widen a flat LP-ACRL task: vx up to 10 m/s, doubled vy and yaw rate."""
+  twist = cfg.commands["twist"]
+  assert isinstance(twist, LpAcrlVelocityCommandCfg)
+  ranges = twist.ranges
+  ranges.lin_vel_x = (ranges.lin_vel_x[0], TOP_SPEED_LIN_VEL_X_MAX)
+  ranges.lin_vel_y = (2 * ranges.lin_vel_y[0], 2 * ranges.lin_vel_y[1])
+  ranges.ang_vel_z = (2 * ranges.ang_vel_z[0], 2 * ranges.ang_vel_z[1])
+  twist.lp_acrl.velocity_bins = TOP_SPEED_VELOCITY_BINS
+  twist.__post_init__()
+  return cfg

@@ -37,7 +37,11 @@ from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.leg_joint_friction import (
   configure_leg_joint_friction_dr,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.tendon import enforce_tendon_lengths
-from pal_mjlab.tasks.velocity.mdp.lp_acrl import Curriculum, configure_lp_acrl
+from pal_mjlab.tasks.velocity.mdp.lp_acrl import (
+  Curriculum,
+  configure_lp_acrl,
+  configure_top_speed,
+)
 
 LEG_LENGTH_FROM_KNEE_JOINTS: tuple[tuple[str, str], ...] = (
   ("leg_left_length_joint", "leg_left_knee_joint"),
@@ -406,3 +410,29 @@ def pal_kangaroo_full_flat_env_cfg(
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return configure_lp_acrl(cfg, curriculum, play=play)
+
+
+def pal_kangaroo_full_top_speed_env_cfg(
+  play: bool = False,
+  transmission: Transmission = "actuator",
+  femur_closure: FemurClosure = "prismatic",
+  mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "lp_acrl",
+) -> ManagerBasedRlEnvCfg:
+  """Flat LP-ACRL task with vx up to 10 m/s and doubled vy/yaw-rate ranges."""
+  if curriculum != "lp_acrl":
+    raise ValueError("TopSpeed is only defined with the LP-ACRL curriculum")
+  cfg = pal_kangaroo_full_flat_env_cfg(
+    play=play,
+    transmission=transmission,
+    femur_closure=femur_closure,
+    mjcf=mjcf,
+    lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
+    actuator_model=actuator_model,
+    curriculum=curriculum,
+  )
+  return configure_top_speed(cfg)

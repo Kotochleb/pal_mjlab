@@ -9,9 +9,11 @@ from pal_mjlab.tasks.velocity.lp_acrl_runner import LpAcrlVelocityOnPolicyRunner
 from .env_cfgs import (
   pal_kangaroo_full_full_flat_env_cfg,
   pal_kangaroo_full_full_rough_env_cfg,
+  pal_kangaroo_full_full_top_speed_env_cfg,
 )
 
-# One task per actuation variant, on flat and on rough terrain. Unlike
+# One task per actuation variant, on flat and on rough terrain, plus the flat
+# "TopSpeed" task (vx up to 10 m/s, doubled vy/yaw rate). Unlike
 # pal_kangaroo_full this has no femur_closure or mjcf axis (this MJCF only
 # has the one four-bar femur closure and the one XML -- see the module
 # docstring on kangaroo_full_full_constants.py), so four model axes --
@@ -28,10 +30,17 @@ _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
 
 # Keep existing ids for the default curriculum; add an independent LP-ACRL axis.
 _CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
+# TopSpeed only exists with LP-ACRL, so its ids carry no curriculum suffix.
+_TOP_SPEED_CURRICULUM_VARIANTS = {"": "lp_acrl"}
 
-for _terrain, _env_cfg_fn in (
-  ("Flat", pal_kangaroo_full_full_flat_env_cfg),
-  ("Rough", pal_kangaroo_full_full_rough_env_cfg),
+for _terrain, _env_cfg_fn, _curriculum_variants in (
+  ("Flat", pal_kangaroo_full_full_flat_env_cfg, _CURRICULUM_VARIANTS),
+  ("Rough", pal_kangaroo_full_full_rough_env_cfg, _CURRICULUM_VARIANTS),
+  (
+    "TopSpeed",
+    pal_kangaroo_full_full_top_speed_env_cfg,
+    _TOP_SPEED_CURRICULUM_VARIANTS,
+  ),
 ):
   for _transmission_name, _transmission in _TRANSMISSION_VARIANTS.items():
     for _body_name, _lower_body in _BODY_VARIANTS.items():
@@ -43,7 +52,7 @@ for _terrain, _env_cfg_fn in (
             "ankle_normalized": _ankle_normalized,
             "actuator_model": _actuator_model,
           }
-          for _curriculum_name, _curriculum in _CURRICULUM_VARIANTS.items():
+          for _curriculum_name, _curriculum in _curriculum_variants.items():
             _curriculum_suffix = (
               f"-Curriculum-{_curriculum_name}" if _curriculum_name else ""
             )

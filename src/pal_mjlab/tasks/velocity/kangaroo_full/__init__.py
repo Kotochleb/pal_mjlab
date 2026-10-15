@@ -7,10 +7,12 @@ from .env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
   pal_kangaroo_full_rough_env_cfg,
   pal_kangaroo_full_stairs_rough_env_cfg,
+  pal_kangaroo_full_top_speed_env_cfg,
 )
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
-# Task variants on flat, rough and stairs terrain. Names identify six model
+# Task variants on flat, rough and stairs terrain, plus the flat "TopSpeed"
+# task (vx up to 10 m/s, doubled vy/yaw rate). Names identify six model
 # axes plus the curriculum (the legacy default has no curriculum suffix).
 _TRANSMISSION_VARIANTS = {"Joint": "joint", "Actuator": "actuator", "Lut": "lut"}
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
@@ -30,11 +32,14 @@ _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
 
 # Keep existing ids for the default curriculum; add an independent LP-ACRL axis.
 _CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
+# TopSpeed only exists with LP-ACRL, so its ids carry no curriculum suffix.
+_TOP_SPEED_CURRICULUM_VARIANTS = {"": "lp_acrl"}
 
-for _terrain, _env_cfg_fn in (
-  ("Flat", pal_kangaroo_full_flat_env_cfg),
-  ("Rough", pal_kangaroo_full_rough_env_cfg),
-  ("Stairs", pal_kangaroo_full_stairs_rough_env_cfg),
+for _terrain, _env_cfg_fn, _curriculum_variants in (
+  ("Flat", pal_kangaroo_full_flat_env_cfg, _CURRICULUM_VARIANTS),
+  ("Rough", pal_kangaroo_full_rough_env_cfg, _CURRICULUM_VARIANTS),
+  ("Stairs", pal_kangaroo_full_stairs_rough_env_cfg, _CURRICULUM_VARIANTS),
+  ("TopSpeed", pal_kangaroo_full_top_speed_env_cfg, _TOP_SPEED_CURRICULUM_VARIANTS),
 ):
   for _transmission_name, _transmission in _TRANSMISSION_VARIANTS.items():
     for _femur_closure_name, _femur_closure in _FEMUR_CLOSURE_VARIANTS.items():
@@ -87,7 +92,7 @@ for _terrain, _env_cfg_fn in (
               _actuator_model_suffix = (
                 f"-ActuatorModel-{_actuator_model_name}" if _actuator_model_name else ""
               )
-              for _curriculum_name, _curriculum in _CURRICULUM_VARIANTS.items():
+              for _curriculum_name, _curriculum in _curriculum_variants.items():
                 _curriculum_suffix = (
                   f"-Curriculum-{_curriculum_name}" if _curriculum_name else ""
                 )
