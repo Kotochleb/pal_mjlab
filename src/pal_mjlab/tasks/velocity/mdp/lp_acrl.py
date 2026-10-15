@@ -11,7 +11,7 @@ from __future__ import annotations
 import math
 from copy import deepcopy
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
 
 import torch
 from mjlab.managers.curriculum_manager import CurriculumTermCfg
@@ -138,6 +138,20 @@ class LearningProgressSampler:
     self.last_update_step = int(state["last_update_step"])
 
 
+@runtime_checkable
+class LpAcrlCommand(Protocol):
+  """Any command term whose episodes are drawn from a LearningProgressSampler."""
+
+  sampler: LearningProgressSampler
+  task_ids: torch.Tensor
+
+  def select_tasks(self, env_ids: torch.Tensor) -> None: ...
+
+  def curriculum_state_dict(self) -> dict: ...
+
+  def load_curriculum_state_dict(self, state: dict) -> None: ...
+
+
 class LpAcrlVelocityCommand(UniformVelocityCommand):
   """Keep each task bin for an episode; timer resamples stay inside that bin."""
 
@@ -254,10 +268,10 @@ def lp_acrl_curriculum(
 ) -> dict[str, torch.Tensor]:
   """Run before reward reset and before reset events place robots on terrain."""
   command = env.command_manager.get_term(command_name)
-  assert isinstance(command, LpAcrlVelocityCommand)
+  assert isinstance(command, LpAcrlCommand)
   if isinstance(env_ids, slice):
     env_ids = torch.arange(env.num_envs, device=env.device)[env_ids]
-  if command.cfg.lp_acrl.adaptive:
+  if command.sampler.cfg.adaptive:
     completed = env_ids[env.episode_length_buf[env_ids] > 0]
     returns = torch.zeros(len(completed), device=env.device)
     # mjlab's curriculum manager runs before RewardManager.reset clears these.
