@@ -48,7 +48,11 @@ rewards remains fixed for the episode. The actor also receives the critic's
 `foot_height` term (per-foot clearance from `foot_height_scan`). No base-height
 or velocity measurement is added to the actor.
 
-An episode contains one jump and times out 1 s after touchdown, or at 20 s.
+An episode contains one jump and times out a landing time after touchdown,
+or at 20 s. Training lengthens the landing time 1 → 5 s in 1 s steps every
+12,000 environment steps (`LANDING_STAGES`, `landing_time` curriculum term,
+also active with LP-ACRL); play uses 5 s. The `landing_completed` reward and
+`jump_finished` termination always share the current value.
 The landing timeout does not require settling. Initial spawn drops cannot
 count as takeoff: ordinary episodes must first establish contact, then lose all
 foot contacts with positive vertical speed. Apex rewards require a minimum
@@ -78,7 +82,7 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | `idle_before_jump` | Still in stance after 3 s, or more than 1 s cumulative idle time at base speed below 0.10 m/s |
 | `excessive_attitude` | Absolute roll or pitch, or wrapped yaw change from the reset heading, above 25 degrees |
 | `horizontal_drift` | Either horizontal axis more than 0.20 m from the environment origin, in any phase |
-| `jump_finished` | 1 s after touchdown; a timeout rather than failure |
+| `jump_finished` | Landing time (1–5 s, curriculum) after touchdown; a timeout rather than failure |
 | `time_out` | 20 s episode limit |
 
 The existing illegal-ground-contact termination remains. The attitude check
@@ -155,7 +159,7 @@ The additional rewards are:
 | `soft_impact` | 1 | Limit deceleration during the first 0.3 s after touchdown |
 | `catch_landing` | 3 | First 0.3 s after touchdown: `clamp(-vz, 0, 1)` rewards downward base speed |
 | `damp_landing` | 10 | First 0.3 s after touchdown: mean of `clamp(-knee_velocity, 0, 1)` rewards leg retraction |
-| `landing_completed` | 10 | Once, when the landing stage reaches `LANDING_TIME` (1 s) after touchdown, i.e. on the `jump_finished` step |
+| `landing_completed` | 150 | Once, when the landing stage reaches the current landing time after touchdown, i.e. on the `jump_finished` step |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent
 of policy frequency; all continuous rewards remain rates. The ballistic estimate

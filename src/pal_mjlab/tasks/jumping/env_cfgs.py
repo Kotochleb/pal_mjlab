@@ -38,8 +38,9 @@ HEIGHT_STAGES = (
   (15_000 * 24, 0.05, 0.80),
 )
 
-# Seconds after touchdown that end the episode and pay the landing reward.
-LANDING_TIME = 5.0
+# (environment steps, seconds after touchdown that end the episode and pay the
+# landing reward). Training lengthens the landing stage; play uses the last.
+LANDING_STAGES = tuple((i * 500 * 24, float(i + 1)) for i in range(5))
 
 # LP-ACRL splits the final stage's range into equal-width tasks instead.
 HEIGHT_BINS = 15
@@ -62,6 +63,7 @@ def configure_vertical_jump(
   observations are added to the actor or critic.
   """
   pose = cfg.rewards["pose"]
+  landing_time = LANDING_STAGES[-1][1] if play else LANDING_STAGES[0][1]
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
@@ -131,7 +133,7 @@ def configure_vertical_jump(
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
         weight=150.0,
-        params={"command_name": "jump_height", "landing_time": LANDING_TIME},
+        params={"command_name": "jump_height", "landing_time": landing_time},
       ),
       "catch_landing": RewardTermCfg(
         func=mdp.catch_landing,
@@ -165,6 +167,15 @@ def configure_vertical_jump(
     _configure_lp_acrl(cfg, play=play)
   elif curriculum != "default":
     raise ValueError(f"Unknown curriculum: {curriculum!r}")
+  if not play:
+    cfg.curriculum["landing_time"] = CurriculumTermCfg(
+      func=mdp.landing_time_curriculum,
+      params={
+        "reward_name": "landing_completed",
+        "termination_name": "jump_finished",
+        "stages": LANDING_STAGES,
+      },
+    )
   cfg.episode_length_s = 20.0
   cfg.terminations.pop("fell_over", None)  # Replaced by per-axis attitude limits.
   cfg.terminations.update(
@@ -173,7 +184,7 @@ def configure_vertical_jump(
       "jump_finished": TerminationTermCfg(
         func=mdp.jump_finished,
         time_out=True,
-        params={"command_name": "jump_height", "landing_time": LANDING_TIME},
+        params={"command_name": "jump_height", "landing_time": landing_time},
       ),
       "bad_touchdown": TerminationTermCfg(
         func=mdp.bad_touchdown,
@@ -191,10 +202,10 @@ def configure_vertical_jump(
         func=mdp.sideways_takeoff,
         params={"command_name": "jump_height", "max_speed": 0.75},
       ),
-      "walking_before_jump": TerminationTermCfg(
-        func=mdp.walking_before_jump,
-        params={"command_name": "jump_height", "max_distance": 0.2},
-      ),
+      # "walking_before_jump": TerminationTermCfg(
+      #   func=mdp.walking_before_jump,
+      #   params={"command_name": "jump_height", "max_distance": 0.2},
+      # ),
       "idle_before_jump": TerminationTermCfg(
         func=mdp.idle_before_jump,
         params={

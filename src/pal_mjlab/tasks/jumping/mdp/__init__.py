@@ -1,6 +1,7 @@
 from .commands import JumpHeightCommand as JumpHeightCommand
 from .commands import JumpHeightCommandCfg as JumpHeightCommandCfg
 from .curriculums import jump_height_curriculum as jump_height_curriculum
+from .curriculums import landing_time_curriculum as landing_time_curriculum
 from .lp_acrl import LpAcrlJumpHeightCommand as LpAcrlJumpHeightCommand
 from .lp_acrl import LpAcrlJumpHeightCommandCfg as LpAcrlJumpHeightCommandCfg
 from .rewards import catch_landing as catch_landing
