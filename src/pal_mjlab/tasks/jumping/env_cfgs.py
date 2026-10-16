@@ -92,13 +92,13 @@ def configure_vertical_jump(
       ),
       "pose": RewardTermCfg(
         func=mdp.height_variable_posture,
-        weight=1.0,
+        weight=0.1,
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
           "std_ground": deepcopy(pose.params["std_running"]),
           "std_airborne": deepcopy(pose.params["std_walking"]),
-          "height_range": (0.0, 0.25),
+          "height_range": (0.0, 0.05),
         },
       ),
       "horizontal_velocity": RewardTermCfg(
@@ -130,7 +130,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=15.0,
+        weight=150.0,
         params={"command_name": "jump_height", "landing_time": LANDING_TIME},
       ),
       "catch_landing": RewardTermCfg(
