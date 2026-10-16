@@ -52,7 +52,6 @@ class JumpHeightCommand(CommandTerm):
     self.just_apex = torch.zeros_like(self.seen_contact)
     self.just_takeoff = torch.zeros_like(self.seen_contact)
     self.just_touchdown = torch.zeros_like(self.seen_contact)
-    self.initialized_in_flight = torch.zeros_like(self.seen_contact)
     self.reset_pos_xy = torch.zeros((self.num_envs, 2), device=self.device)
     self.reset_yaw = torch.zeros_like(self.target_height)
     self.episode_steps = torch.zeros_like(self.phase)
@@ -110,7 +109,6 @@ class JumpHeightCommand(CommandTerm):
       self.just_apex,
       self.just_takeoff,
       self.just_touchdown,
-      self.initialized_in_flight,
       self.episode_steps,
       self.idle_steps,
       self.landed_steps,
@@ -120,45 +118,13 @@ class JumpHeightCommand(CommandTerm):
     self.takeoff_com_xy[env_ids] = 0
     # Reset observations must not count as a physics step or a takeoff.
     self._last_step[env_ids] = self._env.common_step_counter
-    self._initialize_flight(env_ids)
-    # Reset events/RSI have written qpos, but derived poses can still belong
+    # Reset events have written qpos, but derived poses can still belong
     # to the previous episode until forward(). Anchor to the actual reset.
     data = self.robot.data
     root_pose = data.data.qpos[env_ids][:, data.indexing.free_joint_q_adr]
     self.reset_pos_xy[env_ids] = root_pose[:, :2]
     self.reset_yaw[env_ids] = euler_xyz_from_quat(root_pose[:, 3:7])[2]
     self._update_command(env_ids)
-
-  def _initialize_flight(self, env_ids: torch.Tensor) -> None:
-    """Ballistic RSI with the existing, closed-chain-consistent reset posture.
-
-    Sample ascent and descent without an IK dependency. Synthetic starts train
-    flight/landing, but cannot collect the one-shot achieved-height reward.
-    """
-    p_ascending = self.cfg.ascending_reset_probability
-    p_flight = p_ascending + self.cfg.descending_reset_probability
-    if p_flight == 0:
-      return
-    draw = torch.rand(len(env_ids), device=self.device)
-    flight = draw < p_flight
-    ids = env_ids[flight]
-    if len(ids) == 0:
-      return
-    target = self.target_height[ids]
-    height = target * torch.empty_like(target).uniform_(0.2, 0.95)
-    velocity = torch.sqrt(2 * self.gravity * (target - height))
-    velocity *= torch.where(draw[flight] < p_ascending, 1.0, -1.0)
-    root = self.robot.data.default_root_state[ids].clone()
-    root[:, :3] += self._env.scene.env_origins[ids]
-    root[:, 2] += height
-    root[:, 7:13] = 0
-    root[:, 9] = velocity
-    self.robot.write_root_state_to_sim(root, env_ids=ids)
-    self.previous_velocity[ids, 2] = velocity
-    self.phase[ids] = FLIGHT
-    self.initialized_in_flight[ids] = True
-    self.peak_height[ids] = torch.where(velocity < 0, target, height)
-    self.apex_reached[ids] = velocity < 0
 
   def update_state(self) -> None:
     step = self._env.common_step_counter
@@ -188,10 +154,7 @@ class JumpHeightCommand(CommandTerm):
     # A second takeoff is terminal; never restart the jump or its apex reward.
     first_takeoff = takeoff & (self.phase == STANCE)
     self.phase[first_takeoff] = FLIGHT
-    # Simulator state is stale at reset, so ballistic starts anchor on their
-    # first physics step instead; that is their equivalent of takeoff.
-    anchor = first_takeoff | (fresh & self.initialized_in_flight & (self.air_time == 0))
-    self.takeoff_com_xy[anchor] = self.com_xy[anchor]
+    self.takeoff_com_xy[first_takeoff] = self.com_xy[first_takeoff]
     flying = fresh & (self.phase == FLIGHT)
     self.air_time[flying] += dt
     self.peak_height[flying] = torch.maximum(self.peak_height, height)[flying]
@@ -244,9 +207,6 @@ class JumpHeightCommandCfg(CommandTermCfg):
   # An episode owns its target; never change the goal during a jump.
   resampling_time_range: tuple[float, float] = (math.inf, math.inf)
   height_range: tuple[float, float] = (0.05, 0.15)
-  # Ballistic starts below the target apex; the remainder start in stance.
-  ascending_reset_probability: float = 0.2
-  descending_reset_probability: float = 0.1
   # Olympus Lab's jump state machine threshold.
   takeoff_velocity: float = 0.75
   min_air_time: float = 0.04
@@ -259,13 +219,6 @@ class JumpHeightCommandCfg(CommandTermCfg):
     low, high = self.height_range
     if not (0 < low <= high < math.inf):
       raise ValueError("height_range must contain finite positive ordered heights.")
-    p_ascending = self.ascending_reset_probability
-    p_descending = self.descending_reset_probability
-    if not (0 <= p_ascending and 0 <= p_descending and p_ascending + p_descending <= 1):
-      raise ValueError(
-        "Ascending/descending reset probabilities must be non-negative "
-        "and sum to at most 1."
-      )
     if self.resampling_time_range != (math.inf, math.inf):
       raise ValueError("Jump targets can only be resampled on episode reset.")
 

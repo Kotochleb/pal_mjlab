@@ -39,7 +39,6 @@ def jump_height(
   term = _jump(env, command_name)
   valid = (
     term.just_apex
-    & ~term.initialized_in_flight
     & (term.air_time >= term.cfg.min_air_time)
     & (term.peak_height >= term.cfg.min_jump_height)
   )

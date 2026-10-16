@@ -51,8 +51,8 @@ or velocity measurement is added to the actor. Both groups stack the last
 `history_length`).
 
 An episode contains one jump and times out a landing time after touchdown,
-or at 20 s. Training lengthens the landing time 1 → 5 s in 1 s steps every
-12,000 environment steps (`LANDING_STAGES`, `landing_time` curriculum term,
+or at 20 s. Training lengthens the landing time linearly 0.1 → 5.0 s over 10 stages
+(≈0.544 s apart) every 6,000 environment steps (`LANDING_STAGES`, `landing_time` curriculum term,
 also active with LP-ACRL); play uses 5 s. The `landing_completed` reward and
 `jump_finished` termination always share the current value.
 The landing timeout does not require settling. Initial spawn drops cannot
@@ -61,14 +61,10 @@ foot contacts with positive vertical speed. Apex rewards require a minimum
 flight duration and rise, and cannot be collected again by bouncing. External
 push events are removed.
 
-Training starts 70% of episodes in stance, 20% on a ballistic ascent and 10%
-on a ballistic descent toward the target apex, with the model's nominal joint
-configuration. This simplified reference-state initialization teaches flight
-and landing without quadruped-specific IK. Ballistic episodes cannot receive
-the achieved-apex reward. Tune `ascending_reset_probability` and
-`descending_reset_probability` in `cfg.commands["jump_height"]`; set both to 0
-to disable it.
-Play always starts on the ground and samples the full height range.
+Every episode, in training and play, starts standing still at the nominal
+root pose, heading, and joint configuration: there are no flight starts and
+`reset_base` has empty pose and velocity ranges. Play samples the full height
+range.
 
 ## Terminations
 
@@ -88,15 +84,15 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | `time_out` | 20 s episode limit |
 
 The existing illegal-ground-contact termination remains. The attitude check
-replaces the velocity task's fall-angle check. Yaw is relative to the sampled
-reset heading so randomized initial yaw is valid; the authors use absolute
-yaw. Walking uses the actual sampled reset position, while horizontal drift
-uses the environment origin as in the reference. Heights are measured above
+replaces the velocity task's fall-angle check. Yaw is relative to the reset
+heading (the nominal heading, since reset yaw is no longer randomized).
+Walking is measured from the reset position and horizontal drift from the
+environment origin, which now coincide. Heights are measured above
 each environment's ground plane; apex error uses the commanded rise above
 nominal standing height. Takeoff detection uses the reference's 0.75 m/s upward
 speed threshold. Idle time accumulates across separate pauses in stance and
 clears on takeoff, matching the reference. All counters and event flags reset
-per environment, including ballistic starts.
+per environment.
 
 Bad touchdown and horizontal drift are failure conditions, with no separate
 landing-drift cost. The achieved and estimated jump-height rewards remain.
@@ -133,9 +129,7 @@ by softmax(Δmean return / β), with 5% uniform exploration. The new episode the
 draws a bin and samples its target uniformly within that bin. Play uses the
 same range with uniform bin weights. `LpAcrlJumpOnPolicyRunner` saves the
 teacher state in checkpoints. Tune it through
-`cfg.commands["jump_height"].height_bins` and `.lp_acrl`. Synthetic flight
-starts are kept, but cannot earn the apex reward, so they lower every bin's
-mean return equally.
+`cfg.commands["jump_height"].height_bins` and `.lp_acrl`.
 
 ```bash
 uv run train Mjlab-Jump-Vertical-Pal-Kangaroo-Full-Curriculum-LpAcrl --env.scene.num-envs 4096

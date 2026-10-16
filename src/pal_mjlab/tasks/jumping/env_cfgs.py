@@ -39,7 +39,10 @@ HEIGHT_STAGES = (
 
 # (environment steps, seconds after touchdown that end the episode and pay the
 # landing reward). Training lengthens the landing stage; play uses the last.
-LANDING_STAGES = tuple((i * 500 * 24, float(i + 1)) for i in range(5))
+# 10 stages, linear from 0.1 s to 5.0 s, every 250 PPO iterations of 24 steps.
+LANDING_STAGES = tuple(
+  (i * 250 * 24, round(0.1 + i * (5.0 - 0.1) / 9, 3)) for i in range(10)
+)
 
 # Frames of each observation term given to actor and critic.
 OBSERVATION_HISTORY = 10
@@ -69,9 +72,6 @@ def configure_vertical_jump(
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
-      # 70% stance, 20% ascending, 10% descending ballistic starts.
-      ascending_reset_probability=0.0 if play else 0.2,
-      descending_reset_probability=0.0 if play else 0.1,
     )
   }
   for group in cfg.observations.values():
@@ -232,12 +232,8 @@ def configure_vertical_jump(
   # External impulses would contaminate ballistic height tracking.
   cfg.events.pop("push_robot", None)
   cfg.events.pop("randomize_terrain", None)
-  cfg.events["reset_base"].params["pose_range"] = {
-    "x": (-0.2, 0.2),
-    "y": (-0.2, 0.2),
-    "z": (0.0, 0.01),
-    "yaw": (-3.14, 3.14),
-  }
+  # Every episode starts standing still at the nominal pose and heading.
+  cfg.events["reset_base"].params["pose_range"] = {}
   cfg.events["reset_base"].params["velocity_range"] = {}
   return cfg
 
@@ -248,11 +244,8 @@ def _configure_lp_acrl(cfg: ManagerBasedRlEnvCfg, play: bool) -> None:
   Training and play share the full final-stage range; play samples bins
   uniformly. The reset term is needed in play too, to assign each episode a bin.
   """
-  old = cfg.commands["jump_height"]
   cfg.commands["jump_height"] = mdp.LpAcrlJumpHeightCommandCfg(
     height_range=HEIGHT_STAGES[-1][1:],
-    ascending_reset_probability=old.ascending_reset_probability,
-    descending_reset_probability=old.descending_reset_probability,
     height_bins=HEIGHT_BINS,
     lp_acrl=LpAcrlCfg(adaptive=not play),
   )
