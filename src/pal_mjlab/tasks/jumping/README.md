@@ -152,6 +152,7 @@ The additional rewards are:
 | `pose` | 1 | Height-dependent per-joint posture reward |
 | `horizontal_velocity` | 1 | Suppress horizontal motion, inspired by the authors' implementation |
 | `ground_force_l2` | −0.05 | Squared foot-ground forces, normalized by 500 N |
+| `joint_symmetry` | −1 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee: s = +1 for 2, 4, knee (equal), s = −1 for 1, 3, 5 (mirrored) |
 | `soft_impact` | 1 | Limit deceleration during the first 0.3 s after touchdown |
 | `catch_landing` | 3 | First 0.3 s after touchdown: `clamp(-vz, 0, 1)` rewards downward base speed |
 | `damp_landing` | 10 | First 0.3 s after touchdown: mean of `clamp(-knee_velocity, 0, 1)` rewards leg retraction |
@@ -175,7 +176,11 @@ These coordinates exist across all transmission variants.
 Both rewards are zero before touchdown and once the landing window expires;
 tune their weights and `window` in `cfg.rewards`.
 
-Joint symmetry is absent. The former velocity
+`joint_symmetry` builds its left/right index pairs and mirror mask once at
+init from joint names (`_left_` → `_right_`); `mirrored_joints` selects the
+sign-flipped ones. Both legs share joint axes, so hip yaw/roll and ankle roll
+mirror while hip/ankle pitch and knee match. The default pose is symmetric to
+≤1.6 mrad under this convention. The former velocity
 tracking, air-time, clearance, swing-height, collision-cost, convex-hull, and
 joint-velocity-limit rewards are absent as requested. Reward weights and height
 ranges are starting settings for Kangaroo; learning performance requires a full

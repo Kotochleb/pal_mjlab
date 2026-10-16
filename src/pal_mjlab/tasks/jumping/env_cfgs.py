@@ -116,6 +116,18 @@ def configure_vertical_jump(
         weight=-0.05,
         params={"sensor_name": "feet_ground_contact", "force_scale": 500.0},
       ),
+      # Left/right axes are identical: pitch-like joints match, the others
+      # (hip yaw/roll, ankle roll) are equal and opposite.
+      "joint_symmetry": RewardTermCfg(
+        func=mdp.joint_symmetry_l2,
+        weight=-1.0,
+        params={
+          "asset_cfg": SceneEntityCfg(
+            "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
+          ),
+          "mirrored_joints": (r"leg_left_[135]_joint",),
+        },
+      ),
       "soft_impact": RewardTermCfg(
         func=mdp.soft_impact,
         weight=1.0,
@@ -187,7 +199,7 @@ def configure_vertical_jump(
         func=mdp.idle_before_jump,
         params={
           "command_name": "jump_height",
-          "max_stance_time": 3.0,
+          "max_stance_time": 5.0,
           "max_idle_time": 1.0,
         },
       ),

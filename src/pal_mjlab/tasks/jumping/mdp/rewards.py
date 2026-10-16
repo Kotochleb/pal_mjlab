@@ -122,6 +122,56 @@ class height_variable_posture:
     return torch.exp(-(error / std).square().mean(dim=-1))
 
 
+class joint_symmetry_l2:
+  """Sum over left/right joint pairs of (q_left - s * q_right)^2.
+
+  Pairs are built once by swapping "_left_" for "_right_" in each selected left
+  joint name. s = -1 for joints matching any `mirrored_joints` pattern (equal
+  and opposite, e.g. yaw/roll with identical left/right axes), else +1 (equal).
+  """
+
+  def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
+    asset_cfg = cfg.params["asset_cfg"]
+    robot = env.scene[asset_cfg.name]
+    joint_names = list(robot.joint_names)
+    ids = asset_cfg.joint_ids
+    selected = (
+      joint_names[ids]
+      if isinstance(ids, slice)
+      else [joint_names[i] for i in ids]
+    )
+    left_ids, right_ids, mirrored = [], [], []
+    for name in selected:
+      if "_left_" not in name:
+        continue
+      partner = name.replace("_left_", "_right_")
+      if partner not in selected:
+        raise ValueError(f"Symmetry partner {partner!r} of {name!r} is not selected.")
+      left_ids.append(joint_names.index(name))
+      right_ids.append(joint_names.index(partner))
+      mirrored.append(
+        any(re.fullmatch(p, name) for p in cfg.params["mirrored_joints"])
+      )
+    if not left_ids or 2 * len(left_ids) != len(selected):
+      raise ValueError("Symmetry cost requires complete left/right joint pairs.")
+    self.left_ids = torch.tensor(left_ids, device=env.device)
+    self.right_ids = torch.tensor(right_ids, device=env.device)
+    self.mirrored = torch.tensor(mirrored, device=env.device)
+
+  def __call__(
+    self,
+    env: ManagerBasedRlEnv,
+    asset_cfg: SceneEntityCfg,
+    mirrored_joints: tuple[str, ...],
+  ) -> torch.Tensor:
+    del mirrored_joints
+    joint_pos = env.scene[asset_cfg.name].data.joint_pos
+    left = joint_pos[:, self.left_ids]
+    right = joint_pos[:, self.right_ids]
+    target = torch.where(self.mirrored, -right, right)
+    return (left - target).square().sum(dim=-1)
+
+
 def horizontal_velocity(
   env: ManagerBasedRlEnv, command_name: str, std: float = 0.2
 ) -> torch.Tensor:
