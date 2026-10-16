@@ -84,12 +84,12 @@ def configure_vertical_jump(
     {
       "jump_height": RewardTermCfg(
         func=mdp.jump_height,
-        weight=20.0,
+        weight=30.0,
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "estimated_jump_height": RewardTermCfg(
         func=mdp.estimated_jump_height,
-        weight=20.0,
+        weight=30.0,
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "pose": RewardTermCfg(
@@ -132,7 +132,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=150.0,
+        weight=20.0,
         params={"command_name": "jump_height", "landing_time": landing_time},
       ),
       "catch_landing": RewardTermCfg(
