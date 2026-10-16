@@ -31,23 +31,24 @@ from pal_mjlab.tasks.velocity.mdp.lp_acrl import (
 # (environment steps, minimum rise, maximum rise), metres above standing.
 # Keep easier commands in the distribution as the upper bound increases.
 HEIGHT_STAGES = (
-  (0, 0.05, 0.15),
-  (2_000 * 24, 0.05, 0.25),
-  (5_000 * 24, 0.05, 0.40),
+  (0, 0.30, 0.35),
+  (2_000 * 24, 0.20, 0.35),
+  (5_000 * 24, 0.10, 0.40),
   (10_000 * 24, 0.05, 0.60),
   (15_000 * 24, 0.05, 0.80),
 )
+
+# Seconds after touchdown that end the episode and pay the landing reward.
+LANDING_TIME = 5.0
 
 # LP-ACRL splits the final stage's range into equal-width tasks instead.
 HEIGHT_BINS = 15
 
 VELOCITY_REWARDS = (
-  "upright",
   "body_ang_vel",
   "angular_momentum",
   "dof_pos_limits",
   "action_rate_l2",
-  "foot_slip",
 )
 
 
@@ -77,12 +78,6 @@ def configure_vertical_jump(
   )
 
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
-  # These costs must remain active after the height input becomes zero, and
-  # must not interpret a one-dimensional height as a three-dimensional twist.
-  slip = cfg.rewards["foot_slip"]
-  slip.func = mdp.feet_slip
-  slip.params.pop("command_name", None)
-  slip.params.pop("command_threshold", None)
   cfg.rewards.update(
     {
       "jump_height": RewardTermCfg(
@@ -120,7 +115,7 @@ def configure_vertical_jump(
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-1.0,
+        weight=-3.0,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
@@ -132,6 +127,11 @@ def configure_vertical_jump(
         func=mdp.soft_impact,
         weight=1.0,
         params={"command_name": "jump_height", "max_acceleration": 100.0},
+      ),
+      "landing_completed": RewardTermCfg(
+        func=mdp.landing_completed,
+        weight=15.0,
+        params={"command_name": "jump_height", "landing_time": LANDING_TIME},
       ),
       "catch_landing": RewardTermCfg(
         func=mdp.catch_landing,
@@ -173,7 +173,7 @@ def configure_vertical_jump(
       "jump_finished": TerminationTermCfg(
         func=mdp.jump_finished,
         time_out=True,
-        params={"command_name": "jump_height", "landing_time": 1.0},
+        params={"command_name": "jump_height", "landing_time": LANDING_TIME},
       ),
       "bad_touchdown": TerminationTermCfg(
         func=mdp.bad_touchdown,

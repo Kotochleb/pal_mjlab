@@ -50,6 +50,26 @@ def jump_height(
   return reward * valid / scale
 
 
+def landing_completed(
+  env: ManagerBasedRlEnv, command_name: str, landing_time: float = 1.0
+) -> torch.Tensor:
+  """Once, on the step the landing stage reaches landing_time after touchdown.
+
+  Match landing_time to the jump_finished termination so the payout lands on
+  the episode's final step, after surviving every landing failure check.
+  """
+  term = _jump(env, command_name)
+  steps = landing_time / env.step_dt
+  done = (
+    (term.phase == LANDED)
+    & (term.landed_steps >= steps)
+    & (term.landed_steps - 1 < steps)
+  )
+  # An impulse, like jump_height: undo the reward manager's dt scaling.
+  scale = env.step_dt if env.cfg.scale_rewards_by_dt else 1.0
+  return done / scale
+
+
 def estimated_jump_height(
   env: ManagerBasedRlEnv,
   command_name: str,
@@ -179,18 +199,6 @@ def horizontal_velocity(
   term = _jump(env, command_name)
   speed = term.robot.data.root_link_lin_vel_w[:, :2].norm(dim=-1)
   return torch.exp(-speed / std**2)
-
-
-def feet_slip(
-  env: ManagerBasedRlEnv, sensor_name: str, asset_cfg: SceneEntityCfg
-) -> torch.Tensor:
-  """Squared xy speed of feet in contact, in every phase (no command gating)."""
-  in_contact = (env.scene[sensor_name].data.found > 0).float()
-  robot = env.scene[asset_cfg.name]
-  speed = robot.data.site_lin_vel_w[:, asset_cfg.site_ids, :2].norm(dim=-1)
-  mean_speed = (speed * in_contact).sum() / in_contact.sum().clamp_min(1)
-  env.extras["log"]["Metrics/slip_velocity_mean"] = mean_speed
-  return (speed.square() * in_contact).sum(dim=-1)
 
 
 def ground_force_l2(

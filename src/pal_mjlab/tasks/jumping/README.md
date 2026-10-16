@@ -102,10 +102,11 @@ Targets are uniform within the current range and are sampled only on reset.
 
 | Environment steps | Height range (m) | PPO iteration with 24-step rollouts |
 | --- | --- | --- |
-| 0 | 0.05–0.15 | 0 |
+| 0 | 0.05–0.20 | 0 |
 | 48,000 | 0.05–0.25 | 2,000 |
 | 120,000 | 0.05–0.40 | 5,000 |
 | 240,000 | 0.05–0.60 | 10,000 |
+| 360,000 | 0.05–0.80 | 15,000 |
 
 Tune `cfg.curriculum["jump_height"].params["stages"]` for training and
 `cfg.commands["jump_height"].height_range` for play. The schedule uses global
@@ -119,8 +120,8 @@ this schedule directly expands command height while retaining easy commands.
 Every jump ID, including the short one, also has a `-Curriculum-LpAcrl`
 variant. It replaces the time-based schedule with the learning-progress
 teacher used by the velocity tasks (`pal_mjlab.tasks.velocity.mdp.lp_acrl`):
-the final 0.05–0.60 m range is split into `HEIGHT_BINS = 15` equal bins
-(≈3.7 cm each), and each one is a task. At reset, the finished episode's total
+the final 0.05–0.80 m range is split into `HEIGHT_BINS = 15` equal bins
+(5 cm each), and each one is a task. At reset, the finished episode's total
 return is credited to its bin. Every 1200 environment steps, bins are reweighted
 by softmax(Δmean return / β), with 5% uniform exploration. The new episode then
 draws a bin and samples its target uniformly within that bin. Play uses the
@@ -136,12 +137,10 @@ uv run train Mjlab-Jump-Vertical-Pal-Kangaroo-Full-Curriculum-LpAcrl --env.scene
 
 ## Rewards
 
-The only retained velocity rewards are `upright`, `body_ang_vel`,
-`angular_momentum`, `dof_pos_limits`, `action_rate_l2`, and `foot_slip`,
-with their existing weights. `upright` replaces the paper's orientation-error
-term. Angular-velocity and momentum regularization use the existing velocity
-implementation. The slip cost is active in every phase, including after the
-command becomes zero.
+The only retained velocity rewards are `body_ang_vel`, `angular_momentum`,
+`dof_pos_limits`, and `action_rate_l2`, with their existing weights. There is
+no orientation (`upright`) or foot-slip term; attitude is bounded by the
+`excessive_attitude` termination and the angular-velocity/momentum costs.
 
 The additional rewards are:
 
@@ -156,6 +155,7 @@ The additional rewards are:
 | `soft_impact` | 1 | Limit deceleration during the first 0.3 s after touchdown |
 | `catch_landing` | 3 | First 0.3 s after touchdown: `clamp(-vz, 0, 1)` rewards downward base speed |
 | `damp_landing` | 10 | First 0.3 s after touchdown: mean of `clamp(-knee_velocity, 0, 1)` rewards leg retraction |
+| `landing_completed` | 10 | Once, when the landing stage reaches `LANDING_TIME` (1 s) after touchdown, i.e. on the `jump_finished` step |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent
 of policy frequency; all continuous rewards remain rates. The ballistic estimate
