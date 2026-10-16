@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers.command_manager import CommandTerm, CommandTermCfg
+from mjlab.utils.lab_api.math import euler_xyz_from_quat
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -49,7 +50,14 @@ class JumpHeightCommand(CommandTerm):
     self.seen_contact = torch.zeros_like(self.target_height, dtype=torch.bool)
     self.apex_reached = torch.zeros_like(self.seen_contact)
     self.just_apex = torch.zeros_like(self.seen_contact)
+    self.just_takeoff = torch.zeros_like(self.seen_contact)
+    self.just_touchdown = torch.zeros_like(self.seen_contact)
     self.initialized_in_flight = torch.zeros_like(self.seen_contact)
+    self.reset_pos_xy = torch.zeros((self.num_envs, 2), device=self.device)
+    self.reset_yaw = torch.zeros_like(self.target_height)
+    self.episode_steps = torch.zeros_like(self.phase)
+    self.idle_steps = torch.zeros_like(self.phase)
+    self.landed_steps = torch.zeros_like(self.phase)
     self._last_step = torch.full_like(self.phase, -1)
     self._updated_step = -1
     self.metrics = {
@@ -100,7 +108,12 @@ class JumpHeightCommand(CommandTerm):
       self.seen_contact,
       self.apex_reached,
       self.just_apex,
+      self.just_takeoff,
+      self.just_touchdown,
       self.initialized_in_flight,
+      self.episode_steps,
+      self.idle_steps,
+      self.landed_steps,
     ):
       value[env_ids] = 0
     self.previous_velocity[env_ids] = 0
@@ -108,6 +121,12 @@ class JumpHeightCommand(CommandTerm):
     # Reset observations must not count as a physics step or a takeoff.
     self._last_step[env_ids] = self._env.common_step_counter
     self._initialize_flight(env_ids)
+    # Reset events/RSI have written qpos, but derived poses can still belong
+    # to the previous episode until forward(). Anchor to the actual reset.
+    data = self.robot.data
+    root_pose = data.data.qpos[env_ids][:, data.indexing.free_joint_q_adr]
+    self.reset_pos_xy[env_ids] = root_pose[:, :2]
+    self.reset_yaw[env_ids] = euler_xyz_from_quat(root_pose[:, 3:7])[2]
     self._update_command(env_ids)
 
   def _initialize_flight(self, env_ids: torch.Tensor) -> None:
@@ -116,17 +135,19 @@ class JumpHeightCommand(CommandTerm):
     Sample ascent and descent without an IK dependency. Synthetic starts train
     flight/landing, but cannot collect the one-shot achieved-height reward.
     """
-    if self.cfg.flight_reset_probability == 0:
+    p_ascending = self.cfg.ascending_reset_probability
+    p_flight = p_ascending + self.cfg.descending_reset_probability
+    if p_flight == 0:
       return
-    ids = env_ids[
-      torch.rand(len(env_ids), device=self.device) < self.cfg.flight_reset_probability
-    ]
+    draw = torch.rand(len(env_ids), device=self.device)
+    flight = draw < p_flight
+    ids = env_ids[flight]
     if len(ids) == 0:
       return
     target = self.target_height[ids]
     height = target * torch.empty_like(target).uniform_(0.2, 0.95)
     velocity = torch.sqrt(2 * self.gravity * (target - height))
-    velocity *= torch.where(torch.rand_like(target) < 0.5, -1.0, 1.0)
+    velocity *= torch.where(draw[flight] < p_ascending, 1.0, -1.0)
     root = self.robot.data.default_root_state[ids].clone()
     root[:, :3] += self._env.scene.env_origins[ids]
     root[:, 2] += height
@@ -152,36 +173,49 @@ class JumpHeightCommand(CommandTerm):
     velocity = self.robot.data.root_link_lin_vel_w
     height = self.height
     self.just_apex[fresh] = False
+    self.just_takeoff[fresh] = False
+    self.just_touchdown[fresh] = False
+    self.episode_steps[fresh] += 1
     self.seen_contact |= contact & fresh
     takeoff = (
       fresh
-      & (self.phase == STANCE)
+      & (self.phase != FLIGHT)
       & self.seen_contact
       & ~contact
       & (velocity[:, 2] > self.cfg.takeoff_velocity)
     )
-    self.phase[takeoff] = FLIGHT
+    self.just_takeoff[takeoff] = True
+    # A second takeoff is terminal; never restart the jump or its apex reward.
+    first_takeoff = takeoff & (self.phase == STANCE)
+    self.phase[first_takeoff] = FLIGHT
     # Simulator state is stale at reset, so ballistic starts anchor on their
     # first physics step instead; that is their equivalent of takeoff.
-    anchor = takeoff | (fresh & self.initialized_in_flight & (self.air_time == 0))
+    anchor = first_takeoff | (fresh & self.initialized_in_flight & (self.air_time == 0))
     self.takeoff_com_xy[anchor] = self.com_xy[anchor]
     flying = fresh & (self.phase == FLIGHT)
     self.air_time[flying] += dt
     self.peak_height[flying] = torch.maximum(self.peak_height, height)[flying]
     touchdown = flying & contact
+    self.just_touchdown[touchdown] = True
     apex = flying & ~self.apex_reached & ((velocity[:, 2] <= 0) | touchdown)
     self.just_apex[apex] = True
     self.apex_reached[apex] = True
     self.phase[touchdown] = LANDED
     landed = fresh & (self.phase == LANDED)
-    self.landed_time[landed] += dt
-    self.landed_time[touchdown] = 0
+    self.landed_steps[landed] += 1
+    self.landed_steps[touchdown] = 0
+    self.landed_time[landed] = self.landed_steps[landed] * dt
     stable = (
       both_feet
       & (velocity.norm(dim=-1) < self.cfg.settle_speed)
       & (self.robot.data.root_link_ang_vel_w.norm(dim=-1) < self.cfg.settle_ang_speed)
     )
     self.settled_time[landed] = torch.where(stable, self.settled_time + dt, 0.0)[landed]
+    # Olympus accumulates idle steps across pauses in stance (not necessarily
+    # consecutive), and clears them once the robot leaves stance.
+    stance = fresh & (self.phase == STANCE)
+    self.idle_steps[stance & (velocity.norm(dim=-1) < self.cfg.idle_speed)] += 1
+    self.idle_steps[fresh & (self.phase != STANCE)] = 0
     acceleration = (velocity - self.previous_velocity) / dt
     direction = torch.nn.functional.normalize(self.previous_velocity, dim=-1)
     self.impact_deceleration[fresh] = (
@@ -210,19 +244,28 @@ class JumpHeightCommandCfg(CommandTermCfg):
   # An episode owns its target; never change the goal during a jump.
   resampling_time_range: tuple[float, float] = (math.inf, math.inf)
   height_range: tuple[float, float] = (0.05, 0.15)
-  flight_reset_probability: float = 0.2
-  takeoff_velocity: float = 0.15
+  # Ballistic starts below the target apex; the remainder start in stance.
+  ascending_reset_probability: float = 0.2
+  descending_reset_probability: float = 0.1
+  # Olympus Lab's jump state machine threshold.
+  takeoff_velocity: float = 0.75
   min_air_time: float = 0.04
   min_jump_height: float = 0.03
   settle_speed: float = 0.2
   settle_ang_speed: float = 0.5
+  idle_speed: float = 0.1
 
   def __post_init__(self):
     low, high = self.height_range
     if not (0 < low <= high < math.inf):
       raise ValueError("height_range must contain finite positive ordered heights.")
-    if not 0 <= self.flight_reset_probability <= 1:
-      raise ValueError("flight_reset_probability must be in [0, 1].")
+    p_ascending = self.ascending_reset_probability
+    p_descending = self.descending_reset_probability
+    if not (0 <= p_ascending and 0 <= p_descending and p_ascending + p_descending <= 1):
+      raise ValueError(
+        "Ascending/descending reset probabilities must be non-negative "
+        "and sum to at most 1."
+      )
     if self.resampling_time_range != (math.inf, math.inf):
       raise ValueError("Jump targets can only be resampled on episode reset.")
 

@@ -164,6 +164,34 @@ def soft_impact(
   return value * landing
 
 
+def catch_landing(
+  env: ManagerBasedRlEnv, command_name: str, window: float = 0.3
+) -> torch.Tensor:
+  """Reward downward base speed, clipped at 1 m/s, just after touchdown."""
+  term = _jump(env, command_name)
+  landing = (term.phase == LANDED) & (term.landed_time < window)
+  return (-term.robot.data.root_link_lin_vel_w[:, 2]).clamp(0, 1) * landing
+
+
+def damp_landing(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  asset_cfg: SceneEntityCfg,
+  window: float = 0.3,
+) -> torch.Tensor:
+  """Reward knee flexion during landing, adapting Olympus' transversal rate.
+
+  Kangaroo's knee angles decrease as its legs retract. Average the two
+  retraction rates after clipping each to [0, 1] rad/s, as in Olympus Lab.
+  Knee coordinates are shared by the joint, actuator, and LUT variants.
+  """
+  term = _jump(env, command_name)
+  landing = (term.phase == LANDED) & (term.landed_time < window)
+  robot = env.scene[asset_cfg.name]
+  retraction = -robot.data.joint_vel[:, asset_cfg.joint_ids]
+  return retraction.clamp(0, 1).mean(dim=-1) * landing
+
+
 def landing_drift_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
   """Squared horizontal COM distance from its takeoff position, after takeoff.
 

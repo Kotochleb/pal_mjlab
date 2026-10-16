@@ -44,22 +44,56 @@ Actor and critic retain their respective flat-velocity observation terms,
 noise, ordering, and joint mappings. The existing `command` term becomes a
 single scalar. It contains the sampled rise until touchdown, then zero to
 request settling, so no extra phase observation is needed. The target used for
-rewards remains fixed for the episode. No additional base-height or velocity
-measurement is added to the actor. Default dimensions are actor 84 / critic 102.
+rewards remains fixed for the episode. The actor also receives the critic's
+`foot_height` term (per-foot clearance from `foot_height_scan`). No base-height
+or velocity measurement is added to the actor.
 
-An episode contains one jump and ends after 0.5 s of stable two-foot contact,
-or at 5 s. Existing fall/contact terminations remain. Initial spawn drops cannot
+An episode contains one jump and times out 1 s after touchdown, or at 20 s.
+The landing timeout does not require settling. Initial spawn drops cannot
 count as takeoff: ordinary episodes must first establish contact, then lose all
 foot contacts with positive vertical speed. Apex rewards require a minimum
 flight duration and rise, and cannot be collected again by bouncing. External
 push events are removed.
 
-Training initializes 20% of episodes along a ballistic ascent/descent with the
-model's nominal joint configuration. This simplified reference-state
-initialization teaches flight and landing without quadruped-specific IK. These
-episodes cannot receive the achieved-apex reward. Set
-`cfg.commands["jump_height"].flight_reset_probability = 0` to disable it.
+Training starts 70% of episodes in stance, 20% on a ballistic ascent and 10%
+on a ballistic descent toward the target apex, with the model's nominal joint
+configuration. This simplified reference-state initialization teaches flight
+and landing without quadruped-specific IK. Ballistic episodes cannot receive
+the achieved-apex reward. Tune `ascending_reset_probability` and
+`descending_reset_probability` in `cfg.commands["jump_height"]`; set both to 0
+to disable it.
 Play always starts on the ground and samples the full height range.
+
+## Terminations
+
+The selected conditions follow the authors' `_get_dones()`, with the touchdown
+apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
+
+| Term | Trigger |
+| --- | --- |
+| `bad_touchdown` | At touchdown only: apex error above 0.30 m, or base height below 0.20 m above the ground |
+| `jumped_again` | A new takeoff after landing |
+| `sideways_takeoff` | Horizontal base speed above 0.75 m/s at takeoff |
+| `walking_before_jump` | Horizontal displacement from the sampled reset position above 0.20 m while in stance |
+| `idle_before_jump` | Still in stance after 3 s, or more than 1 s cumulative idle time at base speed below 0.10 m/s |
+| `excessive_attitude` | Absolute roll or pitch, or wrapped yaw change from the reset heading, above 25 degrees |
+| `horizontal_drift` | Either horizontal axis more than 0.20 m from the environment origin, in any phase |
+| `jump_finished` | 1 s after touchdown; a timeout rather than failure |
+| `time_out` | 20 s episode limit |
+
+The existing illegal-ground-contact termination remains. The attitude check
+replaces the velocity task's fall-angle check. Yaw is relative to the sampled
+reset heading so randomized initial yaw is valid; the authors use absolute
+yaw. Walking uses the actual sampled reset position, while horizontal drift
+uses the environment origin as in the reference. Heights are measured above
+each environment's ground plane; apex error uses the commanded rise above
+nominal standing height. Takeoff detection uses the reference's 0.75 m/s upward
+speed threshold. Idle time accumulates across separate pauses in stance and
+clears on takeoff, matching the reference. All counters and event flags reset
+per environment, including ballistic starts.
+
+Bad touchdown and horizontal drift are failure conditions, with no separate
+landing-drift cost. The achieved and estimated jump-height rewards remain.
 
 ## Height sampling curriculum
 
@@ -119,7 +153,8 @@ The additional rewards are:
 | `horizontal_velocity` | 1 | Suppress horizontal motion, inspired by the authors' implementation |
 | `ground_force_l2` | −0.05 | Squared foot-ground forces, normalized by 500 N |
 | `soft_impact` | 1 | Limit deceleration during the first 0.3 s after touchdown |
-| `landing_drift` | −10 | After takeoff (flight and landed): squared horizontal distance of the whole-body COM from its takeoff position |
+| `catch_landing` | 3 | First 0.3 s after touchdown: `clamp(-vz, 0, 1)` rewards downward base speed |
+| `damp_landing` | 10 | First 0.3 s after touchdown: mean of `clamp(-knee_velocity, 0, 1)` rewards leg retraction |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent
 of policy frequency; all continuous rewards remain rates. The ballistic estimate
@@ -133,7 +168,14 @@ tighter walking tolerances, respectively. Tune those dictionaries and
 building the std tensors; passive linkage/screw joints follow the existing
 posture selection.
 
-Joint symmetry, catch landing, and damp landing are absent. The former velocity
+The landing rewards use the authors' weights and clipping, with damp landing
+adapted to Kangaroo's two knee joints: decreasing knee angle retracts the leg.
+Each retraction rate is clipped to [0, 1] rad/s before averaging.
+These coordinates exist across all transmission variants.
+Both rewards are zero before touchdown and once the landing window expires;
+tune their weights and `window` in `cfg.rewards`.
+
+Joint symmetry is absent. The former velocity
 tracking, air-time, clearance, swing-height, collision-cost, convex-hull, and
 joint-velocity-limit rewards are absent as requested. Reward weights and height
 ranges are starting settings for Kangaroo; learning performance requires a full

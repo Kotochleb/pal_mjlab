@@ -1,19 +1,100 @@
 from __future__ import annotations
 
+import math
 from typing import TYPE_CHECKING
 
 import torch
+from mjlab.utils.lab_api.math import euler_xyz_from_quat
 
-from .commands import LANDED, JumpHeightCommand
+from .commands import LANDED, STANCE, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
 
-def jump_finished(
-  env: ManagerBasedRlEnv, command_name: str, settle_time: float = 0.5
-) -> torch.Tensor:
-  """Finish after sustained stable contact; retain the normal fall terminations."""
+def _jump(env: ManagerBasedRlEnv, command_name: str) -> JumpHeightCommand:
   term: JumpHeightCommand = env.command_manager.get_term(command_name)
   term.update_state()
-  return (term.phase == LANDED) & (term.settled_time >= settle_time)
+  return term
+
+
+def jump_finished(
+  env: ManagerBasedRlEnv, command_name: str, landing_time: float = 1.0
+) -> torch.Tensor:
+  """Truncate one second after touchdown, without requiring stable contact."""
+  term = _jump(env, command_name)
+  return (term.phase == LANDED) & (term.landed_steps >= landing_time / env.step_dt)
+
+
+def bad_touchdown(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  max_height_error: float = 0.3,
+  min_base_height: float = 0.2,
+) -> torch.Tensor:
+  """Fail only at touchdown on an inaccurate apex or excessively low base."""
+  term = _jump(env, command_name)
+  base_height = term.robot.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+  height_error = (term.peak_height - term.target_height).abs()
+  return term.just_touchdown & (
+    (height_error > max_height_error) | (base_height < min_base_height)
+  )
+
+
+def jumped_again(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+  """Fail on a second takeoff after landing."""
+  term = _jump(env, command_name)
+  return term.just_takeoff & (term.phase == LANDED)
+
+
+def sideways_takeoff(
+  env: ManagerBasedRlEnv, command_name: str, max_speed: float = 0.75
+) -> torch.Tensor:
+  """Fail if horizontal speed exceeds the limit at takeoff."""
+  term = _jump(env, command_name)
+  speed = term.robot.data.root_link_lin_vel_w[:, :2].norm(dim=-1)
+  return term.just_takeoff & (speed > max_speed)
+
+
+def walking_before_jump(
+  env: ManagerBasedRlEnv, command_name: str, max_distance: float = 0.2
+) -> torch.Tensor:
+  """Limit displacement from the sampled reset position while in stance."""
+  term = _jump(env, command_name)
+  displacement = term.robot.data.root_link_pos_w[:, :2] - term.reset_pos_xy
+  return (term.phase == STANCE) & (displacement.norm(dim=-1) > max_distance)
+
+
+def idle_before_jump(
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  max_stance_time: float = 3.0,
+  max_idle_time: float = 1.0,
+) -> torch.Tensor:
+  """Limit elapsed stance time and cumulative idle time, as in Olympus Lab."""
+  term = _jump(env, command_name)
+  return (term.phase == STANCE) & (
+    (term.episode_steps > max_stance_time / env.step_dt)
+    | (term.idle_steps > max_idle_time / env.step_dt)
+  )
+
+
+def excessive_attitude(
+  env: ManagerBasedRlEnv, command_name: str, max_angle_deg: float = 25.0
+) -> torch.Tensor:
+  """Limit roll/pitch and wrapped yaw change from the randomized reset heading."""
+  term = _jump(env, command_name)
+  roll, pitch, yaw = euler_xyz_from_quat(term.robot.data.root_link_quat_w)
+  yaw_error = yaw - term.reset_yaw
+  yaw_error = torch.atan2(yaw_error.sin(), yaw_error.cos())
+  limit = math.radians(max_angle_deg)
+  return (roll.abs() > limit) | (pitch.abs() > limit) | (yaw_error.abs() > limit)
+
+
+def horizontal_drift(
+  env: ManagerBasedRlEnv, command_name: str, max_distance: float = 0.2
+) -> torch.Tensor:
+  """Limit each horizontal axis relative to the environment origin in all phases."""
+  term = _jump(env, command_name)
+  displacement = term.robot.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
+  return (displacement.abs() > max_distance).any(dim=-1)

@@ -3,7 +3,13 @@
 from copy import deepcopy
 
 from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.managers import CurriculumTermCfg, RewardTermCfg, TerminationTermCfg
+from mjlab.envs.mdp import time_out
+from mjlab.managers import (
+  CurriculumTermCfg,
+  RewardTermCfg,
+  SceneEntityCfg,
+  TerminationTermCfg,
+)
 
 from pal_mjlab.robots import (
   ActuatorModel,
@@ -58,11 +64,17 @@ def configure_vertical_jump(
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
-      flight_reset_probability=0.0 if play else 0.2,
+      # 70% stance, 20% ascending, 10% descending ballistic starts.
+      ascending_reset_probability=0.0 if play else 0.2,
+      descending_reset_probability=0.0 if play else 0.1,
     )
   }
   for group in cfg.observations.values():
     group.terms["command"].params = {"command_name": "jump_height"}
+  # Per-foot clearance above the ground, as the critic already observes.
+  cfg.observations["actor"].terms["foot_height"] = deepcopy(
+    cfg.observations["critic"].terms["foot_height"]
+  )
 
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
   # These costs must remain active after the height input becomes zero, and
@@ -109,10 +121,21 @@ def configure_vertical_jump(
         weight=1.0,
         params={"command_name": "jump_height", "max_acceleration": 100.0},
       ),
-      "landing_drift": RewardTermCfg(
-        func=mdp.landing_drift_l2,
-        weight=-0.01,
-        params={"command_name": "jump_height"},
+      "catch_landing": RewardTermCfg(
+        func=mdp.catch_landing,
+        weight=3.0,
+        params={"command_name": "jump_height", "window": 0.3},
+      ),
+      "damp_landing": RewardTermCfg(
+        func=mdp.damp_landing,
+        weight=10.0,
+        params={
+          "command_name": "jump_height",
+          "asset_cfg": SceneEntityCfg(
+            "robot", joint_names=(r"leg_(left|right)_knee_joint",)
+          ),
+          "window": 0.3,
+        },
       ),
     }
   )
@@ -130,11 +153,53 @@ def configure_vertical_jump(
     _configure_lp_acrl(cfg, play=play)
   elif curriculum != "default":
     raise ValueError(f"Unknown curriculum: {curriculum!r}")
-  cfg.episode_length_s = 15.0
-  cfg.terminations["jump_finished"] = TerminationTermCfg(
-    func=mdp.jump_finished,
-    time_out=True,
-    params={"command_name": "jump_height", "settle_time": 2.0},
+  cfg.episode_length_s = 20.0
+  cfg.terminations.pop("fell_over", None)  # Replaced by per-axis attitude limits.
+  cfg.terminations.update(
+    {
+      "time_out": TerminationTermCfg(func=time_out, time_out=True),
+      "jump_finished": TerminationTermCfg(
+        func=mdp.jump_finished,
+        time_out=True,
+        params={"command_name": "jump_height", "landing_time": 1.0},
+      ),
+      "bad_touchdown": TerminationTermCfg(
+        func=mdp.bad_touchdown,
+        params={
+          "command_name": "jump_height",
+          "max_height_error": 0.3,
+          "min_base_height": 0.2,
+        },
+      ),
+      "jumped_again": TerminationTermCfg(
+        func=mdp.jumped_again,
+        params={"command_name": "jump_height"},
+      ),
+      "sideways_takeoff": TerminationTermCfg(
+        func=mdp.sideways_takeoff,
+        params={"command_name": "jump_height", "max_speed": 0.75},
+      ),
+      "walking_before_jump": TerminationTermCfg(
+        func=mdp.walking_before_jump,
+        params={"command_name": "jump_height", "max_distance": 0.2},
+      ),
+      "idle_before_jump": TerminationTermCfg(
+        func=mdp.idle_before_jump,
+        params={
+          "command_name": "jump_height",
+          "max_stance_time": 3.0,
+          "max_idle_time": 1.0,
+        },
+      ),
+      "excessive_attitude": TerminationTermCfg(
+        func=mdp.excessive_attitude,
+        params={"command_name": "jump_height", "max_angle_deg": 25.0},
+      ),
+      "horizontal_drift": TerminationTermCfg(
+        func=mdp.horizontal_drift,
+        params={"command_name": "jump_height", "max_distance": 0.2},
+      ),
+    }
   )
   # External impulses would contaminate ballistic height tracking.
   cfg.events.pop("push_robot", None)
@@ -142,7 +207,7 @@ def configure_vertical_jump(
   cfg.events["reset_base"].params["pose_range"] = {
     "x": (-0.2, 0.2),
     "y": (-0.2, 0.2),
-    "z": (0.0, 0.5),
+    "z": (0.0, 0.01),
     "yaw": (-3.14, 3.14),
   }
   cfg.events["reset_base"].params["velocity_range"] = {}
@@ -158,7 +223,8 @@ def _configure_lp_acrl(cfg: ManagerBasedRlEnvCfg, play: bool) -> None:
   old = cfg.commands["jump_height"]
   cfg.commands["jump_height"] = mdp.LpAcrlJumpHeightCommandCfg(
     height_range=HEIGHT_STAGES[-1][1:],
-    flight_reset_probability=old.flight_reset_probability,
+    ascending_reset_probability=old.ascending_reset_probability,
+    descending_reset_probability=old.descending_reset_probability,
     height_bins=HEIGHT_BINS,
     lp_acrl=LpAcrlCfg(adaptive=not play),
   )
