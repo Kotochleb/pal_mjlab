@@ -31,16 +31,18 @@ from pal_mjlab.tasks.velocity.mdp.lp_acrl import (
 # (environment steps, minimum rise, maximum rise), metres above standing.
 # Keep easier commands in the distribution as the upper bound increases.
 HEIGHT_STAGES = (
-  (0, 0.30, 0.35),
-  (2_000 * 24, 0.20, 0.35),
-  (5_000 * 24, 0.10, 0.40),
-  (10_000 * 24, 0.05, 0.60),
-  (15_000 * 24, 0.05, 0.80),
+  (0, 0.30, 0.50),
+  (2_000 * 24, 0.20, 0.55),
+  (5_000 * 24, 0.10, 0.70),
+  (10_000 * 24, 0.05, 0.90),
 )
 
 # (environment steps, seconds after touchdown that end the episode and pay the
 # landing reward). Training lengthens the landing stage; play uses the last.
 LANDING_STAGES = tuple((i * 500 * 24, float(i + 1)) for i in range(5))
+
+# Frames of each observation term given to actor and critic.
+OBSERVATION_HISTORY = 10
 
 # LP-ACRL splits the final stage's range into equal-width tasks instead.
 HEIGHT_BINS = 15
@@ -78,6 +80,9 @@ def configure_vertical_jump(
   cfg.observations["actor"].terms["foot_height"] = deepcopy(
     cfg.observations["critic"].terms["foot_height"]
   )
+  # Stack the last frames of every term, flattened, for both groups.
+  for group in cfg.observations.values():
+    group.history_length = OBSERVATION_HISTORY
 
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
   cfg.rewards.update(
@@ -132,7 +137,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=20.0,
+        weight=50.0,
         params={"command_name": "jump_height", "landing_time": landing_time},
       ),
       "catch_landing": RewardTermCfg(

@@ -46,7 +46,9 @@ single scalar. It contains the sampled rise until touchdown, then zero to
 request settling, so no extra phase observation is needed. The target used for
 rewards remains fixed for the episode. The actor also receives the critic's
 `foot_height` term (per-foot clearance from `foot_height_scan`). No base-height
-or velocity measurement is added to the actor.
+or velocity measurement is added to the actor. Both groups stack the last
+`OBSERVATION_HISTORY = 10` frames of every term, flattened (group-level
+`history_length`).
 
 An episode contains one jump and times out a landing time after touchdown,
 or at 20 s. Training lengthens the landing time 1 → 5 s in 1 s steps every
