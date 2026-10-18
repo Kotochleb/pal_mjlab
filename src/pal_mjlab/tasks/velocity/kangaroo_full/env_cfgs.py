@@ -5,7 +5,12 @@ from mjlab.managers.metrics_manager import MetricsTermCfg
 from mjlab.managers.observation_manager import ObservationTermCfg
 from mjlab.managers.scene_entity_config import SceneEntityCfg
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
-from mjlab.terrains.config import TerrainGeneratorCfg, flat, pyramid_stairs
+from mjlab.terrains.config import (
+  TerrainGeneratorCfg,
+  flat,
+  pyramid_stairs,
+  pyramid_stairs_inv,
+)
 
 from pal_mjlab.robots import (
   FEMUR_JOINT_REF,
@@ -302,6 +307,40 @@ def pal_kangaroo_full_rough_env_cfg(
   return configure_lp_acrl(cfg, curriculum, play=play)
 
 
+_STAIRS_TILE_SIZE = 8.0
+
+
+def _peaked_pyramid_stairs(
+  *,
+  proportion: float,
+  step_height_range: tuple[float, float],
+  step_width: float,
+  border_width: float = 0.5,
+  inverted: bool = False,
+):
+  """Pyramid stairs with no flat platform on top: the summit is a single tread.
+
+  With ``inverted=True`` the pyramid goes down into the ground instead, ending in
+  a single-tread pit bottom.
+
+  mjlab fits ``int((inner - platform_width) / (2 * step_width))`` steps and turns
+  the leftover into the top platform. The border is grown (from ``border_width``)
+  so the inner width is an odd number of treads, leaving exactly one tread on top;
+  ``platform_width = step_width / 2`` keeps the step count stable against float
+  round-off.
+  """
+  inner = _STAIRS_TILE_SIZE - 2 * border_width
+  num_steps = int((inner - step_width) / (2 * step_width))
+  make = pyramid_stairs_inv if inverted else pyramid_stairs
+  return make(
+    proportion=proportion,
+    step_height_range=step_height_range,
+    step_width=step_width,
+    platform_width=0.5 * step_width,
+    border_width=0.5 * (_STAIRS_TILE_SIZE - (2 * num_steps + 1) * step_width),
+  )
+
+
 def pal_kangaroo_full_stairs_rough_env_cfg(
   play: bool = False,
   transmission: Transmission = "actuator",
@@ -327,41 +366,41 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
     params={"sensor_name": "terrain_scan"},
     scale=1 / 2.0,
   )
+  # Robots spawn on the summit (or pit-bottom) tread, which is only one step wide.
+  cfg.events["reset_base"].params["pose_range"] = {
+    "x": (-0.05, 0.05),
+    "y": (-0.05, 0.05),
+    "z": (0.01, 0.05),
+    "yaw": (-3.14, 3.14),
+  }
+  # (proportion, step_height_range, step_width, border_width) per staircase; each
+  # one is generated both as a peak and, under "inv_<name>", as a pit.
+  stairs = {
+    "easy_stairs": (0.35, (0.02, 0.05), 0.40, 1.0),
+    "moderate_stairs": (0.25, (0.05, 0.08), 0.35, 0.8),
+    "challenging_stairs": (0.15, (0.08, 0.10), 0.30, 0.5),
+    "very_challenging_stairs": (0.15, (0.10, 0.20), 0.30, 0.5),
+    "more_very_challenging_stairs": (0.15, (0.20, 0.30), 0.30, 0.5),
+    "more_more_very_challenging_stairs": (0.15, (0.30, 0.40), 0.30, 0.5),
+    "more_more_more_very_challenging_stairs": (0.15, (0.40, 0.50), 0.30, 0.5),
+  }
+  sub_terrains = {"flat": flat(proportion=0.5)}
+  for inverted in (False, True):
+    for name, (proportion, heights, step_width, border_width) in stairs.items():
+      sub_terrains[f"inv_{name}" if inverted else name] = _peaked_pyramid_stairs(
+        proportion=proportion,
+        step_height_range=heights,
+        step_width=step_width,
+        border_width=border_width,
+        inverted=inverted,
+      )
   cfg.scene.terrain.terrain_generator = TerrainGeneratorCfg(
-    size=(8.0, 8.0),
+    size=(_STAIRS_TILE_SIZE, _STAIRS_TILE_SIZE),
     border_width=20.0,
     num_rows=10,
     num_cols=4,
     curriculum=True,
-    sub_terrains={
-      "flat": flat(proportion=0.25),
-      "easy_stairs": pyramid_stairs(
-        proportion=0.35,
-        step_height_range=(0.02, 0.05),
-        step_width=0.40,
-      ),
-      "moderate_stairs": pyramid_stairs(
-        proportion=0.25,
-        step_height_range=(0.05, 0.08),
-        step_width=0.35,
-        platform_width=2.5,
-        border_width=0.8,
-      ),
-      "challenging_stairs": pyramid_stairs(
-        proportion=0.15,
-        step_height_range=(0.08, 0.10),
-        step_width=0.30,
-        platform_width=2.0,
-        border_width=0.5,
-      ),
-      "very_challenging_stairs": pyramid_stairs(
-        proportion=0.15,
-        step_height_range=(0.10, 0.20),
-        step_width=0.30,
-        platform_width=2.0,
-        border_width=0.5,
-      ),
-    },
+    sub_terrains=sub_terrains,
     add_lights=True,
   )
   return configure_lp_acrl(cfg, curriculum, play=play)
