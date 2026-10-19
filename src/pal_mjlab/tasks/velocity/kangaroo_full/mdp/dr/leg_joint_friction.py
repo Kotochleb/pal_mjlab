@@ -22,7 +22,18 @@ def configure_leg_joint_friction_dr(
   Only meaningful for the "joint" transmission: elsewhere these DOFs are
   unactuated and their physical friction lives on the screw actuator instead
   (LEG_SCREW_PD / screw_pd_params), so this is a no-op for "actuator"/"lut".
+
+  Whatever the transmission, the simple Kangaroo's per-leg-joint additive
+  damping/armature/frictionloss DR inherited from pal_kangaroo_baseline_env_cfg
+  is replaced first by the original uniform ±0.008 frictionloss add: on these
+  passive linkage joints (zero armature) a negative armature add makes the mass
+  matrix indefinite and NaNs qacc on the first step.
   """
+  cfg.events.pop("joint_damping", None)
+  cfg.events.pop("joint_armature", None)
+  cfg.events["joint_friction"].params["operation"] = "add"
+  cfg.events["joint_friction"].params["ranges"] = (-0.008, 0.008)
+
   if transmission != "joint":
     return
 
