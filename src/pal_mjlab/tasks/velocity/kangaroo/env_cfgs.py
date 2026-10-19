@@ -556,19 +556,20 @@ def configure_kangaroo_rough_env(
         resolution=0.10,
         scale=5.0,
       ),
-      # Basic stairs, one ascending + one descending.
+      # Basic stairs, one ascending + one descending. platform_width is the
+      # minimum summit / pit-bottom side (mjlab adds the leftover to it).
       "stairs_up": terrain_gen.BoxPyramidStairsTerrainCfg(
         proportion=0.1,
         step_height_range=(0.02, 0.1),
         step_width=0.35,
-        platform_width=0.6,
+        platform_width=1.5,
         border_width=0.1,
       ),
       "stairs_down": terrain_gen.BoxInvertedPyramidStairsTerrainCfg(
         proportion=0.1,
         step_height_range=(0.02, 0.1),
         step_width=0.35,
-        platform_width=0.6,
+        platform_width=1.5,
         border_width=0.1,
       ),
     },

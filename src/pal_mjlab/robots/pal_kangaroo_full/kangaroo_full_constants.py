@@ -12,12 +12,10 @@ from mjlab.entity import Entity, EntityArticulationInfoCfg, EntityCfg
 from mjlab.utils.string import resolve_expr
 from pal_mjlab import PAL_MJLAB_SRC_PATH
 from pal_mjlab.robots.pal_kangaroo.kangaroo_constants import (
-  DAMPING_RATIO,
   FULL_COLLISION,
   KANGAROO_PELVIS_ACTUATOR_CFG,
   KANGAROO_S_MINUS_ACTUATOR_CFG,
   KANGAROO_S_PLUS_ACTUATOR_CFG,
-  NATURAL_FREQ,
   _calc_leg_params,
 )
 from pal_mjlab.robots.pal_kangaroo_full.actuator import (
@@ -206,7 +204,6 @@ def get_kangaroo_full_spec(
 
 
 def _calc_linear_leg_params(
-  stiffness: float,
   effort: float,
   armature: float,
   frictionloss: float,
@@ -214,14 +211,15 @@ def _calc_linear_leg_params(
   saturation_effort: float,
   velocity_limit: float,
 ) -> dict:
-  damping = round(2.0 * DAMPING_RATIO * stiffness / NATURAL_FREQ, 3)
+  """Armature-based PD gains (pal_kangaroo's _calc_leg_params) plus the DC-motor
+  saturation and velocity limits."""
   return {
-    "armature": armature,
-    "stiffness": stiffness,
-    "damping": damping,
-    "effort_limit": effort,
-    "frictionloss": frictionloss,
-    "viscous_damping": viscous_damping,
+    **_calc_leg_params(
+      effort=effort,
+      armature=armature,
+      frictionloss=frictionloss,
+      viscous_damping=viscous_damping,
+    ),
     "saturation_effort": saturation_effort,
     "velocity_limit": velocity_limit,
   }
@@ -235,14 +233,12 @@ def _calc_builtin_leg_params(**kwargs) -> dict:
 
 
 def _calc_lut_joint_params(
-  stiffness: float,
   effort: float,
   armature: float,
   frictionloss: float,
   viscous_damping: float,
 ) -> JointParams:
   params = _calc_leg_params(
-    stiffness=stiffness,
     effort=effort,
     armature=armature,
     frictionloss=frictionloss,
@@ -259,7 +255,6 @@ def _calc_lut_screw_params(
   transmission_type: TransmissionType,
   actuator_model: ActuatorModel,
   *,
-  stiffness: float,
   effort: float,
   armature: float,
   frictionloss: float,
@@ -267,7 +262,6 @@ def _calc_lut_screw_params(
   saturation_effort: float | None,
   velocity_limit: float | None,
 ) -> ScrewParams:
-  del stiffness
   return ScrewParams(
     effort_limit=effort,
     transmission_type=transmission_type,
@@ -281,15 +275,6 @@ def _calc_lut_screw_params(
 
 LEG_LENGTH_JOINT_EXPR = r"leg_(left|right)_length_joint"
 KNEE_JOINT_EXPR = r"leg_(left|right)_knee_joint"
-LEG_JOINT_PD: dict[str, tuple[float, float]] = {
-  r"leg_(left|right)_1_joint": (100.0, 80.0),
-  r"leg_(left|right)_2_joint": (100.0, 230.0),
-  r"leg_(left|right)_3_joint": (100.0, 139.0),
-  r"leg_(left|right)_4_joint": (30.0, 140.0),
-  r"leg_(left|right)_5_joint": (30.0, 82.0),
-  LEG_LENGTH_JOINT_EXPR: (1600.0, 1100.0),
-}
-
 LegFrictionParam = tuple[float, tuple[float, float]]
 
 LEG_JOINT_VISCOUS_DAMPING: dict[str, LegFrictionParam] = {
@@ -318,42 +303,36 @@ LEG_JOINT_ARMATURE: dict[str, LegFrictionParam] = {
 }
 
 LEG_1_JOINT_PARAMS = dict(
-  stiffness=100.0,
   effort=80.0,
   armature=0.0759319,
   frictionloss=0.464305,
   viscous_damping=0.883277,
 )
 LEG_2_JOINT_PARAMS = dict(
-  stiffness=100.0,
   effort=230.0,
   armature=0.502929,
   frictionloss=0.69495,
   viscous_damping=4.11424,
 )
 LEG_3_JOINT_PARAMS = dict(
-  stiffness=100.0,
   effort=139.0,
   armature=0.155948,
   frictionloss=0.38778,
   viscous_damping=1.27574,
 )
 LEG_4_JOINT_PARAMS = dict(
-  stiffness=30.0,
   effort=140.0,
   armature=0.166562,
   frictionloss=0.402496,
   viscous_damping=1.36257,
 )
 LEG_5_JOINT_PARAMS = dict(
-  stiffness=30.0,
   effort=82.0,
   armature=0.0491612,
   frictionloss=0.218706,
   viscous_damping=0.402166,
 )
 LEG_LENGTH_JOINT_PARAMS = dict(
-  stiffness=1600.0,
   effort=1100.0,
   armature=3.79514,
   frictionloss=3.2825,
@@ -361,7 +340,6 @@ LEG_LENGTH_JOINT_PARAMS = dict(
 )
 
 LEG_1_SCREW_PARAMS = dict(
-  stiffness=62500.0,
   effort=2000.0,
   armature=72.07,
   frictionloss=5.0,
@@ -370,7 +348,6 @@ LEG_1_SCREW_PARAMS = dict(
   velocity_limit=0.314,
 )
 LEG_2_SCREW_PARAMS = dict(
-  stiffness=28000.0,
   effort=2000.0,
   armature=72.07,
   frictionloss=5.0,
@@ -379,7 +356,6 @@ LEG_2_SCREW_PARAMS = dict(
   velocity_limit=0.314,
 )
 LEG_3_SCREW_PARAMS = dict(
-  stiffness=28000.0,
   effort=2000.0,
   armature=72.07,
   frictionloss=5.0,
@@ -388,7 +364,6 @@ LEG_3_SCREW_PARAMS = dict(
   velocity_limit=0.314,
 )
 LEG_4_SCREW_PARAMS = dict(
-  stiffness=25000.0,
   effort=2000.0,
   armature=72.09,
   frictionloss=5.0,
@@ -397,7 +372,6 @@ LEG_4_SCREW_PARAMS = dict(
   velocity_limit=0.314,
 )
 LEG_5_SCREW_PARAMS = dict(
-  stiffness=25000.0,
   effort=2000.0,
   armature=72.09,
   frictionloss=5.0,
@@ -406,7 +380,6 @@ LEG_5_SCREW_PARAMS = dict(
   velocity_limit=0.314,
 )
 LEG_LENGTH_SCREW_PARAMS = dict(
-  stiffness=23000.0,
   effort=5000.0,
   armature=50.72,
   frictionloss=11.7333,
@@ -615,7 +588,7 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 FEMUR_JOINT_REF = 1.206077
 
 INIT_STATE = EntityCfg.InitialStateCfg(
-  pos=(0.0, 0.0, 0.91),
+  pos=(0.0, 0.0, 0.93),
   rot=(1.0, 0.0, 0.0, 0.0),
   # Leg length, femur and knee read in the simple model's coordinates (joint
   # refs in the tendon MJCFs). leg_*_4_joint is still measured off the shank:
@@ -852,7 +825,6 @@ def _pin_equality_tendon_lengths(model: mujoco.MjModel) -> None:
     for pattern, length in KANGAROO_TENDON_LENGTHS.items():
       if re.fullmatch(pattern, name):
         eq.data[0] = length - model.tendon_length0[tendon_id]
-
 
 
 def main(
