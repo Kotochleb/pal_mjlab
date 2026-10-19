@@ -308,9 +308,14 @@ def pal_kangaroo_full_rough_env_cfg(
 
 
 _STAIRS_TILE_SIZE = 8.0
+_STAIRS_PLATFORM_WIDTH = 1.5
+"""Side of the flat square on top of every peak and at the bottom of every pit [m]."""
+_STAIRS_MIN_WIDTH_TO_HEIGHT = 1.5
+"""Every tread is at least this many times as deep as the tallest step of its
+staircase's height range."""
 
 
-def _peaked_pyramid_stairs(
+def _platform_pyramid_stairs(
   *,
   proportion: float,
   step_height_range: tuple[float, float],
@@ -318,26 +323,32 @@ def _peaked_pyramid_stairs(
   border_width: float = 0.5,
   inverted: bool = False,
 ):
-  """Pyramid stairs with no flat platform on top: the summit is a single tread.
+  """Pyramid stairs whose summit is a ``_STAIRS_PLATFORM_WIDTH`` square.
 
   With ``inverted=True`` the pyramid goes down into the ground instead, ending in
-  a single-tread pit bottom.
+  a pit bottom of the same size.
 
   mjlab fits ``int((inner - platform_width) / (2 * step_width))`` steps and turns
   the leftover into the top platform. The border is grown (from ``border_width``)
-  so the inner width is an odd number of treads, leaving exactly one tread on top;
-  ``platform_width = step_width / 2`` keeps the step count stable against float
-  round-off.
+  so the inner width is the platform plus a whole number of tread pairs, leaving
+  exactly ``_STAIRS_PLATFORM_WIDTH`` on top; passing ``platform_width`` half a
+  tread smaller keeps the step count stable against float round-off.
+
+  ``step_width`` is raised to ``_STAIRS_MIN_WIDTH_TO_HEIGHT`` times the top of
+  ``step_height_range`` when it is shallower than that (one width serves every
+  difficulty row).
   """
+  step_width = max(step_width, _STAIRS_MIN_WIDTH_TO_HEIGHT * step_height_range[1])
   inner = _STAIRS_TILE_SIZE - 2 * border_width
-  num_steps = int((inner - step_width) / (2 * step_width))
+  num_steps = int((inner - _STAIRS_PLATFORM_WIDTH) / (2 * step_width))
   make = pyramid_stairs_inv if inverted else pyramid_stairs
   return make(
     proportion=proportion,
     step_height_range=step_height_range,
     step_width=step_width,
-    platform_width=0.5 * step_width,
-    border_width=0.5 * (_STAIRS_TILE_SIZE - (2 * num_steps + 1) * step_width),
+    platform_width=_STAIRS_PLATFORM_WIDTH - 0.5 * step_width,
+    border_width=0.5
+    * (_STAIRS_TILE_SIZE - _STAIRS_PLATFORM_WIDTH - 2 * num_steps * step_width),
   )
 
 
@@ -366,14 +377,15 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
     params={"sensor_name": "terrain_scan"},
     scale=1 / 2.0,
   )
-  # Robots spawn on the summit (or pit-bottom) tread, which is only one step wide.
+  # Robots spawn on the summit (or pit-bottom) platform, _STAIRS_PLATFORM_WIDTH wide.
   cfg.events["reset_base"].params["pose_range"] = {
-    "x": (-0.05, 0.05),
-    "y": (-0.05, 0.05),
+    "x": (-0.2, 0.2),
+    "y": (-0.2, 0.2),
     "z": (0.01, 0.05),
     "yaw": (-3.14, 3.14),
   }
-  # (proportion, step_height_range, step_width, border_width) per staircase; each
+  # (proportion, step_height_range, step_width, border_width) per staircase, with
+  # step_width raised to 1.5x the tallest step where needed; each
   # one is generated both as a peak and, under "inv_<name>", as a pit.
   stairs = {
     "easy_stairs": (0.35, (0.02, 0.05), 0.40, 1.0),
@@ -387,7 +399,7 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
   sub_terrains = {"flat": flat(proportion=0.5)}
   for inverted in (False, True):
     for name, (proportion, heights, step_width, border_width) in stairs.items():
-      sub_terrains[f"inv_{name}" if inverted else name] = _peaked_pyramid_stairs(
+      sub_terrains[f"inv_{name}" if inverted else name] = _platform_pyramid_stairs(
         proportion=proportion,
         step_height_range=heights,
         step_width=step_width,

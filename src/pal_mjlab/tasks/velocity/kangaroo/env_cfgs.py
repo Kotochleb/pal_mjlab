@@ -2,6 +2,7 @@
 
 import math
 
+import mjlab.terrains as terrain_gen
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import dr
 from mjlab.envs.mdp.actions import JointPositionActionCfg
@@ -22,11 +23,6 @@ from mjlab.sensor import (
 )
 from mjlab.tasks.velocity.mdp import UniformVelocityCommandCfg
 from mjlab.tasks.velocity.velocity_env_cfg import make_velocity_env_cfg
-from mjlab.terrains.config import (
-  flat,
-  pyramid_stairs_inv,
-  random_spread_boxes,
-)
 from mjlab.terrains.terrain_generator import TerrainGeneratorCfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
 
@@ -148,11 +144,6 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     params={"sensor_name": "robot/imu_quat"},
     noise=Unoise(n_min=-0.05, n_max=0.05),
   )
-  cfg.observations["actor"].terms["base_lin_acc"] = ObservationTermCfg(
-    func=mdp.builtin_sensor,
-    params={"sensor_name": "robot/imu_lin_acc"},
-    noise=Unoise(n_min=-0.5, n_max=0.5),
-  )
   cfg.observations["critic"].terms["imu_projected_gravity"] = ObservationTermCfg(
     func=mdp.imu_projected_gravity,
     params={"sensor_name": "robot/imu_quat"},
@@ -178,9 +169,54 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     mode="startup",
     func=dr.dof_frictionloss,
     params={
-      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),  # Set per-robot.
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
       "operation": "add",
-      "ranges": (-0.008, 0.008),
+      "ranges": {
+        r"leg_.*_1_joint": (-0.1, 0.1),
+        r"leg_.*_2_joint": (-0.25, 0.25),
+        r"leg_.*_3_joint": (-0.2, 0.2),
+        r"leg_.*_4_joint": (-0.15, 0.15),
+        r"leg_.*_5_joint": (-0.1, 0.1),
+        r"^(?!(?:leg_.*_1_joint|leg_.*_2_joint|leg_.*_3_joint|leg_.*_4_joint|leg_.*_5_joint)$).*": (
+          -0.008,
+          0.008,
+        ),
+      },
+      "shared_random": False,
+    },
+  )
+  # Domain Randomization for joint damping
+  cfg.events["joint_damping"] = EventTermCfg(
+    mode="startup",
+    func=dr.dof_damping,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      "operation": "add",
+      "ranges": {
+        r"leg_.*_1_joint": (-0.2, 0.2),
+        r"leg_.*_2_joint": (-0.2, 0.2),
+        r"leg_.*_3_joint": (-0.1, 0.1),
+        r"leg_.*_4_joint": (-0.1, 0.1),
+        r"leg_.*_5_joint": (-0.1, 0.1),
+      },
+      "shared_random": False,
+    },
+  )
+  # Domain Randomization for joint armature
+  cfg.events["joint_armature"] = EventTermCfg(
+    mode="startup",
+    func=dr.dof_armature,
+    params={
+      "asset_cfg": SceneEntityCfg("robot", joint_names=(".*",)),
+      "operation": "add",
+      "ranges": {
+        r"leg_.*_1_joint": (-0.1, 0.1),
+        r"leg_.*_2_joint": (-0.25, 0.25),
+        r"leg_.*_3_joint": (-0.075, 0.075),
+        r"leg_.*_4_joint": (-0.05, 0.05),
+        r"leg_.*_5_joint": (-0.005, 0.005),
+        r"leg_.*_length_joint": (-0.5, 0.5),
+      },
       "shared_random": False,
     },
   )
@@ -233,7 +269,7 @@ def pal_kangaroo_baseline_env_cfg(play: bool = False) -> ManagerBasedRlEnvCfg:
     r"arm_.*_(?![14]_joint)\d+_joint": 0.15,
   }
   cfg.rewards["upright"].params["asset_cfg"].body_names = ("pelvis_2_link",)
-  cfg.rewards["upright"].weight = 1.25
+  cfg.rewards["upright"].weight = 2.0
   cfg.rewards["body_ang_vel"].params["asset_cfg"].body_names = ("pelvis_2_link",)
   for reward_name in ["foot_clearance", "foot_slip"]:
     cfg.rewards[reward_name].params["asset_cfg"].site_names = site_names
@@ -374,15 +410,17 @@ def configure_kangaroo_rough_env(
   # due to https://github.com/google-deepmind/mujoco_warp/blob/c62864ed2bf816c0a724d4cbf153921188f78eae/mujoco_warp/_src/io.py#L649-L660
   # for collision-rich envs, it is recommended to be manually set through experimentation
   cfg.sim.nconmax = 200
+  # To avoid memory issues when allocating EPA buffer
+  cfg.sim.mujoco.ccd_iterations = 100
 
   ### SENSORS
 
-  # Idealized 1.2x0.6 m elevation map around the robot
+  # Idealized 1.0x1.0 m elevation map around the robot
   terrain_scan = RayCastSensorCfg(
     name="terrain_scan",
     frame=ObjRef(type="body", name="pelvis_2_link", entity="robot"),
     ray_alignment="yaw",
-    pattern=GridPatternCfg(size=(1.2, 0.6), resolution=0.1),
+    pattern=GridPatternCfg(size=(1.0, 1.0), resolution=0.05),
     max_distance=2.0,
     exclude_parent_body=True,
     include_geom_groups=(0,),  # Terrain only.
@@ -409,7 +447,7 @@ def configure_kangaroo_rough_env(
   twist_cmd = cfg.commands["twist"]
   assert isinstance(twist_cmd, mdp.UniformVelocityCommandCfg)
   twist_cmd.ranges.lin_vel_x = (-0.5, 0.5)
-  twist_cmd.ranges.lin_vel_y = (-0.4, 0.4)
+  twist_cmd.ranges.lin_vel_y = (-0.5, 0.5)
   twist_cmd.ranges.ang_vel_z = (-1.0, 1.0)
 
   ### REWARDS
@@ -420,8 +458,7 @@ def configure_kangaroo_rough_env(
   cfg.rewards["air_time"].params["threshold_max"] = 0.45
   cfg.rewards["air_time"].params["command_threshold"] = 0.1
 
-  # More upright = safer torso stance
-  cfg.rewards["upright"].weight = 2.0
+  # Reduce upright std, to have torso stance more stable
   cfg.rewards["upright"].params["std"] = math.sqrt(0.05)
 
   # Tightened from default so the reward stays discriminative at low command speeds
@@ -449,71 +486,89 @@ def configure_kangaroo_rough_env(
   assert cfg.scene.terrain.terrain_generator is not None
   cfg.scene.terrain.terrain_type = "generator"
   cfg.scene.terrain.terrain_generator = TerrainGeneratorCfg(
-    size=(3.0, 3.0),
+    size=(4.0, 4.0),
     num_rows=12,
-    num_cols=10,
     border_width=20.0,
-    curriculum=True,
+    curriculum=True,  # one column per sub-terrain; num_cols is ignored
+    add_lights=False,
     sub_terrains={
-      "flat": flat(proportion=0.1),
-      "pebbles": random_spread_boxes(
+      "flat": terrain_gen.BoxFlatTerrainCfg(proportion=0.1),
+      # Fine gravel-like ground: many tiny boxes scattered over a floor.
+      "pebbles": terrain_gen.BoxRandomSpreadTerrainCfg(
         proportion=0.1,
         num_boxes=350,
         box_width_range=(0.02, 0.05),
         box_length_range=(0.02, 0.05),
         box_height_range=(0.02, 0.05),
-        platform_width=0.5,
+        box_yaw_range=(0.0, 360.0),
+        add_floor=True,
+        platform_width=0.6,
         border_width=0.0,
       ),
-      "random_obstacles": random_spread_boxes(
-        proportion=0.2,
+      # Sparse medium obstacles to step over / around.
+      "random_boxes": terrain_gen.BoxRandomSpreadTerrainCfg(
+        proportion=0.1,
         num_boxes=30,
         box_width_range=(0.2, 0.6),
         box_length_range=(0.2, 0.6),
-        box_height_range=(0.02, 0.06),
-        platform_width=0.5,
+        box_height_range=(0.02, 0.12),
+        box_yaw_range=(0.0, 360.0),
+        add_floor=True,
+        platform_width=0.6,
         border_width=0.0,
       ),
-      "easy_stairs_30": pyramid_stairs_inv(
+      # Fine uneven ground: small cells, low relief.
+      "random_grid_fine": terrain_gen.BoxRandomGridTerrainCfg(
+        proportion=0.15,
+        grid_width=0.25,
+        grid_height_range=(0.01, 0.04),
+        platform_width=0.6,
+        border_width=0.25,
+        merge_similar_heights=True,
+        height_merge_threshold=0.01,
+        max_merge_distance=3,
+      ),
+      # Coarse uneven ground: foot-sized cells, larger steps between them.
+      "random_grid_coarse": terrain_gen.BoxRandomGridTerrainCfg(
+        proportion=0.15,
+        grid_width=0.5,
+        grid_height_range=(0.01, 0.07),
+        platform_width=0.6,
+        border_width=0.25,
+        merge_similar_heights=True,
+        height_merge_threshold=0.02,
+        max_merge_distance=3,
+      ),
+      # Discrete obstacles
+      "hf_discrete_obstacles": terrain_gen.HfDiscreteObstaclesTerrainCfg(
         proportion=0.1,
-        step_height_range=(0.05, 0.1),
-        step_width=0.3,
+        obstacle_width_range=(0.3, 0.8),
+        obstacle_height_range=(0.01, 0.06),
+        num_obstacles=100,
         platform_width=0.5,
         border_width=0.1,
+        base_thickness_ratio=0.5,
       ),
-      "mid_stairs_30": pyramid_stairs_inv(
+      # Natural ondulation fractal noise
+      "perlin_noise": terrain_gen.HfPerlinNoiseTerrainCfg(
         proportion=0.1,
-        step_height_range=(0.1, 0.15),
-        step_width=0.3,
-        platform_width=0.5,
+        height_range=(0.02, 0.2),
+        resolution=0.10,
+        scale=5.0,
+      ),
+      # Basic stairs, one ascending + one descending.
+      "stairs_up": terrain_gen.BoxPyramidStairsTerrainCfg(
+        proportion=0.1,
+        step_height_range=(0.02, 0.1),
+        step_width=0.35,
+        platform_width=0.6,
         border_width=0.1,
       ),
-      "easy_stairs_40": pyramid_stairs_inv(
+      "stairs_down": terrain_gen.BoxInvertedPyramidStairsTerrainCfg(
         proportion=0.1,
-        step_height_range=(0.05, 0.1),
-        step_width=0.4,
-        platform_width=0.5,
-        border_width=0.1,
-      ),
-      "mid_stairs_40": pyramid_stairs_inv(
-        proportion=0.1,
-        step_height_range=(0.1, 0.15),
-        step_width=0.4,
-        platform_width=0.5,
-        border_width=0.1,
-      ),
-      "easy_stairs_50": pyramid_stairs_inv(
-        proportion=0.1,
-        step_height_range=(0.05, 0.1),
-        step_width=0.5,
-        platform_width=0.5,
-        border_width=0.1,
-      ),
-      "mid_stairs_50": pyramid_stairs_inv(
-        proportion=0.1,
-        step_height_range=(0.1, 0.15),
-        step_width=0.5,
-        platform_width=0.5,
+        step_height_range=(0.02, 0.1),
+        step_width=0.35,
+        platform_width=0.6,
         border_width=0.1,
       ),
     },
@@ -539,6 +594,14 @@ def pal_kangaroo_lower_body_rough_env_cfg(play: bool = False) -> ManagerBasedRlE
     del cfg.rewards["pose"].params[pose_type][r"arm_.*_(?![14]_joint)\d+_joint"]
 
   cfg.scene.entities = {"robot": get_kangaroo_lower_body_robot_cfg()}
+
+  # Maintain base linear acceleration for the kangaroo lower body policies
+  # TODO: Train and test a policy without the base linear acceleration term
+  cfg.observations["actor"].terms["base_lin_acc"] = ObservationTermCfg(
+    func=mdp.builtin_sensor,
+    params={"sensor_name": "robot/imu_lin_acc"},
+    noise=Unoise(n_min=-1.0, n_max=1.0),
+  )
 
   # Prevents feet instability
   cfg.rewards["action_rate_l2"].weight = -0.2
@@ -627,10 +690,16 @@ def pal_kangaroo_lower_body_flat_env_cfg(play: bool = False) -> ManagerBasedRlEn
 
   # Adjust noise parameters for the lower body kangaroo
   # These parameters worked for the microstrain IMU
-  cfg.observations["actor"].terms["imu_projected_gravity"] = Unoise(
+  cfg.observations["actor"].terms["imu_projected_gravity"].noise = Unoise(
     n_min=-0.025, n_max=0.025
   )
-  cfg.observations["actor"].terms["base_lin_acc"].noise = Unoise(n_min=-1.0, n_max=1.0)
+  # Maintain base linear acceleration for the kangaroo lower body policies
+  # TODO: Train and test a policy without the base linear acceleration term
+  cfg.observations["actor"].terms["base_lin_acc"] = ObservationTermCfg(
+    func=mdp.builtin_sensor,
+    params={"sensor_name": "robot/imu_lin_acc"},
+    noise=Unoise(n_min=-1.0, n_max=1.0),
+  )
 
   joint_pos_action = cfg.actions["joint_pos"]
   assert isinstance(joint_pos_action, JointPositionActionCfg)
