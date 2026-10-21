@@ -25,10 +25,11 @@ _ANKLE_OBS_VARIANTS = {"AnkleRaw": False, "AnkleNormalized": True}
 # The native <position> element / an ideal clamped PD ("Builtin") or
 # DcMotorActuatorCfg's velocity-saturated torque-speed curve ("DcMotor"), on
 # the "Actuator" transmission's screws directly and, the same way, on the
-# "Lut" transmission's own screw <motor>s. "Joint" has no screw actuator in
-# the model -- it's always the builtin native actuator -- so it doesn't get
-# this axis at all; see the _transmission == "joint" special case below.
+# "Lut" transmission's own screw <motor>s. "Joint" (prismatic femur only)
+# servos the joints directly, with the screws' DC motor curves reflected to
+# each joint; its builtin variant keeps its original id without the suffix.
 _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
+_JOINT_ACTUATOR_MODEL_VARIANTS = {"": "builtin", "DcMotor": "dc_motor"}
 
 # Keep existing ids for the default curriculum; add an independent LP-ACRL axis.
 _CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
@@ -69,11 +70,8 @@ for _terrain, _env_cfg_fn, _curriculum_variants in (
         )
         for _body_name, _lower_body in _BODY_VARIANTS.items():
           for _ankle_obs_name, _ankle_normalized in _ankle_obs_items:
-            # "joint" transmission is always the builtin native actuator --
-            # it has no screw for ActuatorModel to vary -- so don't spell
-            # out that axis in its task id at all.
             _actuator_model_items = (
-              (("", "builtin"),)
+              _JOINT_ACTUATOR_MODEL_VARIANTS.items()
               if _transmission == "joint"
               else _ACTUATOR_MODEL_VARIANTS.items()
             )

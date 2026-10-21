@@ -339,53 +339,55 @@ LEG_LENGTH_JOINT_PARAMS = dict(
   viscous_damping=161.39,
 )
 
+# Ballscrew-side DC motor limits (N, m/s) from plot_dc_motor_actuator.py: hip
+# screws use the small actuator (5 mm pitch), leg length the large one (10 mm).
 LEG_1_SCREW_PARAMS = dict(
-  effort=2000.0,
+  effort=2161.4,
   armature=72.07,
   frictionloss=5.0,
   viscous_damping=200.0,
-  saturation_effort=4334.0,
-  velocity_limit=0.314,
+  saturation_effort=4322.8,
+  velocity_limit=0.4713,
 )
 LEG_2_SCREW_PARAMS = dict(
-  effort=2000.0,
+  effort=2161.4,
   armature=72.07,
   frictionloss=5.0,
   viscous_damping=200.0,
-  saturation_effort=4334.0,
-  velocity_limit=0.314,
+  saturation_effort=4322.8,
+  velocity_limit=0.4713,
 )
 LEG_3_SCREW_PARAMS = dict(
-  effort=2000.0,
+  effort=2161.4,
   armature=72.07,
   frictionloss=5.0,
   viscous_damping=200.0,
-  saturation_effort=4334.0,
-  velocity_limit=0.314,
+  saturation_effort=4322.8,
+  velocity_limit=0.4713,
 )
 LEG_4_SCREW_PARAMS = dict(
-  effort=2000.0,
+  effort=2161.4,
   armature=72.09,
   frictionloss=5.0,
   viscous_damping=200.0,
-  saturation_effort=4334.0,
-  velocity_limit=0.314,
+  saturation_effort=4322.8,
+  velocity_limit=0.4713,
 )
 LEG_5_SCREW_PARAMS = dict(
-  effort=2000.0,
+  effort=2161.4,
   armature=72.09,
   frictionloss=5.0,
   viscous_damping=200.0,
-  saturation_effort=4334.0,
-  velocity_limit=0.314,
+  saturation_effort=4322.8,
+  velocity_limit=0.4713,
 )
 LEG_LENGTH_SCREW_PARAMS = dict(
-  effort=5000.0,
+  effort=5221.3,
   armature=50.72,
   frictionloss=11.7333,
   viscous_damping=589.4603,
-  saturation_effort=10443.0,
-  velocity_limit=0.288,
+  saturation_effort=10442.7,
+  velocity_limit=0.864,
 )
 
 LEG_SCREW_PARAMS: dict[str, dict] = {
@@ -398,32 +400,58 @@ LEG_SCREW_PARAMS: dict[str, dict] = {
 }
 
 
-def joint_pd_actuators() -> tuple[BuiltinPositionActuatorCfg, ...]:
-  return (
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(r"leg_(left|right)_1_joint",),
-      **_calc_leg_params(**LEG_1_JOINT_PARAMS),
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(r"leg_(left|right)_2_joint",),
-      **_calc_leg_params(**LEG_2_JOINT_PARAMS),
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(r"leg_(left|right)_3_joint",),
-      **_calc_leg_params(**LEG_3_JOINT_PARAMS),
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(r"leg_(left|right)_4_joint",),
-      **_calc_leg_params(**LEG_4_JOINT_PARAMS),
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(r"leg_(left|right)_5_joint",),
-      **_calc_leg_params(**LEG_5_JOINT_PARAMS),
-    ),
-    BuiltinPositionActuatorCfg(
-      target_names_expr=(LEG_LENGTH_JOINT_EXPR,),
-      **_calc_leg_params(**LEG_LENGTH_JOINT_PARAMS),
-    ),
+LEG_JOINT_PARAMS: dict[str, dict] = {
+  r"leg_(left|right)_1_joint": LEG_1_JOINT_PARAMS,
+  r"leg_(left|right)_2_joint": LEG_2_JOINT_PARAMS,
+  r"leg_(left|right)_3_joint": LEG_3_JOINT_PARAMS,
+  r"leg_(left|right)_4_joint": LEG_4_JOINT_PARAMS,
+  r"leg_(left|right)_5_joint": LEG_5_JOINT_PARAMS,
+  LEG_LENGTH_JOINT_EXPR: LEG_LENGTH_JOINT_PARAMS,
+}
+
+# The screws' DC motor curves reflected to each joint, from
+# dc_motor_params_joints/: (torque limit [N m], knee speed [rad/s], no-load
+# speed [rad/s]), in N and m/s for the leg length. Computed on the right leg;
+# the left leg mirrors it.
+LEG_JOINT_DC_MOTOR_CURVES: dict[str, tuple[float, float, float]] = {
+  r"leg_(left|right)_1_joint": (52.059174, 8.2351095, 11.782512),
+  r"leg_(left|right)_2_joint": (171.95054, 2.6013196, 7.8988461),
+  r"leg_(left|right)_3_joint": (127.52969, 3.61068, 13.472447),
+  r"leg_(left|right)_4_joint": (100.83238, 4.9229896, 13.407192),
+  r"leg_(left|right)_5_joint": (72.755313, 6.3611458, 23.764985),
+  LEG_LENGTH_JOINT_EXPR: (966.82198, 2.0625726, 3.0773989),
+}
+
+
+def _calc_joint_dc_motor_params(
+  joint_params: dict, curve: tuple[float, float, float]
+) -> dict:
+  """Joint PD gains as for the builtin actuator, with the torque cap and
+  torque-speed curve replaced by the reflected DC motor's."""
+  effort_limit, knee_velocity, velocity_limit = curve
+  return _calc_linear_leg_params(
+    **{**joint_params, "effort": effort_limit},
+    saturation_effort=effort_limit / (1.0 - knee_velocity / velocity_limit),
+    velocity_limit=velocity_limit,
+  )
+
+
+def joint_pd_actuators(
+  actuator_model: ActuatorModel = "builtin",
+) -> tuple[BuiltinPositionActuatorCfg | DcMotorActuatorCfg, ...]:
+  if actuator_model == "builtin":
+    return tuple(
+      BuiltinPositionActuatorCfg(
+        target_names_expr=(expr,), **_calc_leg_params(**params)
+      )
+      for expr, params in LEG_JOINT_PARAMS.items()
+    )
+  return tuple(
+    DcMotorActuatorCfg(
+      target_names_expr=(expr,),
+      **_calc_joint_dc_motor_params(params, LEG_JOINT_DC_MOTOR_CURVES[expr]),
+    )
+    for expr, params in LEG_JOINT_PARAMS.items()
   )
 
 
@@ -568,7 +596,7 @@ def _leg_actuators(
         'transmission="joint" is not supported for femur_closure="linkage" '
         '(no leg_.*_length_joint to servo there) -- use "actuator" or "lut".'
       )
-    return joint_pd_actuators()
+    return joint_pd_actuators(actuator_model)
   if transmission == "actuator":
     return actuator_pd_actuators(actuator_model)
   if transmission == "lut":

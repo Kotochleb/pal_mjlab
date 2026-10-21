@@ -377,6 +377,11 @@ def pal_kangaroo_full_stairs_rough_env_cfg(
     params={"sensor_name": "terrain_scan"},
     scale=1 / 2.0,
   )
+  cfg.rewards.pop("foot_swing_height", None)
+  # Stepping up and down stairs needs fast leg-length strokes; drop the
+  # leg-length joint velocity penalty.
+  cfg.rewards.pop("joint_vel_limits", None)
+  cfg.rewards["pose"].weight *= 0.75
   # Robots spawn on the summit (or pit-bottom) platform, _STAIRS_PLATFORM_WIDTH wide.
   cfg.events["reset_base"].params["pose_range"] = {
     "x": (-0.2, 0.2),
