@@ -5,6 +5,7 @@ from pal_mjlab.tasks.velocity.lp_acrl_runner import LpAcrlVelocityOnPolicyRunner
 
 from .env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
+  pal_kangaroo_full_flat_high_speed_env_cfg,
   pal_kangaroo_full_rough_env_cfg,
   pal_kangaroo_full_stairs_rough_env_cfg,
   pal_kangaroo_full_top_speed_env_cfg,
@@ -12,7 +13,8 @@ from .env_cfgs import (
 from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
 # Task variants on flat, rough and stairs terrain, plus the flat "TopSpeed"
-# task (vx up to 10 m/s, doubled vy/yaw rate). Names identify six model
+# task (vx up to 10 m/s, doubled vy/yaw rate) and "FlatHighSpeed" (default
+# curriculum ramping forward vx to 6 m/s). Names identify six model
 # axes plus the curriculum (the legacy default has no curriculum suffix).
 _TRANSMISSION_VARIANTS = {"Joint": "joint", "Actuator": "actuator", "Lut": "lut"}
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
@@ -35,9 +37,16 @@ _JOINT_ACTUATOR_MODEL_VARIANTS = {"": "builtin", "DcMotor": "dc_motor"}
 _CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
 # TopSpeed only exists with LP-ACRL, so its ids carry no curriculum suffix.
 _TOP_SPEED_CURRICULUM_VARIANTS = {"": "lp_acrl"}
+# FlatHighSpeed's forward-vx ramp lives in the default curriculum only.
+_FLAT_HIGH_SPEED_CURRICULUM_VARIANTS = {"": "default"}
 
 for _terrain, _env_cfg_fn, _curriculum_variants in (
   ("Flat", pal_kangaroo_full_flat_env_cfg, _CURRICULUM_VARIANTS),
+  (
+    "FlatHighSpeed",
+    pal_kangaroo_full_flat_high_speed_env_cfg,
+    _FLAT_HIGH_SPEED_CURRICULUM_VARIANTS,
+  ),
   ("Rough", pal_kangaroo_full_rough_env_cfg, _CURRICULUM_VARIANTS),
   ("Stairs", pal_kangaroo_full_stairs_rough_env_cfg, _CURRICULUM_VARIANTS),
   ("TopSpeed", pal_kangaroo_full_top_speed_env_cfg, _TOP_SPEED_CURRICULUM_VARIANTS),

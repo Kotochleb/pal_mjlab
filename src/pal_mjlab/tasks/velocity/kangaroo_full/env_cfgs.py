@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
 from mjlab.managers.event_manager import EventTermCfg
@@ -464,11 +466,6 @@ def pal_kangaroo_full_flat_env_cfg(
     assert isinstance(twist_cmd, UniformVelocityCommandCfg)
     twist_cmd.ranges.lin_vel_x = (-1.5, 2.0)
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
-  else:
-    assert "command_vel" in cfg.curriculum
-    cfg.curriculum["command_vel"].params["velocity_stages"] = (
-      flat_forward_velocity_stages()
-    )
 
   return configure_lp_acrl(cfg, curriculum, play=play)
 
@@ -515,6 +512,54 @@ def flat_forward_velocity_stages() -> list[dict]:
       stage["ang_vel_z"] = (-0.7, 0.7)
     stages.append(stage)
   return stages
+
+
+def pal_kangaroo_full_flat_high_speed_env_cfg(
+  play: bool = False,
+  transmission: Transmission = "actuator",
+  femur_closure: FemurClosure = "prismatic",
+  mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
+  ankle_normalized: bool = False,
+  actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
+) -> ManagerBasedRlEnvCfg:
+  """Flat task whose default curriculum ramps forward vx to 6 m/s."""
+  if curriculum != "default":
+    raise ValueError("FlatHighSpeed is only defined with the default curriculum")
+  cfg = pal_kangaroo_full_flat_env_cfg(
+    play=play,
+    transmission=transmission,
+    femur_closure=femur_closure,
+    mjcf=mjcf,
+    lower_body=lower_body,
+    ankle_normalized=ankle_normalized,
+    actuator_model=actuator_model,
+    curriculum=curriculum,
+  )
+
+  robot = cfg.scene.entities["robot"]
+  assert robot.articulation is not None
+  cfg.scene.entities["robot"] = replace(
+    robot,
+    articulation=replace(robot.articulation, soft_joint_pos_limit_factor=0.995),
+  )
+
+  cfg.rewards.pop("joint_vel_limits", None)
+  cfg.rewards.pop("foot_swing_height", None)
+  cfg.rewards["pose"].weight *= 0.5
+  cfg.rewards["track_linear_velocity"].weight *= 1.25
+
+  assert cfg.curriculum is not None
+  if play:
+    twist_cmd = cfg.commands["twist"]
+    assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+    twist_cmd.ranges.lin_vel_x = (-2.0, FLAT_FORWARD_LIN_VEL_X_MAX)
+  else:
+    cfg.curriculum["command_vel"].params["velocity_stages"] = (
+      flat_forward_velocity_stages()
+    )
+  return cfg
 
 
 def pal_kangaroo_full_top_speed_env_cfg(
