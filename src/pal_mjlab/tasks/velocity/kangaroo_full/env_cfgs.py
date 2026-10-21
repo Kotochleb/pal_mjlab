@@ -464,8 +464,57 @@ def pal_kangaroo_full_flat_env_cfg(
     assert isinstance(twist_cmd, UniformVelocityCommandCfg)
     twist_cmd.ranges.lin_vel_x = (-1.5, 2.0)
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
+  else:
+    assert "command_vel" in cfg.curriculum
+    cfg.curriculum["command_vel"].params["velocity_stages"] = (
+      flat_forward_velocity_stages()
+    )
 
   return configure_lp_acrl(cfg, curriculum, play=play)
+
+
+# Steps are env steps (common_step_counter); iterations * num_steps_per_env.
+_STEPS_PER_ITERATION = 24
+FLAT_FORWARD_LIN_VEL_X_MAX = 7.0
+FLAT_FORWARD_LIN_VEL_X_STEP = 0.5
+FLAT_FORWARD_STAGE_ITERATIONS = 500
+
+
+def flat_forward_velocity_stages() -> list[dict]:
+  """Forward vx grows 1.0 -> 6.0 m/s by 0.5 every 500 iterations.
+
+  Backward vx, vy and yaw rate follow mjlab's default command_vel schedule.
+  The vx range stays mostly positive, so uniform sampling is mostly forward.
+  """
+
+  def lower_x(iteration: int) -> float:
+    return -2.0 if iteration >= 10000 else -1.5 if iteration >= 5000 else -1.0
+
+  def upper_x(iteration: int) -> float:
+    increments = iteration // FLAT_FORWARD_STAGE_ITERATIONS
+    return min(
+      1.0 + FLAT_FORWARD_LIN_VEL_X_STEP * increments, FLAT_FORWARD_LIN_VEL_X_MAX
+    )
+
+  num_increments = round(
+    (FLAT_FORWARD_LIN_VEL_X_MAX - 1.0) / FLAT_FORWARD_LIN_VEL_X_STEP
+  )
+  iterations = sorted(
+    {k * FLAT_FORWARD_STAGE_ITERATIONS for k in range(num_increments + 1)}
+    | {5000, 10000}
+  )
+  stages: list[dict] = []
+  for iteration in iterations:
+    stage: dict = {
+      "step": iteration * _STEPS_PER_ITERATION,
+      "lin_vel_x": (lower_x(iteration), upper_x(iteration)),
+    }
+    if iteration == 0:
+      stage["ang_vel_z"] = (-0.5, 0.5)
+    elif iteration == 5000:
+      stage["ang_vel_z"] = (-0.7, 0.7)
+    stages.append(stage)
+  return stages
 
 
 def pal_kangaroo_full_top_speed_env_cfg(
