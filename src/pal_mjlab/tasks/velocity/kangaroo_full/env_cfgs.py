@@ -1,3 +1,4 @@
+import math
 from dataclasses import replace
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -473,44 +474,39 @@ def pal_kangaroo_full_flat_env_cfg(
 # Steps are env steps (common_step_counter); iterations * num_steps_per_env.
 _STEPS_PER_ITERATION = 24
 FLAT_FORWARD_LIN_VEL_X_MAX = 7.0
-FLAT_FORWARD_LIN_VEL_X_STEP = 0.5
-FLAT_FORWARD_STAGE_ITERATIONS = 500
+FLAT_FORWARD_LIN_VEL_X_BUCKET = 0.5
+# (bucket upper bound <= limit, iterations spent in that bucket); faster
+# buckets are held longer.
+FLAT_FORWARD_BUCKET_ITERATIONS = ((1.5, 500), (3.0, 1000), (math.inf, 2000))
+# Yaw rate is kept at a quarter of the flat task's (-0.7, 0.7) range.
+FLAT_FORWARD_ANG_VEL_Z = (-0.7 / 4, 0.7 / 4)
 
 
 def flat_forward_velocity_stages() -> list[dict]:
-  """Forward vx grows 1.0 -> 6.0 m/s by 0.5 every 500 iterations.
+  """Forward vx is sampled from 0.5 m/s wide buckets: 0-0.5, 0.5-1.0, ...
 
-  Backward vx, vy and yaw rate follow mjlab's default command_vel schedule.
-  The vx range stays mostly positive, so uniform sampling is mostly forward.
+  Each bucket replaces the previous one (no backward or slower commands). A
+  bucket with upper bound <= 1.5 m/s lasts 500 iterations, <= 3.0 m/s 1000,
+  and faster ones 2000, up to FLAT_FORWARD_LIN_VEL_X_MAX. Lateral vy is zero
+  and yaw rate stays at FLAT_FORWARD_ANG_VEL_Z throughout.
   """
-
-  def lower_x(iteration: int) -> float:
-    return -2.0 if iteration >= 10000 else -1.5 if iteration >= 5000 else -1.0
-
-  def upper_x(iteration: int) -> float:
-    increments = iteration // FLAT_FORWARD_STAGE_ITERATIONS
-    return min(
-      1.0 + FLAT_FORWARD_LIN_VEL_X_STEP * increments, FLAT_FORWARD_LIN_VEL_X_MAX
-    )
-
-  num_increments = round(
-    (FLAT_FORWARD_LIN_VEL_X_MAX - 1.0) / FLAT_FORWARD_LIN_VEL_X_STEP
-  )
-  iterations = sorted(
-    {k * FLAT_FORWARD_STAGE_ITERATIONS for k in range(num_increments + 1)}
-    | {5000, 10000}
-  )
+  num_buckets = round(FLAT_FORWARD_LIN_VEL_X_MAX / FLAT_FORWARD_LIN_VEL_X_BUCKET)
   stages: list[dict] = []
-  for iteration in iterations:
+  iteration = 0
+  for k in range(num_buckets):
+    lower = k * FLAT_FORWARD_LIN_VEL_X_BUCKET
+    upper = lower + FLAT_FORWARD_LIN_VEL_X_BUCKET
     stage: dict = {
       "step": iteration * _STEPS_PER_ITERATION,
-      "lin_vel_x": (lower_x(iteration), upper_x(iteration)),
+      "lin_vel_x": (lower, upper),
     }
-    if iteration == 0:
-      stage["ang_vel_z"] = (-0.5, 0.5)
-    elif iteration == 5000:
-      stage["ang_vel_z"] = (-0.7, 0.7)
+    if k == 0:
+      stage["lin_vel_y"] = (0.0, 0.0)
+      stage["ang_vel_z"] = FLAT_FORWARD_ANG_VEL_Z
     stages.append(stage)
+    iteration += next(
+      n for limit, n in FLAT_FORWARD_BUCKET_ITERATIONS if upper <= limit + 1e-9
+    )
   return stages
 
 
@@ -524,7 +520,7 @@ def pal_kangaroo_full_flat_high_speed_env_cfg(
   actuator_model: ActuatorModel = "builtin",
   curriculum: Curriculum = "default",
 ) -> ManagerBasedRlEnvCfg:
-  """Flat task whose default curriculum ramps forward vx to 6 m/s."""
+  """Flat task whose default curriculum steps forward vx buckets to 7 m/s."""
   if curriculum != "default":
     raise ValueError("FlatHighSpeed is only defined with the default curriculum")
   cfg = pal_kangaroo_full_flat_env_cfg(
@@ -554,7 +550,9 @@ def pal_kangaroo_full_flat_high_speed_env_cfg(
   if play:
     twist_cmd = cfg.commands["twist"]
     assert isinstance(twist_cmd, UniformVelocityCommandCfg)
-    twist_cmd.ranges.lin_vel_x = (-2.0, FLAT_FORWARD_LIN_VEL_X_MAX)
+    twist_cmd.ranges.lin_vel_x = (0.0, FLAT_FORWARD_LIN_VEL_X_MAX)
+    twist_cmd.ranges.lin_vel_y = (0.0, 0.0)
+    twist_cmd.ranges.ang_vel_z = FLAT_FORWARD_ANG_VEL_Z
   else:
     cfg.curriculum["command_vel"].params["velocity_stages"] = (
       flat_forward_velocity_stages()
