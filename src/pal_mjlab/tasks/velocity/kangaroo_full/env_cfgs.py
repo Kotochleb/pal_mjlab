@@ -474,7 +474,10 @@ def pal_kangaroo_full_flat_env_cfg(
 # Steps are env steps (common_step_counter); iterations * num_steps_per_env.
 _STEPS_PER_ITERATION = 24
 FLAT_FORWARD_LIN_VEL_X_MAX = 7.0
-FLAT_FORWARD_LIN_VEL_X_BUCKET = 0.5
+FLAT_FORWARD_LIN_VEL_X_BUCKET = 1.0
+# Consecutive buckets start this far apart, so each overlaps the previous one
+# by half its width: 0-1, 0.5-1.5, 1-2, ...
+FLAT_FORWARD_LIN_VEL_X_STRIDE = 0.5
 # (bucket upper bound <= limit, iterations spent in that bucket); faster
 # buckets are held longer.
 FLAT_FORWARD_BUCKET_ITERATIONS = ((1.5, 500), (3.0, 1000), (math.inf, 2000))
@@ -483,18 +486,25 @@ FLAT_FORWARD_ANG_VEL_Z = (-0.7 / 4, 0.7 / 4)
 
 
 def flat_forward_velocity_stages() -> list[dict]:
-  """Forward vx is sampled from 0.5 m/s wide buckets: 0-0.5, 0.5-1.0, ...
+  """Forward vx is sampled from overlapping 1 m/s buckets: 0-1, 0.5-1.5, ...
 
-  Each bucket replaces the previous one (no backward or slower commands). A
-  bucket with upper bound <= 1.5 m/s lasts 500 iterations, <= 3.0 m/s 1000,
-  and faster ones 2000, up to FLAT_FORWARD_LIN_VEL_X_MAX. Lateral vy is zero
-  and yaw rate stays at FLAT_FORWARD_ANG_VEL_Z throughout.
+  Each bucket replaces the previous one (no backward commands), but shares
+  half its range with it. A bucket with upper bound <= 1.5 m/s lasts 500
+  iterations, <= 3.0 m/s 1000, and faster ones 2000, up to
+  FLAT_FORWARD_LIN_VEL_X_MAX. Lateral vy is zero and yaw rate stays at
+  FLAT_FORWARD_ANG_VEL_Z throughout.
   """
-  num_buckets = round(FLAT_FORWARD_LIN_VEL_X_MAX / FLAT_FORWARD_LIN_VEL_X_BUCKET)
+  num_buckets = (
+    round(
+      (FLAT_FORWARD_LIN_VEL_X_MAX - FLAT_FORWARD_LIN_VEL_X_BUCKET)
+      / FLAT_FORWARD_LIN_VEL_X_STRIDE
+    )
+    + 1
+  )
   stages: list[dict] = []
   iteration = 0
   for k in range(num_buckets):
-    lower = k * FLAT_FORWARD_LIN_VEL_X_BUCKET
+    lower = k * FLAT_FORWARD_LIN_VEL_X_STRIDE
     upper = lower + FLAT_FORWARD_LIN_VEL_X_BUCKET
     stage: dict = {
       "step": iteration * _STEPS_PER_ITERATION,

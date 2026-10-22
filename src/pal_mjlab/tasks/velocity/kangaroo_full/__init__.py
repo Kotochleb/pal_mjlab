@@ -14,8 +14,9 @@ from .rl_cfg import pal_kangaroo_full_ppo_runner_cfg
 
 # Task variants on flat, rough and stairs terrain, plus the flat "TopSpeed"
 # task (vx up to 10 m/s, doubled vy/yaw rate) and "FlatHighSpeed" (default
-# curriculum stepping forward-only 0.5 m/s vx buckets up to 7 m/s). Names
-# identify six model axes plus the curriculum (the legacy default has no curriculum suffix).
+# curriculum stepping forward-only, half-overlapping 1 m/s vx buckets up to
+# 7 m/s). Names identify six model axes plus the curriculum (the legacy
+# default has no curriculum suffix).
 _TRANSMISSION_VARIANTS = {"Joint": "joint", "Actuator": "actuator", "Lut": "lut"}
 _FEMUR_CLOSURE_VARIANTS = {"Prismatic": "prismatic", "Linkage": "linkage"}
 _MJCF_VARIANTS = {
