@@ -476,21 +476,25 @@ _STEPS_PER_ITERATION = 24
 FLAT_FORWARD_LIN_VEL_X_MAX = 7.0
 FLAT_FORWARD_LIN_VEL_X_BUCKET = 1.0
 # Consecutive buckets start this far apart, so each overlaps the previous one
-# by half its width: 0-1, 0.5-1.5, 1-2, ...
-FLAT_FORWARD_LIN_VEL_X_STRIDE = 0.5
+# by three quarters of its width: 0-1, 0.25-1.25, 0.5-1.5, ...
+FLAT_FORWARD_LIN_VEL_X_STRIDE = 0.25
 # (bucket upper bound <= limit, iterations spent in that bucket); faster
 # buckets are held longer.
-FLAT_FORWARD_BUCKET_ITERATIONS = ((1.5, 500), (3.0, 1000), (math.inf, 2000))
+FLAT_FORWARD_BUCKET_ITERATIONS = ((1.5, 250), (3.0, 500), (math.inf, 1000))
 # Yaw rate is kept at a quarter of the flat task's (-0.7, 0.7) range.
 FLAT_FORWARD_ANG_VEL_Z = (-0.7 / 4, 0.7 / 4)
+# Commands with |vx| at or above this are held for FLAT_FORWARD_HOLD_TIME_RANGE
+# seconds (instead of the default 3-8 s) and never turned into standing.
+FLAT_FORWARD_HOLD_SPEED_THRESHOLD = 2.5
+FLAT_FORWARD_HOLD_TIME_RANGE = (10.0, 20.0)
 
 
 def flat_forward_velocity_stages() -> list[dict]:
-  """Forward vx is sampled from overlapping 1 m/s buckets: 0-1, 0.5-1.5, ...
+  """Forward vx is sampled from overlapping 1 m/s buckets: 0-1, 0.25-1.25, ...
 
   Each bucket replaces the previous one (no backward commands), but shares
-  half its range with it. A bucket with upper bound <= 1.5 m/s lasts 500
-  iterations, <= 3.0 m/s 1000, and faster ones 2000, up to
+  three quarters of its range with it. A bucket with upper bound <= 1.5 m/s
+  lasts 250 iterations, <= 3.0 m/s 500, and faster ones 1000, up to
   FLAT_FORWARD_LIN_VEL_X_MAX. Lateral vy is zero and yaw rate stays at
   FLAT_FORWARD_ANG_VEL_Z throughout.
   """
@@ -553,8 +557,29 @@ def pal_kangaroo_full_flat_high_speed_env_cfg(
 
   cfg.rewards.pop("joint_vel_limits", None)
   cfg.rewards.pop("foot_swing_height", None)
-  cfg.rewards["pose"].weight *= 0.5
+  for reward_name in (
+    "upright",
+    # "angular_momentum",
+    "body_ang_vel",
+    "foot_clearance",
+    "soft_landing",
+  ):
+    cfg.rewards.pop(reward_name, None)
+  cfg.rewards["pose"].weight *= 1.0
+  # Above 0.75 m/s the pose reward is effectively off: variance 1e5 on every joint.
+  cfg.rewards["pose"].params["running_threshold"] = 0.75
+  cfg.rewards["pose"].params["std_running"] = {".*": math.sqrt(1e5)}
   cfg.rewards["track_linear_velocity"].weight *= 1.25
+  cfg.rewards["action_rate_l2"].weight *= 0.5
+
+  cfg.episode_length_s *= 2
+  twist_cmd = cfg.commands["twist"]
+  assert isinstance(twist_cmd, UniformVelocityCommandCfg)
+  cfg.commands["twist"] = mdp.HighSpeedHoldVelocityCommandCfg.from_uniform(
+    twist_cmd,
+    hold_speed_threshold=FLAT_FORWARD_HOLD_SPEED_THRESHOLD,
+    hold_time_range=FLAT_FORWARD_HOLD_TIME_RANGE,
+  )
 
   assert cfg.curriculum is not None
   if play:
