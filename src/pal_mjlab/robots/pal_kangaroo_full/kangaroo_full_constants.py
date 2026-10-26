@@ -615,12 +615,16 @@ _LOWER_BODY_UPPER_BODY_ACTUATORS = (KANGAROO_PELVIS_ACTUATOR_CFG,)
 # was fit against.
 FEMUR_JOINT_REF = 1.206077
 
+# leg_*_4_joint is measured off the shank in the tendon MJCFs but off the femur
+# in the simple model: q4 = q4_simple - femur + knee - SIMPLE_ANKLE_PITCH_OFFSET.
+SIMPLE_ANKLE_PITCH_OFFSET = 1.211271
+
 INIT_STATE = EntityCfg.InitialStateCfg(
   pos=(0.0, 0.0, 0.93),
   rot=(1.0, 0.0, 0.0, 0.0),
   # Leg length, femur and knee read in the simple model's coordinates (joint
-  # refs in the tendon MJCFs). leg_*_4_joint is still measured off the shank:
-  # q4 = q4_simple - femur + knee - 1.211271.
+  # refs in the tendon MJCFs). leg_*_4_joint is still measured off the shank,
+  # see SIMPLE_ANKLE_PITCH_OFFSET.
   joint_pos={
     "leg_left_1_joint": 0.000145,
     "leg_right_1_joint": -0.000179,

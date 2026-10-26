@@ -25,6 +25,7 @@ from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (  # noqa
   LOWER_BODY_JOINT_ORDER,
   REGEX_SIMPLE_MODEL_ACTUATED_JOINTS_ONLY,
   REGEX_SIMPLE_MODEL_OBSERVABLE_JOINTS_ONLY,
+  SIMPLE_ANKLE_PITCH_OFFSET,
   SIMPLE_MODEL_JOINT_ORDER,
   ActuatorModel,
   FemurClosure,

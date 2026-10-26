@@ -547,7 +547,16 @@ def pal_kangaroo_full_flat_high_speed_env_cfg(
     actuator_model=actuator_model,
     curriculum=curriculum,
   )
+  return configure_flat_high_speed(cfg, play=play)
 
+
+def configure_flat_high_speed(
+  cfg: ManagerBasedRlEnvCfg, play: bool = False
+) -> ManagerBasedRlEnvCfg:
+  """Turns a flat default-curriculum cfg into the FlatHighSpeed task.
+
+  Shared by pal_kangaroo_full and pal_kangaroo_full_full.
+  """
   robot = cfg.scene.entities["robot"]
   assert robot.articulation is not None
   cfg.scene.entities["robot"] = replace(

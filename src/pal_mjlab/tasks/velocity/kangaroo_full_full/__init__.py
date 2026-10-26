@@ -8,12 +8,15 @@ from pal_mjlab.tasks.velocity.lp_acrl_runner import LpAcrlVelocityOnPolicyRunner
 
 from .env_cfgs import (
   pal_kangaroo_full_full_flat_env_cfg,
+  pal_kangaroo_full_full_flat_high_speed_env_cfg,
   pal_kangaroo_full_full_rough_env_cfg,
   pal_kangaroo_full_full_top_speed_env_cfg,
 )
 
 # One task per actuation variant, on flat and on rough terrain, plus the flat
-# "TopSpeed" task (vx up to 10 m/s, doubled vy/yaw rate). Unlike
+# "TopSpeed" task (vx up to 10 m/s, doubled vy/yaw rate) and "FlatHighSpeed"
+# (default curriculum stepping forward-only, overlapping 1 m/s vx buckets up
+# to 7 m/s -- see pal_kangaroo_full's configure_flat_high_speed). Unlike
 # pal_kangaroo_full this has no femur_closure or mjcf axis (this MJCF only
 # has the one four-bar femur closure and the one XML -- see the module
 # docstring on kangaroo_full_full_constants.py), so four model axes --
@@ -32,9 +35,16 @@ _ACTUATOR_MODEL_VARIANTS = {"Builtin": "builtin", "DcMotor": "dc_motor"}
 _CURRICULUM_VARIANTS = {"": "default", "LpAcrl": "lp_acrl"}
 # TopSpeed only exists with LP-ACRL, so its ids carry no curriculum suffix.
 _TOP_SPEED_CURRICULUM_VARIANTS = {"": "lp_acrl"}
+# FlatHighSpeed's forward-vx ramp lives in the default curriculum only.
+_FLAT_HIGH_SPEED_CURRICULUM_VARIANTS = {"": "default"}
 
 for _terrain, _env_cfg_fn, _curriculum_variants in (
   ("Flat", pal_kangaroo_full_full_flat_env_cfg, _CURRICULUM_VARIANTS),
+  (
+    "FlatHighSpeed",
+    pal_kangaroo_full_full_flat_high_speed_env_cfg,
+    _FLAT_HIGH_SPEED_CURRICULUM_VARIANTS,
+  ),
   ("Rough", pal_kangaroo_full_full_rough_env_cfg, _CURRICULUM_VARIANTS),
   (
     "TopSpeed",
