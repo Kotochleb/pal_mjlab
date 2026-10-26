@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
 
-from .commands import FLIGHT, LANDED, STANCE, JumpHeightCommand
+from .commands import FLIGHT, SETTLED, STANCE, JumpHeightCommand, match_joint_values
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -49,24 +49,16 @@ def jump_height(
   return reward * valid / scale
 
 
-def landing_completed(
-  env: ManagerBasedRlEnv, command_name: str, landing_time: float = 1.0
-) -> torch.Tensor:
-  """Once, on the step the landing stage reaches landing_time after touchdown.
+def landing_completed(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+  """exp(-mean((q-q_default)^2/std^2)) on every step in the last state, SETTLED.
 
-  Match landing_time to the jump_finished termination so the payout lands on
-  the episode's final step, after surviving every landing failure check.
+  SETTLED is entered from LANDED when JumpHeightCommand.settled holds: near the
+  default pose, with joint and base velocities close to zero. Within it the
+  reward grows from exp(-1) at the pose tolerance to 1 at the reference; it is
+  zero in every other state.
   """
   term = _jump(env, command_name)
-  steps = landing_time / env.step_dt
-  done = (
-    (term.phase == LANDED)
-    & (term.landed_steps >= steps)
-    & (term.landed_steps - 1 < steps)
-  )
-  # An impulse, like jump_height: undo the reward manager's dt scaling.
-  scale = env.step_dt if env.cfg.scale_rewards_by_dt else 1.0
-  return done / scale
+  return torch.exp(-term.pose_error) * (term.phase == SETTLED)
 
 
 def estimated_jump_height(
@@ -85,8 +77,8 @@ def estimated_jump_height(
 class height_variable_posture:
   """exp(-mean((q-q_default)^2/std(height)^2)), with per-joint tolerances.
 
-  Interpolate ground/airborne stds using measured root rise, clamped at both
-  ends. This preserves the robot's own default configuration and lets it crouch
+  Interpolate ground/airborne stds using the measured world-frame base height,
+  clamped at both ends of height_range (world z). This preserves the robot's own default configuration and lets it crouch
   and extend near the ground. Targets and passive linkage joints are unchanged.
   """
 
@@ -101,20 +93,10 @@ class height_variable_posture:
     )
     if not names:
       raise ValueError("Height posture reward requires at least one joint.")
-    self.stds = []
-    for key in ("std_ground", "std_airborne"):
-      mapping = cfg.params[key]
-      values = []
-      for name in names:
-        matches = [
-          value for pattern, value in mapping.items() if re.fullmatch(pattern, name)
-        ]
-        if len(matches) != 1 or not math.isfinite(matches[0]) or matches[0] <= 0:
-          raise ValueError(
-            f"{key} must match {name!r} once with a positive finite std."
-          )
-        values.append(matches[0])
-      self.stds.append(torch.tensor(values, device=env.device))
+    self.stds = [
+      torch.tensor(match_joint_values(cfg.params[key], names, key), device=env.device)
+      for key in ("std_ground", "std_airborne")
+    ]
     low, high = cfg.params["height_range"]
     if not (math.isfinite(low) and math.isfinite(high) and low < high):
       raise ValueError("Posture height_range must be finite and strictly increasing.")
@@ -155,9 +137,7 @@ class joint_symmetry_l2:
     joint_names = list(robot.joint_names)
     ids = asset_cfg.joint_ids
     selected = (
-      joint_names[ids]
-      if isinstance(ids, slice)
-      else [joint_names[i] for i in ids]
+      joint_names[ids] if isinstance(ids, slice) else [joint_names[i] for i in ids]
     )
     left_ids, right_ids, mirrored = [], [], []
     for name in selected:
@@ -168,9 +148,7 @@ class joint_symmetry_l2:
         raise ValueError(f"Symmetry partner {partner!r} of {name!r} is not selected.")
       left_ids.append(joint_names.index(name))
       right_ids.append(joint_names.index(partner))
-      mirrored.append(
-        any(re.fullmatch(p, name) for p in cfg.params["mirrored_joints"])
-      )
+      mirrored.append(any(re.fullmatch(p, name) for p in cfg.params["mirrored_joints"]))
     if not left_ids or 2 * len(left_ids) != len(selected):
       raise ValueError("Symmetry cost requires complete left/right joint pairs.")
     self.left_ids = torch.tensor(left_ids, device=env.device)
@@ -206,47 +184,6 @@ def ground_force_l2(
   """Sum of squared foot-ground contact forces, normalized by force_scale."""
   force = env.scene[sensor_name].data.force
   return (force.norm(dim=-1) / force_scale).square().sum(dim=-1)
-
-
-def soft_impact(
-  env: ManagerBasedRlEnv,
-  command_name: str,
-  max_acceleration: float = 100.0,
-  window: float = 0.3,
-) -> torch.Tensor:
-  """1 - deceleration / max_acceleration, clamped, for window s after touchdown."""
-  term = _jump(env, command_name)
-  landing = (term.phase == LANDED) & (term.landed_time < window)
-  value = (1 - term.impact_deceleration / max_acceleration).clamp(0, 1)
-  return value * landing
-
-
-def catch_landing(
-  env: ManagerBasedRlEnv, command_name: str, window: float = 0.3
-) -> torch.Tensor:
-  """Reward downward base speed, clipped at 1 m/s, just after touchdown."""
-  term = _jump(env, command_name)
-  landing = (term.phase == LANDED) & (term.landed_time < window)
-  return (-term.robot.data.root_link_lin_vel_w[:, 2]).clamp(0, 1) * landing
-
-
-def damp_landing(
-  env: ManagerBasedRlEnv,
-  command_name: str,
-  asset_cfg: SceneEntityCfg,
-  window: float = 0.3,
-) -> torch.Tensor:
-  """Reward knee flexion during landing, adapting Olympus' transversal rate.
-
-  Kangaroo's knee angles decrease as its legs retract. Average the two
-  retraction rates after clipping each to [0, 1] rad/s, as in Olympus Lab.
-  Knee coordinates are shared by the joint, actuator, and LUT variants.
-  """
-  term = _jump(env, command_name)
-  landing = (term.phase == LANDED) & (term.landed_time < window)
-  robot = env.scene[asset_cfg.name]
-  retraction = -robot.data.joint_vel[:, asset_cfg.joint_ids]
-  return retraction.clamp(0, 1).mean(dim=-1) * landing
 
 
 def landing_drift_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:

@@ -3,7 +3,7 @@
 from copy import deepcopy
 
 from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.managers.observation_manager import ObservationTermCfg
+from mjlab.managers.observation_manager import ObservationGroupCfg, ObservationTermCfg
 from mjlab.tasks.tracking.mdp import MotionCommandCfg
 from mjlab.tasks.tracking.tracking_env_cfg import make_tracking_env_cfg
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
@@ -68,6 +68,35 @@ _STATE_ESTIMATION_TERMS = ("motion_anchor_pos_b", "motion_anchor_ori_b", "base_l
 _VELOCITY_EVENTS = ("reset_base", "reset_robot_joints", "randomize_terrain")
 
 
+def full_model_tracking_actor_observations(
+  cfg: ManagerBasedRlEnvCfg, tracking: ManagerBasedRlEnvCfg | None = None
+) -> ObservationGroupCfg:
+  """The full-model tracking actor group, built from a velocity config.
+
+  Shared with other full-model tasks so their policies observe exactly what the
+  tracking policy does; only the "command" term's command is task-specific.
+  """
+  actor = (tracking or make_tracking_env_cfg()).observations["actor"]
+  velocity_terms = cfg.observations["actor"].terms
+  for term in _PROPRIOCEPTION_TERMS:
+    actor.terms[term] = velocity_terms[term]
+  actor.terms["imu_projected_gravity"] = ObservationTermCfg(
+    func=mdp.imu_projected_gravity,
+    params={"sensor_name": "robot/imu_quat"},
+    noise=Unoise(n_min=-0.02, n_max=0.02),
+  )
+  actor.terms["base_lin_acc"] = ObservationTermCfg(
+    func=mdp.builtin_sensor,
+    params={"sensor_name": "robot/imu_lin_acc"},
+    noise=Unoise(n_min=-0.05, n_max=0.05),
+  )
+  # No state estimation on the robot: the actor sees neither the base pose
+  # relative to the motion anchor nor the base linear velocity.
+  for term in _STATE_ESTIMATION_TERMS:
+    del actor.terms[term]
+  return actor
+
+
 def configure_full_model_tracking(
   cfg: ManagerBasedRlEnvCfg,
   *,
@@ -119,23 +148,13 @@ def configure_full_model_tracking(
   cfg.commands = {"motion": motion_cmd}
 
   ## Observations
-  for group_name, group in tracking.observations.items():
-    velocity_terms = cfg.observations[group_name].terms
-    for term in _PROPRIOCEPTION_TERMS:
-      group.terms[term] = velocity_terms[term]
-    cfg.observations[group_name] = group
-  actor_terms = cfg.observations["actor"].terms
-  critic_terms = cfg.observations["critic"].terms
-  actor_terms["imu_projected_gravity"] = ObservationTermCfg(
-    func=mdp.imu_projected_gravity,
-    params={"sensor_name": "robot/imu_quat"},
-    noise=Unoise(n_min=-0.02, n_max=0.02),
-  )
-  actor_terms["base_lin_acc"] = ObservationTermCfg(
-    func=mdp.builtin_sensor,
-    params={"sensor_name": "robot/imu_lin_acc"},
-    noise=Unoise(n_min=-0.05, n_max=0.05),
-  )
+  critic = tracking.observations["critic"]
+  velocity_terms = cfg.observations["critic"].terms
+  for term in _PROPRIOCEPTION_TERMS:
+    critic.terms[term] = velocity_terms[term]
+  cfg.observations["actor"] = full_model_tracking_actor_observations(cfg, tracking)
+  cfg.observations["critic"] = critic
+  critic_terms = critic.terms
   critic_terms["imu_projected_gravity"] = ObservationTermCfg(
     func=mdp.imu_projected_gravity,
     params={"sensor_name": "robot/imu_quat"},
@@ -149,10 +168,6 @@ def configure_full_model_tracking(
       func=mdp.foot_air_time,
       params={"sensor_name": "feet_ground_contact"},
     )
-  # No state estimation on the robot: the actor sees neither the base pose
-  # relative to the motion anchor nor the base linear velocity.
-  for term in _STATE_ESTIMATION_TERMS:
-    del actor_terms[term]
 
   ## Rewards
   # The simple model's tracking rewards, term for term, adapted only where the

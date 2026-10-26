@@ -1,11 +1,7 @@
 from .commands import JumpHeightCommand as JumpHeightCommand
 from .commands import JumpHeightCommandCfg as JumpHeightCommandCfg
 from .curriculums import jump_height_curriculum as jump_height_curriculum
-from .curriculums import landing_time_curriculum as landing_time_curriculum
-from .lp_acrl import LpAcrlJumpHeightCommand as LpAcrlJumpHeightCommand
-from .lp_acrl import LpAcrlJumpHeightCommandCfg as LpAcrlJumpHeightCommandCfg
-from .rewards import catch_landing as catch_landing
-from .rewards import damp_landing as damp_landing
+from .observations import base_height as base_height
 from .rewards import estimated_jump_height as estimated_jump_height
 from .rewards import ground_force_l2 as ground_force_l2
 from .rewards import height_variable_posture as height_variable_posture
@@ -14,7 +10,6 @@ from .rewards import joint_symmetry_l2 as joint_symmetry_l2
 from .rewards import jump_height as jump_height
 from .rewards import landing_completed as landing_completed
 from .rewards import landing_drift_l2 as landing_drift_l2
-from .rewards import soft_impact as soft_impact
 from .terminations import bad_touchdown as bad_touchdown
 from .terminations import excessive_attitude as excessive_attitude
 from .terminations import horizontal_drift as horizontal_drift

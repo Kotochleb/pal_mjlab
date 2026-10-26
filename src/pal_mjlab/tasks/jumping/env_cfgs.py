@@ -6,6 +6,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import time_out
 from mjlab.managers import (
   CurriculumTermCfg,
+  ObservationTermCfg,
   RewardTermCfg,
   SceneEntityCfg,
   TerminationTermCfg,
@@ -19,36 +20,52 @@ from pal_mjlab.robots import (
   Transmission,
 )
 from pal_mjlab.tasks.jumping import mdp
+from pal_mjlab.tasks.tracking.kangaroo_full.env_cfgs import (
+  full_model_tracking_actor_observations,
+)
 from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
 )
-from pal_mjlab.tasks.velocity.mdp.lp_acrl import (
-  Curriculum,
-  LpAcrlCfg,
-  lp_acrl_curriculum,
-)
 
-# (environment steps, minimum rise, maximum rise), metres above standing.
-# Keep easier commands in the distribution as the upper bound increases.
+# All jump heights are the base link's world-frame z (ground plane at z = 0).
+
+# (environment steps, minimum apex, maximum apex), world-frame metres; Kangaroo
+# Full stands with its base at 0.93 m. Training starts at the world-frame apex of
+# motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45), rounded to
+# 1.280 m, +-5 cm, then widens to +-15 cm. Each later stage raises the upper
+# bound 5 cm and narrows the range 2.5 cm, so the lower bound rises 7.5 cm,
+# until the range is 7.5 cm wide (iteration 10,000). The 7.5 cm range then keeps
+# rising 5 cm per stage, capped at a 2 m upper bound. Bounds end in 0 or 5 mm.
+# A new stage every 1,000 PPO iterations of 24 steps, up to 13,000.
 HEIGHT_STAGES = (
-  (0, 0.30, 0.50),
-  (2_000 * 24, 0.20, 0.55),
-  (5_000 * 24, 0.10, 0.70),
-  (10_000 * 24, 0.05, 0.90),
+  (0, 1.230, 1.330),
+  (1_000 * 24, 1.130, 1.430),
+  (2_000 * 24, 1.205, 1.480),
+  (3_000 * 24, 1.280, 1.530),
+  (4_000 * 24, 1.355, 1.580),
+  (5_000 * 24, 1.430, 1.630),
+  (6_000 * 24, 1.505, 1.680),
+  (7_000 * 24, 1.580, 1.730),
+  (8_000 * 24, 1.655, 1.780),
+  (9_000 * 24, 1.730, 1.830),
+  (10_000 * 24, 1.805, 1.880),
+  (11_000 * 24, 1.855, 1.930),
+  (12_000 * 24, 1.905, 1.980),
+  (13_000 * 24, 1.925, 2.000),
 )
 
-# (environment steps, seconds after touchdown that end the episode and pay the
-# landing reward). Training lengthens the landing stage; play uses the last.
-# 10 stages, linear from 0.1 s to 5.0 s, every 250 PPO iterations of 24 steps.
-LANDING_STAGES = tuple(
-  (i * 250 * 24, round(0.1 + i * (5.0 - 0.1) / 9, 3)) for i in range(10)
-)
+# Former rise-based thresholds, now offsets above the robot's nominal standing
+# base height, converted to world z per robot: the posture blend band and the
+# lowest apex that counts as a jump.
+POSTURE_BLEND_RISE = (0.0, 0.05)
+MIN_JUMP_RISE = 0.03
 
-# Frames of each observation term given to actor and critic.
+# Seconds the landed robot must stay settled (default pose, joints and base
+# still) to end the episode; landing_completed pays on each settled step.
+LANDING_HOLD_TIME = 0.5
+
+# Frames of each observation term given to the critic.
 OBSERVATION_HISTORY = 10
-
-# LP-ACRL splits the final stage's range into equal-width tasks instead.
-HEIGHT_BINS = 15
 
 VELOCITY_REWARDS = (
   "body_ang_vel",
@@ -58,31 +75,45 @@ VELOCITY_REWARDS = (
 )
 
 
-def configure_vertical_jump(
-  cfg: ManagerBasedRlEnvCfg, play: bool = False, curriculum: Curriculum = "default"
-) -> ManagerBasedRlEnvCfg:
-  """Adapt a fresh flat velocity config without changing its proprioception.
+def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg) -> dict:
+  """JumpHeightCommandCfg fields shared by every task with this jump state
+  machine, from a fresh full-model velocity config: settling at its standing
+  pose and the lowest apex that counts as a jump, in world z."""
+  pose = cfg.rewards["pose"]
+  return {
+    "settle_joint_names": tuple(pose.params["asset_cfg"].joint_names),
+    "settle_pose_std": deepcopy(pose.params["std_standing"]),
+    "min_jump_height": cfg.scene.entities["robot"].init_state.pos[2] + MIN_JUMP_RISE,
+  }
 
-  Only the existing command observation changes: twist is replaced by a scalar
-  target rise (zero after landing). No height, contact, phase, or terrain-scan
-  observations are added to the actor or critic.
+
+def configure_vertical_jump(
+  cfg: ManagerBasedRlEnvCfg, play: bool = False
+) -> ManagerBasedRlEnvCfg:
+  """Adapt a fresh flat velocity config into a vertical jump task.
+
+  The actor observes exactly what the full-model tracking actor does, with a
+  scalar world-frame apex target (zero after landing) as its command. The critic keeps the
+  velocity task's observations, with that command and stacked history.
   """
   pose = cfg.rewards["pose"]
-  landing_time = LANDING_STAGES[-1][1] if play else LANDING_STAGES[0][1]
+  standing_height = cfg.scene.entities["robot"].init_state.pos[2]
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
+      **jump_state_machine_params(cfg),
     )
   }
+  actor = full_model_tracking_actor_observations(cfg)
+  actor.enable_corruption = cfg.observations["actor"].enable_corruption
+  cfg.observations["actor"] = actor
   for group in cfg.observations.values():
     group.terms["command"].params = {"command_name": "jump_height"}
-  # Per-foot clearance above the ground, as the critic already observes.
-  cfg.observations["actor"].terms["foot_height"] = deepcopy(
-    cfg.observations["critic"].terms["foot_height"]
+  # Privileged: the world-frame base height the targets and apex are measured in.
+  cfg.observations["critic"].terms["base_height"] = ObservationTermCfg(
+    func=mdp.base_height, params={"command_name": "jump_height"}
   )
-  # Stack the last frames of every term, flattened, for both groups.
-  for group in cfg.observations.values():
-    group.history_length = OBSERVATION_HISTORY
+  cfg.observations["critic"].history_length = OBSERVATION_HISTORY
 
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
   cfg.rewards.update(
@@ -103,9 +134,9 @@ def configure_vertical_jump(
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
-          "std_ground": deepcopy(pose.params["std_running"]),
-          "std_airborne": deepcopy(pose.params["std_walking"]),
-          "height_range": (0.0, 0.05),
+          "std_ground": deepcopy(pose.params["std_standing"]),
+          "std_airborne": deepcopy(pose.params["std_running"]),
+          "height_range": tuple(standing_height + h for h in POSTURE_BLEND_RISE),
         },
       ),
       "horizontal_velocity": RewardTermCfg(
@@ -122,7 +153,7 @@ def configure_vertical_jump(
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-3.0,
+        weight=-0.2,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
@@ -130,31 +161,10 @@ def configure_vertical_jump(
           "mirrored_joints": (r"leg_left_[135]_joint",),
         },
       ),
-      "soft_impact": RewardTermCfg(
-        func=mdp.soft_impact,
-        weight=1.0,
-        params={"command_name": "jump_height", "max_acceleration": 100.0},
-      ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=50.0,
-        params={"command_name": "jump_height", "landing_time": landing_time},
-      ),
-      "catch_landing": RewardTermCfg(
-        func=mdp.catch_landing,
-        weight=3.0,
-        params={"command_name": "jump_height", "window": 0.3},
-      ),
-      "damp_landing": RewardTermCfg(
-        func=mdp.damp_landing,
-        weight=10.0,
-        params={
-          "command_name": "jump_height",
-          "asset_cfg": SceneEntityCfg(
-            "robot", joint_names=(r"leg_(left|right)_knee_joint",)
-          ),
-          "window": 0.3,
-        },
+        weight=20.0,
+        params={"command_name": "jump_height"},
       ),
     }
   )
@@ -168,20 +178,7 @@ def configure_vertical_jump(
       )
     }
   )
-  if curriculum == "lp_acrl":
-    _configure_lp_acrl(cfg, play=play)
-  elif curriculum != "default":
-    raise ValueError(f"Unknown curriculum: {curriculum!r}")
-  if not play:
-    cfg.curriculum["landing_time"] = CurriculumTermCfg(
-      func=mdp.landing_time_curriculum,
-      params={
-        "reward_name": "landing_completed",
-        "termination_name": "jump_finished",
-        "stages": LANDING_STAGES,
-      },
-    )
-  cfg.episode_length_s = 20.0
+  cfg.episode_length_s = 8.0
   cfg.terminations.pop("fell_over", None)  # Replaced by per-axis attitude limits.
   cfg.terminations.update(
     {
@@ -189,7 +186,7 @@ def configure_vertical_jump(
       "jump_finished": TerminationTermCfg(
         func=mdp.jump_finished,
         time_out=True,
-        params={"command_name": "jump_height", "landing_time": landing_time},
+        params={"command_name": "jump_height", "hold_time": LANDING_HOLD_TIME},
       ),
       "bad_touchdown": TerminationTermCfg(
         func=mdp.bad_touchdown,
@@ -221,11 +218,11 @@ def configure_vertical_jump(
       ),
       "excessive_attitude": TerminationTermCfg(
         func=mdp.excessive_attitude,
-        params={"command_name": "jump_height", "max_angle_deg": 25.0},
+        params={"command_name": "jump_height", "max_angle_deg": 40.0},
       ),
       "horizontal_drift": TerminationTermCfg(
         func=mdp.horizontal_drift,
-        params={"command_name": "jump_height", "max_distance": 0.2},
+        params={"command_name": "jump_height", "max_distance": 0.5},
       ),
     }
   )
@@ -238,24 +235,6 @@ def configure_vertical_jump(
   return cfg
 
 
-def _configure_lp_acrl(cfg: ManagerBasedRlEnvCfg, play: bool) -> None:
-  """Replace the time-based height schedule with LP-ACRL over height bins.
-
-  Training and play share the full final-stage range; play samples bins
-  uniformly. The reset term is needed in play too, to assign each episode a bin.
-  """
-  cfg.commands["jump_height"] = mdp.LpAcrlJumpHeightCommandCfg(
-    height_range=HEIGHT_STAGES[-1][1:],
-    height_bins=HEIGHT_BINS,
-    lp_acrl=LpAcrlCfg(adaptive=not play),
-  )
-  cfg.curriculum = {
-    "lp_acrl": CurriculumTermCfg(
-      func=lp_acrl_curriculum, params={"command_name": "jump_height"}
-    )
-  }
-
-
 def pal_kangaroo_full_vertical_jump_env_cfg(
   play: bool = False,
   transmission: Transmission = "actuator",
@@ -264,7 +243,6 @@ def pal_kangaroo_full_vertical_jump_env_cfg(
   lower_body: LowerBody = False,
   ankle_normalized: bool = False,
   actuator_model: ActuatorModel = "builtin",
-  curriculum: Curriculum = "default",
 ) -> ManagerBasedRlEnvCfg:
   return configure_vertical_jump(
     pal_kangaroo_full_flat_env_cfg(
@@ -277,5 +255,4 @@ def pal_kangaroo_full_vertical_jump_env_cfg(
       actuator_model=actuator_model,
     ),
     play=play,
-    curriculum=curriculum,
   )

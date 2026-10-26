@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.utils.lab_api.math import euler_xyz_from_quat
 
-from .commands import LANDED, STANCE, JumpHeightCommand
+from .commands import LANDED, SETTLED, STANCE, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -19,11 +19,15 @@ def _jump(env: ManagerBasedRlEnv, command_name: str) -> JumpHeightCommand:
 
 
 def jump_finished(
-  env: ManagerBasedRlEnv, command_name: str, landing_time: float = 1.0
+  env: ManagerBasedRlEnv, command_name: str, hold_time: float = 0.5
 ) -> torch.Tensor:
-  """Truncate one second after touchdown, without requiring stable contact."""
+  """Truncate once the machine has stayed in its last state, SETTLED, for hold_time.
+
+  Settled is JumpHeightCommand.settled: near the default pose, with joint and
+  base velocities close to zero.
+  """
   term = _jump(env, command_name)
-  return (term.phase == LANDED) & (term.landed_steps >= landing_time / env.step_dt)
+  return (term.phase == SETTLED) & (term.settled_steps >= hold_time / env.step_dt)
 
 
 def bad_touchdown(
@@ -32,9 +36,12 @@ def bad_touchdown(
   max_height_error: float = 0.3,
   min_base_height: float = 0.2,
 ) -> torch.Tensor:
-  """Fail only at touchdown on an inaccurate apex or excessively low base."""
+  """Fail only at touchdown on an inaccurate apex or excessively low base.
+
+  Both the apex and min_base_height are world-frame base-link heights.
+  """
   term = _jump(env, command_name)
-  base_height = term.robot.data.root_link_pos_w[:, 2] - env.scene.env_origins[:, 2]
+  base_height = term.height
   height_error = (term.peak_height - term.target_height).abs()
   return term.just_touchdown & (
     (height_error > max_height_error) | (base_height < min_base_height)
@@ -44,7 +51,7 @@ def bad_touchdown(
 def jumped_again(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
   """Fail on a second takeoff after landing."""
   term = _jump(env, command_name)
-  return term.just_takeoff & (term.phase == LANDED)
+  return term.just_takeoff & (term.phase >= LANDED)
 
 
 def sideways_takeoff(

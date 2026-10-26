@@ -6,7 +6,8 @@ https://github.com/ntnu-arl/olympus_lab/tree/main/envs/vertical_jump
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import torch
@@ -16,13 +17,31 @@ from mjlab.utils.lab_api.math import euler_xyz_from_quat
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
 
-STANCE, FLIGHT, LANDED = range(3)
+# SETTLED is the machine's last state: landed, and settled (see
+# JumpHeightCommand.settled). It falls back to LANDED if settling breaks.
+STANCE, FLIGHT, LANDED, SETTLED = range(4)
+
+
+def match_joint_values(
+  mapping: dict[str, float], names: list[str], key: str
+) -> list[float]:
+  """One positive finite value per joint name, from a {regex: value} mapping."""
+  values = []
+  for name in names:
+    matches = [
+      value for pattern, value in mapping.items() if re.fullmatch(pattern, name)
+    ]
+    if len(matches) != 1 or not math.isfinite(matches[0]) or matches[0] <= 0:
+      raise ValueError(f"{key} must match {name!r} once with a positive finite std.")
+    values.append(matches[0])
+  return values
 
 
 class JumpHeightCommand(CommandTerm):
   """One jump per episode; the scalar input becomes zero after touchdown.
 
-  Heights are rises above the model's nominal standing root height. State is
+  Heights (targets, apex, measured) are the base link's world-frame z; the
+  ground plane is z = 0. State is
   refreshed before rewards/terminations, not by the command manager (which runs
   after rewards in mjlab). The step guard makes all consumers share one update.
   """
@@ -42,9 +61,15 @@ class JumpHeightCommand(CommandTerm):
     self.peak_height = torch.zeros_like(self.target_height)
     self.air_time = torch.zeros_like(self.target_height)
     self.landed_time = torch.zeros_like(self.target_height)
-    self.settled_time = torch.zeros_like(self.target_height)
-    self.impact_deceleration = torch.zeros_like(self.target_height)
-    self.previous_velocity = torch.zeros((self.num_envs, 3), device=self.device)
+    self.settle_joint_ids, names = self.robot.find_joints(
+      cfg.settle_joint_names, preserve_order=True
+    )
+    if not names:
+      raise ValueError("Settling requires at least one joint.")
+    self.settle_pose_std = torch.tensor(
+      match_joint_values(cfg.settle_pose_std, names, "settle_pose_std"),
+      device=self.device,
+    )
     # Horizontal whole-body COM at takeoff; the landing-drift cost reference.
     self.takeoff_com_xy = torch.zeros((self.num_envs, 2), device=self.device)
     self.seen_contact = torch.zeros_like(self.target_height, dtype=torch.bool)
@@ -57,6 +82,8 @@ class JumpHeightCommand(CommandTerm):
     self.episode_steps = torch.zeros_like(self.phase)
     self.idle_steps = torch.zeros_like(self.phase)
     self.landed_steps = torch.zeros_like(self.phase)
+    # Consecutive landed steps spent settled at the default pose.
+    self.settled_steps = torch.zeros_like(self.phase)
     self._last_step = torch.full_like(self.phase, -1)
     self._updated_step = -1
     self.metrics = {
@@ -86,11 +113,8 @@ class JumpHeightCommand(CommandTerm):
 
   @property
   def height(self) -> torch.Tensor:
-    return (
-      self.robot.data.root_link_pos_w[:, 2]
-      - self._env.scene.env_origins[:, 2]
-      - self.robot.data.default_root_state[:, 2]
-    )
+    """World-frame z of the base link; the apex is its maximum in flight."""
+    return self.robot.data.root_link_pos_w[:, 2]
 
   def _sample_targets(self, env_ids: torch.Tensor) -> torch.Tensor:
     return torch.empty(len(env_ids), device=self.device).uniform_(*self.height_range)
@@ -102,8 +126,6 @@ class JumpHeightCommand(CommandTerm):
       self.peak_height,
       self.air_time,
       self.landed_time,
-      self.settled_time,
-      self.impact_deceleration,
       self.seen_contact,
       self.apex_reached,
       self.just_apex,
@@ -112,9 +134,9 @@ class JumpHeightCommand(CommandTerm):
       self.episode_steps,
       self.idle_steps,
       self.landed_steps,
+      self.settled_steps,
     ):
       value[env_ids] = 0
-    self.previous_velocity[env_ids] = 0
     self.takeoff_com_xy[env_ids] = 0
     # Reset observations must not count as a physics step or a takeoff.
     self._last_step[env_ids] = self._env.common_step_counter
@@ -158,46 +180,69 @@ class JumpHeightCommand(CommandTerm):
     flying = fresh & (self.phase == FLIGHT)
     self.air_time[flying] += dt
     self.peak_height[flying] = torch.maximum(self.peak_height, height)[flying]
-    touchdown = flying & contact
+    # Landing starts once both feet are down; a single-foot touch stays in
+    # flight. Settling (JumpHeightCommand.settled) then finishes the jump.
+    touchdown = flying & both_feet
     self.just_touchdown[touchdown] = True
     apex = flying & ~self.apex_reached & ((velocity[:, 2] <= 0) | touchdown)
     self.just_apex[apex] = True
     self.apex_reached[apex] = True
     self.phase[touchdown] = LANDED
-    landed = fresh & (self.phase == LANDED)
+    landed = fresh & (self.phase >= LANDED)
     self.landed_steps[landed] += 1
     self.landed_steps[touchdown] = 0
     self.landed_time[landed] = self.landed_steps[landed] * dt
-    stable = (
-      both_feet
-      & (velocity.norm(dim=-1) < self.cfg.settle_speed)
-      & (self.robot.data.root_link_ang_vel_w.norm(dim=-1) < self.cfg.settle_ang_speed)
-    )
-    self.settled_time[landed] = torch.where(stable, self.settled_time + dt, 0.0)[landed]
+    settled = landed & self.settled
+    self.phase[settled] = SETTLED
+    self.phase[landed & ~settled] = LANDED
+    self.settled_steps[settled] += 1
+    self.settled_steps[landed & ~settled] = 0
     # Olympus accumulates idle steps across pauses in stance (not necessarily
     # consecutive), and clears them once the robot leaves stance.
     stance = fresh & (self.phase == STANCE)
     self.idle_steps[stance & (velocity.norm(dim=-1) < self.cfg.idle_speed)] += 1
     self.idle_steps[fresh & (self.phase != STANCE)] = 0
-    acceleration = (velocity - self.previous_velocity) / dt
-    direction = torch.nn.functional.normalize(self.previous_velocity, dim=-1)
-    self.impact_deceleration[fresh] = (
-      -(acceleration * direction).sum(dim=-1)
-    ).clamp_min(0)[fresh]
-    self.previous_velocity[fresh] = velocity[fresh]
     self._last_step[fresh] = step
+
+  @property
+  def pose_error(self) -> torch.Tensor:
+    """mean((q - q_default)^2 / std^2) over the settle joints."""
+    data = self.robot.data
+    ids = self.settle_joint_ids
+    error = (data.joint_pos[:, ids] - data.default_joint_pos[:, ids]) / (
+      self.settle_pose_std
+    )
+    return error.square().mean(dim=-1)
+
+  @property
+  def settled(self) -> torch.Tensor:
+    """Both feet down, near the default pose, joints and base nearly still.
+
+    The pose is close when exp(-pose_error), the posture reward's kernel, is
+    at least exp(-1): an RMS error within one std.
+    """
+    data = self.robot.data
+    ids = self.settle_joint_ids
+    sensor = self._env.scene[self.cfg.contact_sensor_name]
+    return (
+      (sensor.data.found > 0).all(dim=-1)
+      & (self.pose_error <= 1)
+      & (data.joint_vel[:, ids].abs().amax(dim=-1) < self.cfg.settle_joint_speed)
+      & (data.root_link_lin_vel_w.norm(dim=-1) < self.cfg.settle_speed)
+      & (data.root_link_ang_vel_w.norm(dim=-1) < self.cfg.settle_ang_speed)
+    )
 
   def _update_command(self, env_ids: torch.Tensor | None) -> None:
     ids = slice(None) if env_ids is None else env_ids
     self._command[ids, 0] = torch.where(
-      self.phase[ids] == LANDED, 0.0, self.target_height[ids]
+      self.phase[ids] >= LANDED, 0.0, self.target_height[ids]
     )
 
   def _update_metrics(self) -> None:
     self.metrics["target_height"][:] = self.target_height
     self.metrics["peak_height"][:] = self.peak_height
     self.metrics["height_error"][:] = (self.peak_height - self.target_height).abs()
-    self.metrics["landed"][:] = self.phase == LANDED
+    self.metrics["landed"][:] = self.phase >= LANDED
 
 
 @dataclass(kw_only=True)
@@ -206,13 +251,21 @@ class JumpHeightCommandCfg(CommandTermCfg):
   contact_sensor_name: str = "feet_ground_contact"
   # An episode owns its target; never change the goal during a jump.
   resampling_time_range: tuple[float, float] = (math.inf, math.inf)
-  height_range: tuple[float, float] = (0.05, 0.15)
+  # World-frame base-link apex heights, in metres.
+  height_range: tuple[float, float] = (1.0, 1.1)
   # Olympus Lab's jump state machine threshold.
   takeoff_velocity: float = 0.75
   min_air_time: float = 0.04
-  min_jump_height: float = 0.03
-  settle_speed: float = 0.2
-  settle_ang_speed: float = 0.5
+  # Lowest world-frame apex that counts as a jump (rewarded by jump_height).
+  min_jump_height: float = 0.96
+  # Landing is complete once settled: pose within settle_pose_std of default
+  # (RMS over settle_joint_names), every such joint slower than
+  # settle_joint_speed, and the base slower than settle_speed/settle_ang_speed.
+  settle_joint_names: tuple[str, ...] = (".*",)
+  settle_pose_std: dict[str, float] = field(default_factory=lambda: {".*": 0.05})
+  settle_joint_speed: float = 0.1
+  settle_speed: float = 0.05
+  settle_ang_speed: float = 0.1
   idle_speed: float = 0.1
 
   def __post_init__(self):
