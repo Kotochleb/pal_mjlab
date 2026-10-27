@@ -66,6 +66,9 @@ MIN_JUMP_RISE = 0.03
 LANDING_HOLD_TIME = 0.5
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
+# Every joint's airborne std in the pose reward, in rad (m for prismatic
+# joints): large enough that the posture is effectively free in flight.
+AIRBORNE_JOINT_STD = 1e4
 # (environment steps, settled joint speed limit in rad/s, settled hold time in
 # s): control points every 500 PPO iterations of 24 steps, linearly
 # interpolated in between (constant after the last). The speed limit tightens
@@ -147,7 +150,7 @@ def configure_vertical_jump(
     {
       "jump_height": RewardTermCfg(
         func=mdp.jump_height,
-        weight=30.0,
+        weight=40.0,
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "estimated_jump_height": RewardTermCfg(
@@ -162,7 +165,7 @@ def configure_vertical_jump(
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
           "std_ground": deepcopy(pose.params["std_standing"]),
-          "std_airborne": deepcopy(pose.params["std_running"]),
+          "std_airborne": dict.fromkeys(pose.params["std_running"], AIRBORNE_JOINT_STD),
           "height_range": tuple(standing_height + h for h in POSTURE_BLEND_RISE),
         },
       ),
@@ -189,7 +192,7 @@ def configure_vertical_jump(
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-10.0,
+        weight=-6.0,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
@@ -199,7 +202,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=100.0,
+        weight=120.0,
         params={"command_name": "jump_height"},
       ),
     }
