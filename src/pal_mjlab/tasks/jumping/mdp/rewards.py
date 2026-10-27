@@ -56,8 +56,9 @@ def landing_completed(
   """exp(-mean((q-q_default)^2/std^2)) once, on the jump_finished step.
 
   Sparse: paid only on the step the robot has held SETTLED for hold_time, the
-  step the jump_finished termination ends the episode. The payout grows from
-  exp(-1) at the pose tolerance to 1 at the reference; zero on every other step.
+  step the jump_finished termination ends the episode. The payout grows to 1
+  at the reference (exp(-1) at an RMS error of one settle_pose_std); zero on
+  every other step.
   """
   term = _jump(env, command_name)
   done = jump_finished(env, command_name, hold_time)

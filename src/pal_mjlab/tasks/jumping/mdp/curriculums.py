@@ -38,3 +38,31 @@ def jump_height_curriculum(
   term = env.command_manager.get_term(command_name)
   term.height_range = selected[1:]
   return {"min_height": selected[1], "max_height": selected[2]}
+
+
+def settle_joint_speed_curriculum(
+  env: ManagerBasedRlEnv,
+  env_ids: torch.Tensor | slice,
+  command_name: str,
+  stages: tuple[tuple[int, float], ...],
+) -> dict[str, float]:
+  """Lower the settled joint speed limit at configured training steps.
+
+  Each stage is (environment step, joint speed limit in rad/s); the limit
+  applies immediately, also to jumps in progress.
+  """
+  del env_ids
+  if not stages or stages[0][0] != 0:
+    raise ValueError("Settle speed curriculum must start at step zero.")
+  for i, (step, speed) in enumerate(stages):
+    if not (0 < speed < math.inf):
+      raise ValueError("Settle joint speeds must be finite and positive.")
+    if i and step <= stages[i - 1][0]:
+      raise ValueError("Curriculum steps must be strictly increasing.")
+  selected = stages[0]
+  for stage in stages:
+    if env.common_step_counter >= stage[0]:
+      selected = stage
+  term = env.command_manager.get_term(command_name)
+  term.settle_joint_speed = selected[1]
+  return {"settle_joint_speed": selected[1]}

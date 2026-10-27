@@ -38,7 +38,7 @@ def configure_full_model_jump_tracking(
   ``Mjlab-Jump-Vertical-*`` task's, whose runner loads this policy's actor.
   Every episode is one pass through the motion, from its first frame.
   """
-  jump_params = jump_state_machine_params(cfg)
+  jump_params = jump_state_machine_params(cfg, play=play)
   cfg = configure_full_model_tracking(
     cfg, femur_closure=femur_closure, lower_body=True, play=play
   )

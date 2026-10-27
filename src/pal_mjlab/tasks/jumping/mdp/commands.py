@@ -55,6 +55,8 @@ class JumpHeightCommand(CommandTerm):
     if self.gravity <= 0:
       raise ValueError("Vertical jumping requires downward gravity.")
     self.height_range = cfg.height_range
+    # Settled joint speed limit; a curriculum may lower it during training.
+    self.settle_joint_speed = cfg.settle_joint_speed
     self.target_height = torch.zeros(self.num_envs, device=self.device)
     self._command = torch.zeros((self.num_envs, 1), device=self.device)
     self.phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
@@ -240,7 +242,8 @@ class JumpHeightCommand(CommandTerm):
     """Both feet down, near the default pose, joints and base nearly still.
 
     The pose is close when exp(-pose_error), the posture reward's kernel, is
-    at least exp(-1): an RMS error within one std. update_state additionally
+    at least exp(-1): an RMS error within one std. With settle_joint_speed_only
+    only the joint speed is checked (see still). update_state additionally
     tolerates one foot off for settle_contact_grace once SETTLED.
     """
     sensor = self._env.scene[self.cfg.contact_sensor_name]
@@ -248,12 +251,19 @@ class JumpHeightCommand(CommandTerm):
 
   @property
   def still(self) -> torch.Tensor:
-    """settled without the contact check: pose, joints and base only."""
+    """settled without the contact check: pose, joints and base only.
+
+    With settle_joint_speed_only, just the joint speed limit: any pose and
+    base motion count as still.
+    """
     data = self.robot.data
     ids = self.settle_joint_ids
+    joints_still = data.joint_vel[:, ids].abs().amax(dim=-1) < self.settle_joint_speed
+    if self.cfg.settle_joint_speed_only:
+      return joints_still
     return (
       (self.pose_error <= 1)
-      & (data.joint_vel[:, ids].abs().amax(dim=-1) < self.cfg.settle_joint_speed)
+      & joints_still
       & (data.root_link_lin_vel_w.norm(dim=-1) < self.cfg.settle_speed)
       & (data.root_link_ang_vel_w.norm(dim=-1) < self.cfg.settle_ang_speed)
     )
@@ -292,6 +302,8 @@ class JumpHeightCommandCfg(CommandTermCfg):
   settle_joint_speed: float = 0.1
   settle_speed: float = 0.05
   settle_ang_speed: float = 0.1
+  # Settle on the joint speed limit alone: no pose or base speed check.
+  settle_joint_speed_only: bool = False
   # Once SETTLED, seconds one foot may be off the ground without breaking it.
   settle_contact_grace: float = 0.1
   idle_speed: float = 0.1
