@@ -19,14 +19,16 @@ def _jump(env: ManagerBasedRlEnv, command_name: str) -> JumpHeightCommand:
 
 
 def jump_finished(
-  env: ManagerBasedRlEnv, command_name: str, hold_time: float = 0.5
+  env: ManagerBasedRlEnv, command_name: str, hold_time: float | None = None
 ) -> torch.Tensor:
   """Truncate once the machine has stayed in its last state, SETTLED, for hold_time.
 
-  Settled is JumpHeightCommand.settled: near the default pose, with joint and
-  base velocities close to zero.
+  Settled is JumpHeightCommand.settled. hold_time defaults to the command's
+  settle_hold_time, which the settle curriculum raises during training.
   """
   term = _jump(env, command_name)
+  if hold_time is None:
+    hold_time = term.settle_hold_time
   return (term.phase == SETTLED) & (term.settled_steps >= hold_time / env.step_dt)
 
 

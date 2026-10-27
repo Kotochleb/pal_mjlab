@@ -60,20 +60,22 @@ HEIGHT_STAGES = (
 POSTURE_BLEND_RISE = (0.0, 0.05)
 MIN_JUMP_RISE = 0.03
 
-# Seconds the landed robot must stay settled (both feet down, every joint
-# slower than the settle speed; any pose) to end the episode;
+# Final seconds the landed robot must stay settled (both feet down, every
+# joint slower than the settle speed; any pose) to end the episode;
 # landing_completed pays once, on that step, more the closer the pose is.
 LANDING_HOLD_TIME = 0.5
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
-# (environment steps, settled joint speed limit in rad/s): 0.2 rad/s, lowered
-# 0.05 rad/s every 500 PPO iterations of 24 steps down to
-# JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s).
-SETTLE_JOINT_SPEED_STAGES = (
-  (0, 0.5),
-  (500 * 24, 0.25),
-  (1_000 * 24, 0.15),
-  (1_500 * 24, 0.1),
+# (environment steps, settled joint speed limit in rad/s, settled hold time in
+# s): a new stage every 500 PPO iterations of 24 steps. The speed limit tightens
+# down to JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s) while
+# the hold grows linearly from 0 to LANDING_HOLD_TIME, rounded to the 0.02 s
+# control step (0, 8, 17, 25 steps).
+SETTLE_STAGES = (
+  (0, 0.5, 0.0),
+  (500 * 24, 0.25, 0.16),
+  (1_000 * 24, 0.15, 0.34),
+  (1_500 * 24, 0.1, LANDING_HOLD_TIME),
 )
 
 # Frames of each observation term given to the critic.
@@ -93,8 +95,8 @@ VELOCITY_REWARDS = (
 def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> dict:
   """JumpHeightCommandCfg fields shared by every task with this jump state
   machine, from a fresh full-model velocity config: settling on its joints'
-  speed alone (the first curriculum stage's limit, the last one in play), the
-  landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std) and the lowest
+  speed alone, for a hold time (both the first curriculum stage's, the last
+  one's in play), the landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std) and the lowest
   apex that counts as a jump, in world z."""
   pose = cfg.rewards["pose"]
   return {
@@ -103,7 +105,8 @@ def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> 
       pattern: SETTLE_POSE_STD_SCALE * std
       for pattern, std in pose.params["std_standing"].items()
     },
-    "settle_joint_speed": SETTLE_JOINT_SPEED_STAGES[-1 if play else 0][1],
+    "settle_joint_speed": SETTLE_STAGES[-1 if play else 0][1],
+    "settle_hold_time": SETTLE_STAGES[-1 if play else 0][2],
     "settle_joint_speed_only": True,
     "min_jump_height": cfg.scene.entities["robot"].init_state.pos[2] + MIN_JUMP_RISE,
   }
@@ -185,8 +188,8 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=30.0,
-        params={"command_name": "jump_height", "hold_time": LANDING_HOLD_TIME},
+        weight=40.0,
+        params={"command_name": "jump_height"},
       ),
     }
   )
@@ -198,12 +201,9 @@ def configure_vertical_jump(
         func=mdp.jump_height_curriculum,
         params={"command_name": "jump_height", "stages": HEIGHT_STAGES},
       ),
-      "settle_joint_speed": CurriculumTermCfg(
-        func=mdp.settle_joint_speed_curriculum,
-        params={
-          "command_name": "jump_height",
-          "stages": SETTLE_JOINT_SPEED_STAGES,
-        },
+      "settle": CurriculumTermCfg(
+        func=mdp.settle_curriculum,
+        params={"command_name": "jump_height", "stages": SETTLE_STAGES},
       ),
     }
   )
@@ -215,7 +215,7 @@ def configure_vertical_jump(
       "jump_finished": TerminationTermCfg(
         func=mdp.jump_finished,
         time_out=True,
-        params={"command_name": "jump_height", "hold_time": LANDING_HOLD_TIME},
+        params={"command_name": "jump_height"},
       ),
       # "bad_touchdown": TerminationTermCfg(
       #   func=mdp.bad_touchdown,

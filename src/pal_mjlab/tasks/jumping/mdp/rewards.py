@@ -51,12 +51,13 @@ def jump_height(
 
 
 def landing_completed(
-  env: ManagerBasedRlEnv, command_name: str, hold_time: float = 0.5
+  env: ManagerBasedRlEnv, command_name: str, hold_time: float | None = None
 ) -> torch.Tensor:
   """exp(-mean((q-q_default)^2/std^2)) once, on the jump_finished step.
 
-  Sparse: paid only on the step the robot has held SETTLED for hold_time, the
-  step the jump_finished termination ends the episode. The payout grows to 1
+  Sparse: paid only on the step the robot has held SETTLED for hold_time
+  (default: the command's settle_hold_time), the step the jump_finished
+  termination ends the episode. The payout grows to 1
   at the reference (exp(-1) at an RMS error of one settle_pose_std); zero on
   every other step.
   """

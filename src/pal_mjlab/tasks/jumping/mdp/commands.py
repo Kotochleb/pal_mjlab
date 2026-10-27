@@ -57,6 +57,8 @@ class JumpHeightCommand(CommandTerm):
     self.height_range = cfg.height_range
     # Settled joint speed limit; a curriculum may lower it during training.
     self.settle_joint_speed = cfg.settle_joint_speed
+    # Seconds SETTLED must hold to finish the jump; a curriculum may raise it.
+    self.settle_hold_time = cfg.settle_hold_time
     self.target_height = torch.zeros(self.num_envs, device=self.device)
     self._command = torch.zeros((self.num_envs, 1), device=self.device)
     self.phase = torch.zeros(self.num_envs, dtype=torch.long, device=self.device)
@@ -304,6 +306,8 @@ class JumpHeightCommandCfg(CommandTermCfg):
   settle_ang_speed: float = 0.1
   # Settle on the joint speed limit alone: no pose or base speed check.
   settle_joint_speed_only: bool = False
+  # Seconds SETTLED must hold for jump_finished (unless it is given hold_time).
+  settle_hold_time: float = 0.5
   # Once SETTLED, seconds one foot may be off the ground without breaking it.
   settle_contact_grace: float = 0.1
   idle_speed: float = 0.1

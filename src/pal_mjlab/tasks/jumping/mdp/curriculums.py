@@ -40,23 +40,25 @@ def jump_height_curriculum(
   return {"min_height": selected[1], "max_height": selected[2]}
 
 
-def settle_joint_speed_curriculum(
+def settle_curriculum(
   env: ManagerBasedRlEnv,
   env_ids: torch.Tensor | slice,
   command_name: str,
-  stages: tuple[tuple[int, float], ...],
+  stages: tuple[tuple[int, float, float], ...],
 ) -> dict[str, float]:
-  """Lower the settled joint speed limit at configured training steps.
+  """Set the settled joint speed limit and hold time at configured steps.
 
-  Each stage is (environment step, joint speed limit in rad/s); the limit
-  applies immediately, also to jumps in progress.
+  Each stage is (environment step, joint speed limit in rad/s, hold time in
+  s); both apply immediately, also to jumps in progress.
   """
   del env_ids
   if not stages or stages[0][0] != 0:
-    raise ValueError("Settle speed curriculum must start at step zero.")
-  for i, (step, speed) in enumerate(stages):
+    raise ValueError("Settle curriculum must start at step zero.")
+  for i, (step, speed, hold_time) in enumerate(stages):
     if not (0 < speed < math.inf):
       raise ValueError("Settle joint speeds must be finite and positive.")
+    if not (0 <= hold_time < math.inf):
+      raise ValueError("Settle hold times must be finite and non-negative.")
     if i and step <= stages[i - 1][0]:
       raise ValueError("Curriculum steps must be strictly increasing.")
   selected = stages[0]
@@ -65,4 +67,5 @@ def settle_joint_speed_curriculum(
       selected = stage
   term = env.command_manager.get_term(command_name)
   term.settle_joint_speed = selected[1]
-  return {"settle_joint_speed": selected[1]}
+  term.settle_hold_time = selected[2]
+  return {"settle_joint_speed": selected[1], "settle_hold_time": selected[2]}
