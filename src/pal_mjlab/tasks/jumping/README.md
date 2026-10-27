@@ -87,14 +87,14 @@ landed robot has stayed
 **settled** for `LANDING_HOLD_TIME = 0.5` s, or at 8 s. Settled
 (`JumpHeightCommand.settled`) means both feet in contact, posture close to the
 default pose — `exp(-mean((q-q_default)^2/std^2)) ≥ exp(-1)`, i.e. RMS error
-within one `std_standing` (0.05) over the posture reward's actuated joints — every
-such joint slower than 0.1 rad/s, and the base slower than 0.05 m/s and
+within twice `std_standing` (2 × 0.05 = 0.1, `SETTLE_POSE_STD_SCALE`) over the posture reward's actuated joints — every
+such joint slower than 0.2 rad/s (`SETTLE_JOINT_SPEED`), and the base slower than 0.05 m/s and
 0.1 rad/s (`settle_*` fields of `JumpHeightCommandCfg`). The hold counter
 (`settled_steps`) restarts whenever any condition breaks. The state machine is
 STANCE → FLIGHT → LANDED → SETTLED: SETTLED, the last state, is entered from
 LANDED while settled and falls back to LANDED when settling breaks.
-`landing_completed` pays on every step in SETTLED, and `jump_finished` fires
-after 0.5 s in it.
+`jump_finished` fires after 0.5 s in it, and `landing_completed` pays once, on
+that step (sparse; see Rewards).
 Initial spawn drops cannot
 count as takeoff: ordinary episodes must first establish contact, then lose all
 foot contacts with positive vertical speed. Apex rewards require a minimum
@@ -115,20 +115,16 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | Term | Trigger |
 | --- | --- |
 | `bad_touchdown` | At touchdown only: apex error above 0.30 m, or base height below 0.20 m above the ground |
-| `jumped_again` | A new takeoff after landing |
 | `sideways_takeoff` | Horizontal base speed above 0.75 m/s at takeoff |
-| `walking_before_jump` | Horizontal displacement from the sampled reset position above 0.20 m while in stance |
-| `idle_before_jump` | Still in stance after 3 s, or more than 1 s cumulative idle time at base speed below 0.10 m/s |
-| `excessive_attitude` | Absolute roll or pitch, or wrapped yaw change from the reset heading, above 25 degrees |
-| `horizontal_drift` | Either horizontal axis more than 0.20 m from the environment origin, in any phase |
+| `horizontal_drift` | Either horizontal axis more than 0.60 m from the environment origin, in any phase |
 | `jump_finished` | In SETTLED for 0.5 s (see above); a timeout rather than failure |
 | `time_out` | 8 s episode limit |
 
-The existing illegal-ground-contact termination remains. The attitude check
-replaces the velocity task's fall-angle check. Yaw is relative to the reset
-heading (the nominal heading, since reset yaw is no longer randomized).
-Walking is measured from the reset position and horizontal drift from the
-environment origin, which now coincide. Heights are world-frame base-link z; apex
+The existing illegal-ground-contact termination remains; the velocity task's
+fall-angle check is removed. A second takeoff after landing, attitude, and
+time spent in stance are not terminal (`walking_before_jump`,
+`idle_before_jump` and `excessive_attitude` remain in `mdp` but are not
+configured). Horizontal drift is measured from the environment origin. Heights are world-frame base-link z; apex
 error compares the measured and commanded world-frame apex. Takeoff detection uses the reference's 0.75 m/s upward
 speed threshold. Idle time accumulates across separate pauses in stance and
 clears on takeoff, matching the reference. All counters and event flags reset
@@ -191,7 +187,7 @@ The additional rewards are:
 | `horizontal_velocity` | 1 | Suppress horizontal motion, inspired by the authors' implementation |
 | `ground_force_l2` | −0.05 | Squared foot-ground forces, normalized by 500 N |
 | `joint_symmetry` | −1 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee: s = +1 for 2, 4, knee (equal), s = −1 for 1, 3, 5 (mirrored) |
-| `landing_completed` | 50 | Every step in the last state, SETTLED: `exp(-mean((q-q_default)^2/std_standing^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
+| `landing_completed` | 20 | Once, on the `jump_finished` step (SETTLED held 0.5 s), an impulse (divided by step_dt): `exp(-mean((q-q_default)^2/(2·std_standing)^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent
 of policy frequency; all continuous rewards remain rates. The ballistic estimate

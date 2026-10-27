@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 from typing import TYPE_CHECKING
 
 # from mjlab.tests.test_runner import env
@@ -115,7 +117,10 @@ class joint_limits_convex_hull:
         self._plot_hull_comparison(
           cfg.params["hull_points"].cpu().numpy(),
           cfg.params["margin"],
-          f"/tmp/convex_hull_comparison_{cfg.params['metrics_suffix']}.png",
+          os.path.join(
+            tempfile.gettempdir(),
+            f"convex_hull_comparison_{cfg.params['metrics_suffix']}.png",
+          ),
         )
 
   def _reduce_convex_hull(self, margin: float) -> None:

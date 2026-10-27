@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.utils.lab_api.math import euler_xyz_from_quat
 
-from .commands import LANDED, SETTLED, STANCE, JumpHeightCommand
+from .commands import SETTLED, STANCE, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -46,12 +46,6 @@ def bad_touchdown(
   return term.just_touchdown & (
     (height_error > max_height_error) | (base_height < min_base_height)
   )
-
-
-def jumped_again(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
-  """Fail on a second takeoff after landing."""
-  term = _jump(env, command_name)
-  return term.just_takeoff & (term.phase >= LANDED)
 
 
 def sideways_takeoff(

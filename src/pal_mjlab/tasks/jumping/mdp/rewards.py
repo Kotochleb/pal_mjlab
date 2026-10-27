@@ -9,7 +9,8 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
 
-from .commands import FLIGHT, SETTLED, STANCE, JumpHeightCommand, match_joint_values
+from .commands import FLIGHT, STANCE, JumpHeightCommand, match_joint_values
+from .terminations import jump_finished
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -49,16 +50,20 @@ def jump_height(
   return reward * valid / scale
 
 
-def landing_completed(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
-  """exp(-mean((q-q_default)^2/std^2)) on every step in the last state, SETTLED.
+def landing_completed(
+  env: ManagerBasedRlEnv, command_name: str, hold_time: float = 0.5
+) -> torch.Tensor:
+  """exp(-mean((q-q_default)^2/std^2)) once, on the jump_finished step.
 
-  SETTLED is entered from LANDED when JumpHeightCommand.settled holds: near the
-  default pose, with joint and base velocities close to zero. Within it the
-  reward grows from exp(-1) at the pose tolerance to 1 at the reference; it is
-  zero in every other state.
+  Sparse: paid only on the step the robot has held SETTLED for hold_time, the
+  step the jump_finished termination ends the episode. The payout grows from
+  exp(-1) at the pose tolerance to 1 at the reference; zero on every other step.
   """
   term = _jump(env, command_name)
-  return torch.exp(-term.pose_error) * (term.phase == SETTLED)
+  done = jump_finished(env, command_name, hold_time)
+  # An impulse, not a rate: undo the reward manager's multiplication by step_dt.
+  scale = env.step_dt if env.cfg.scale_rewards_by_dt else 1.0
+  return torch.exp(-term.pose_error) * done / scale
 
 
 def estimated_jump_height(

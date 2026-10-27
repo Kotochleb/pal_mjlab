@@ -61,8 +61,12 @@ POSTURE_BLEND_RISE = (0.0, 0.05)
 MIN_JUMP_RISE = 0.03
 
 # Seconds the landed robot must stay settled (default pose, joints and base
-# still) to end the episode; landing_completed pays on each settled step.
+# still) to end the episode; landing_completed pays once, on that step.
 LANDING_HOLD_TIME = 0.5
+# Settled joint tolerances relative to the standing pose reward's std (pose)
+# and JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s).
+SETTLE_POSE_STD_SCALE = 2.0
+SETTLE_JOINT_SPEED = 0.2
 
 # Frames of each observation term given to the critic.
 OBSERVATION_HISTORY = 10
@@ -72,17 +76,25 @@ VELOCITY_REWARDS = (
   "angular_momentum",
   "dof_pos_limits",
   "action_rate_l2",
+  # Hip and ankle XY convex-hull joint limits (ankle femur-normalized per MJCF).
+  "convex_hull_joint_limits_hip",
+  "convex_hull_joint_limits_ankle",
 )
 
 
 def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg) -> dict:
   """JumpHeightCommandCfg fields shared by every task with this jump state
-  machine, from a fresh full-model velocity config: settling at its standing
-  pose and the lowest apex that counts as a jump, in world z."""
+  machine, from a fresh full-model velocity config: settling near its standing
+  pose (SETTLE_POSE_STD_SCALE x its std) and the lowest apex that counts as a
+  jump, in world z."""
   pose = cfg.rewards["pose"]
   return {
     "settle_joint_names": tuple(pose.params["asset_cfg"].joint_names),
-    "settle_pose_std": deepcopy(pose.params["std_standing"]),
+    "settle_pose_std": {
+      pattern: SETTLE_POSE_STD_SCALE * std
+      for pattern, std in pose.params["std_standing"].items()
+    },
+    "settle_joint_speed": SETTLE_JOINT_SPEED,
     "min_jump_height": cfg.scene.entities["robot"].init_state.pos[2] + MIN_JUMP_RISE,
   }
 
@@ -164,7 +176,7 @@ def configure_vertical_jump(
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
         weight=20.0,
-        params={"command_name": "jump_height"},
+        params={"command_name": "jump_height", "hold_time": LANDING_HOLD_TIME},
       ),
     }
   )
@@ -188,18 +200,14 @@ def configure_vertical_jump(
         time_out=True,
         params={"command_name": "jump_height", "hold_time": LANDING_HOLD_TIME},
       ),
-      "bad_touchdown": TerminationTermCfg(
-        func=mdp.bad_touchdown,
-        params={
-          "command_name": "jump_height",
-          "max_height_error": 0.3,
-          "min_base_height": 0.2,
-        },
-      ),
-      "jumped_again": TerminationTermCfg(
-        func=mdp.jumped_again,
-        params={"command_name": "jump_height"},
-      ),
+      # "bad_touchdown": TerminationTermCfg(
+      #   func=mdp.bad_touchdown,
+      #   params={
+      #     "command_name": "jump_height",
+      #     "max_height_error": 0.3,
+      #     "min_base_height": 0.2,
+      #   },
+      # ),
       "sideways_takeoff": TerminationTermCfg(
         func=mdp.sideways_takeoff,
         params={"command_name": "jump_height", "max_speed": 0.75},
@@ -208,21 +216,9 @@ def configure_vertical_jump(
       #   func=mdp.walking_before_jump,
       #   params={"command_name": "jump_height", "max_distance": 0.2},
       # ),
-      "idle_before_jump": TerminationTermCfg(
-        func=mdp.idle_before_jump,
-        params={
-          "command_name": "jump_height",
-          "max_stance_time": 5.0,
-          "max_idle_time": 1.0,
-        },
-      ),
-      "excessive_attitude": TerminationTermCfg(
-        func=mdp.excessive_attitude,
-        params={"command_name": "jump_height", "max_angle_deg": 40.0},
-      ),
       "horizontal_drift": TerminationTermCfg(
         func=mdp.horizontal_drift,
-        params={"command_name": "jump_height", "max_distance": 0.5},
+        params={"command_name": "jump_height", "max_distance": 0.6},
       ),
     }
   )

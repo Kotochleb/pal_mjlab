@@ -103,9 +103,19 @@ class JumpHeightCommand(CommandTerm):
     self._resample_command(env_ids)
     self.command_counter[env_ids] += 1
 
-  def reset(self, env_ids: torch.Tensor | slice | None) -> dict[str, float]:
+  def reset(
+    self, env_ids: torch.Tensor | slice | None
+  ) -> dict[str, float | torch.Tensor]:
     self._update_metrics()
-    return super().reset(env_ids)
+    # One |apex - target| per finished episode that reached its apex, logged as
+    # a tensor so the logger averages over jumps only; episodes without an
+    # apex are left out instead of counting as zero or as a full shortfall.
+    jumped = env_ids[self.apex_reached[env_ids]]
+    apex_error = (self.peak_height[jumped] - self.target_height[jumped]).abs()
+    extras: dict[str, float | torch.Tensor] = dict(super().reset(env_ids))
+    if len(jumped):
+      extras["apex_height_error"] = apex_error
+    return extras
 
   @property
   def com_xy(self) -> torch.Tensor:
@@ -176,7 +186,7 @@ class JumpHeightCommand(CommandTerm):
       & (velocity[:, 2] > self.cfg.takeoff_velocity)
     )
     self.just_takeoff[takeoff] = True
-    # A second takeoff is terminal; never restart the jump or its apex reward.
+    # Never restart the jump or its apex reward on a second takeoff.
     first_takeoff = takeoff & (self.phase == STANCE)
     self.phase[first_takeoff] = FLIGHT
     self.takeoff_com_xy[first_takeoff] = self.com_xy[first_takeoff]

@@ -15,6 +15,5 @@ from .terminations import excessive_attitude as excessive_attitude
 from .terminations import horizontal_drift as horizontal_drift
 from .terminations import idle_before_jump as idle_before_jump
 from .terminations import jump_finished as jump_finished
-from .terminations import jumped_again as jumped_again
 from .terminations import sideways_takeoff as sideways_takeoff
 from .terminations import walking_before_jump as walking_before_jump
