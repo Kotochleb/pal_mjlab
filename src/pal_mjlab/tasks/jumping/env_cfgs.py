@@ -67,10 +67,11 @@ LANDING_HOLD_TIME = 0.5
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
 # (environment steps, settled joint speed limit in rad/s, settled hold time in
-# s): a new stage every 500 PPO iterations of 24 steps. The speed limit tightens
+# s): control points every 500 PPO iterations of 24 steps, linearly
+# interpolated in between (constant after the last). The speed limit tightens
 # down to JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s) while
-# the hold grows linearly from 0 to LANDING_HOLD_TIME, rounded to the 0.02 s
-# control step (0, 8, 17, 25 steps).
+# the hold grows from 0 to LANDING_HOLD_TIME; control-point holds are rounded to
+# the 0.02 s control step (0, 8, 17, 25 steps).
 SETTLE_STAGES = (
   (0, 0.5, 0.0),
   (500 * 24, 0.25, 0.16),
@@ -122,6 +123,7 @@ def configure_vertical_jump(
   velocity task's observations, with that command and stacked history.
   """
   pose = cfg.rewards["pose"]
+  foot_slip = cfg.rewards["foot_slip"]
   standing_height = cfg.scene.entities["robot"].init_state.pos[2]
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
@@ -174,11 +176,20 @@ def configure_vertical_jump(
         weight=-0.05,
         params={"sensor_name": "feet_ground_contact", "force_scale": 500.0},
       ),
+      # The velocity task's foot-slip cost on its foot sites, in every phase.
+      "foot_slip": RewardTermCfg(
+        func=mdp.feet_slip,
+        weight=foot_slip.weight,
+        params={
+          "sensor_name": foot_slip.params["sensor_name"],
+          "asset_cfg": deepcopy(foot_slip.params["asset_cfg"]),
+        },
+      ),
       # Left/right axes are identical: pitch-like joints match, the others
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-0.2,
+        weight=-1.0,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)

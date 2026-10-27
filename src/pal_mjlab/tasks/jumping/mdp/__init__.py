@@ -4,6 +4,7 @@ from .curriculums import jump_height_curriculum as jump_height_curriculum
 from .curriculums import settle_curriculum as settle_curriculum
 from .observations import base_height as base_height
 from .rewards import estimated_jump_height as estimated_jump_height
+from .rewards import feet_slip as feet_slip
 from .rewards import ground_force_l2 as ground_force_l2
 from .rewards import height_variable_posture as height_variable_posture
 from .rewards import horizontal_velocity as horizontal_velocity

@@ -193,6 +193,23 @@ def ground_force_l2(
   return (force.norm(dim=-1) / force_scale).square().sum(dim=-1)
 
 
+def feet_slip(
+  env: ManagerBasedRlEnv, sensor_name: str, asset_cfg: SceneEntityCfg
+) -> torch.Tensor:
+  """Sum over feet in ground contact of their squared horizontal site speed.
+
+  mjlab's velocity feet_slip without its twist-command gate: active in every
+  phase, so stance, takeoff push-off and landing all penalize sliding feet.
+  """
+  in_contact = (env.scene[sensor_name].data.found > 0).float()
+  speed = env.scene[asset_cfg.name].data.site_lin_vel_w[:, asset_cfg.site_ids, :2]
+  speed = speed.norm(dim=-1)
+  env.extras["log"]["Metrics/slip_velocity_mean"] = (speed * in_contact).sum() / (
+    in_contact.sum().clamp_min(1)
+  )
+  return (speed.square() * in_contact).sum(dim=-1)
+
+
 def landing_drift_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
   """Squared horizontal COM distance from its takeoff position, after takeoff.
 
