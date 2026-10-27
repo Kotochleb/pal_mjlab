@@ -84,6 +84,8 @@ class JumpHeightCommand(CommandTerm):
     self.landed_steps = torch.zeros_like(self.phase)
     # Consecutive landed steps spent settled at the default pose.
     self.settled_steps = torch.zeros_like(self.phase)
+    # Consecutive SETTLED steps with exactly one foot off the ground.
+    self.contact_lost_steps = torch.zeros_like(self.phase)
     self._last_step = torch.full_like(self.phase, -1)
     self._updated_step = -1
     self.metrics = {
@@ -135,6 +137,7 @@ class JumpHeightCommand(CommandTerm):
       self.idle_steps,
       self.landed_steps,
       self.settled_steps,
+      self.contact_lost_steps,
     ):
       value[env_ids] = 0
     self.takeoff_com_xy[env_ids] = 0
@@ -192,7 +195,15 @@ class JumpHeightCommand(CommandTerm):
     self.landed_steps[landed] += 1
     self.landed_steps[touchdown] = 0
     self.landed_time[landed] = self.landed_steps[landed] * dt
-    settled = landed & self.settled
+    # Deadzone: once SETTLED, one foot may lose contact for up to
+    # settle_contact_grace while the rest of the settled state holds.
+    lifted = landed & (self.phase == SETTLED) & contact & ~both_feet
+    self.contact_lost_steps[lifted] += 1
+    self.contact_lost_steps[landed & ~lifted] = 0
+    grace = lifted & (
+      self.contact_lost_steps <= round(self.cfg.settle_contact_grace / dt)
+    )
+    settled = landed & (self.settled | (grace & self.still))
     self.phase[settled] = SETTLED
     self.phase[landed & ~settled] = LANDED
     self.settled_steps[settled] += 1
@@ -219,14 +230,19 @@ class JumpHeightCommand(CommandTerm):
     """Both feet down, near the default pose, joints and base nearly still.
 
     The pose is close when exp(-pose_error), the posture reward's kernel, is
-    at least exp(-1): an RMS error within one std.
+    at least exp(-1): an RMS error within one std. update_state additionally
+    tolerates one foot off for settle_contact_grace once SETTLED.
     """
+    sensor = self._env.scene[self.cfg.contact_sensor_name]
+    return (sensor.data.found > 0).all(dim=-1) & self.still
+
+  @property
+  def still(self) -> torch.Tensor:
+    """settled without the contact check: pose, joints and base only."""
     data = self.robot.data
     ids = self.settle_joint_ids
-    sensor = self._env.scene[self.cfg.contact_sensor_name]
     return (
-      (sensor.data.found > 0).all(dim=-1)
-      & (self.pose_error <= 1)
+      (self.pose_error <= 1)
       & (data.joint_vel[:, ids].abs().amax(dim=-1) < self.cfg.settle_joint_speed)
       & (data.root_link_lin_vel_w.norm(dim=-1) < self.cfg.settle_speed)
       & (data.root_link_ang_vel_w.norm(dim=-1) < self.cfg.settle_ang_speed)
@@ -266,6 +282,8 @@ class JumpHeightCommandCfg(CommandTermCfg):
   settle_joint_speed: float = 0.1
   settle_speed: float = 0.05
   settle_ang_speed: float = 0.1
+  # Once SETTLED, seconds one foot may be off the ground without breaking it.
+  settle_contact_grace: float = 0.1
   idle_speed: float = 0.1
 
   def __post_init__(self):
