@@ -189,7 +189,7 @@ def configure_vertical_jump(
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-1.0,
+        weight=-10.0,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
