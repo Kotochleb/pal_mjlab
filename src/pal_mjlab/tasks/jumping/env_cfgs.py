@@ -199,7 +199,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=40.0,
+        weight=100.0,
         params={"command_name": "jump_height"},
       ),
     }
