@@ -221,7 +221,7 @@ def configure_vertical_jump(
       ),
     }
   )
-  cfg.episode_length_s = 8.0
+  cfg.episode_length_s = 25.0
   cfg.terminations.pop("fell_over", None)  # Replaced by per-axis attitude limits.
   cfg.terminations.update(
     {
