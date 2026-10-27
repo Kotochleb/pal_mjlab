@@ -20,7 +20,8 @@ def jump_height_curriculum(
   """Update only the sampling bounds; active targets stay fixed until reset.
 
   Each stage is (environment step, minimum apex, maximum apex): world-frame
-  base-link heights in metres.
+  base-link heights in metres. Both bounds are linearly interpolated between
+  consecutive control points and held at the last one's values after it.
   mjlab's runner checkpoints common_step_counter, preserving this schedule.
   """
   del env_ids
@@ -31,13 +32,17 @@ def jump_height_curriculum(
       raise ValueError("Curriculum heights must be finite, positive, and ordered.")
     if i and step <= stages[i - 1][0]:
       raise ValueError("Curriculum steps must be strictly increasing.")
-  selected = stages[0]
-  for stage in stages:
-    if env.common_step_counter >= stage[0]:
-      selected = stage
+  step = env.common_step_counter
+  _, low, high = stages[-1]
+  for (start, low0, high0), (end, low1, high1) in zip(stages, stages[1:]):
+    if step < end:
+      blend = (step - start) / (end - start)
+      low = low0 + blend * (low1 - low0)
+      high = high0 + blend * (high1 - high0)
+      break
   term = env.command_manager.get_term(command_name)
-  term.height_range = selected[1:]
-  return {"min_height": selected[1], "max_height": selected[2]}
+  term.height_range = (low, high)
+  return {"min_height": low, "max_height": high}
 
 
 def settle_curriculum(

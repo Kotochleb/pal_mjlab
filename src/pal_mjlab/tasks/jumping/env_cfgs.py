@@ -32,15 +32,17 @@ from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
 # (environment steps, minimum apex, maximum apex), world-frame metres; Kangaroo
 # Full stands with its base at 0.93 m. Training starts at the world-frame apex of
 # motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45), rounded to
-# 1.280 m, +-5 cm, then widens to +-15 cm. Each later stage raises the upper
-# bound 5 cm and narrows the range 2.5 cm, so the lower bound rises 7.5 cm,
-# until the range is 7.5 cm wide (iteration 10,000). The 7.5 cm range then keeps
-# rising 5 cm per stage, capped at a 2 m upper bound. Bounds end in 0 or 5 mm.
-# A new stage every 1,000 PPO iterations of 24 steps, up to 13,000.
+# 1.280 m, +-5 cm. The lower bound never drops below that start (1.230 m) while
+# the upper bound rises 10 cm by iteration 1,000, then 5 cm per 1,000 iterations.
+# From iteration 2,000 the range narrows 2.5 cm per 1,000 iterations, so the
+# lower bound rises 7.5 cm, until the range is 7.5 cm wide (iteration 10,000).
+# The 7.5 cm range then keeps rising 5 cm per 1,000 iterations, capped at a 2 m
+# upper bound. Bounds end in 0 or 5 mm. Control points every 1,000 PPO
+# iterations of 24 steps, up to 13,000, linearly interpolated in between.
 HEIGHT_STAGES = (
   (0, 1.230, 1.330),
-  (1_000 * 24, 1.130, 1.430),
-  (2_000 * 24, 1.205, 1.480),
+  (1_000 * 24, 1.230, 1.430),
+  (2_000 * 24, 1.230, 1.480),
   (3_000 * 24, 1.280, 1.530),
   (4_000 * 24, 1.355, 1.580),
   (5_000 * 24, 1.430, 1.630),
@@ -63,23 +65,22 @@ MIN_JUMP_RISE = 0.03
 # Final seconds the landed robot must stay settled (both feet down, every
 # joint slower than the settle speed; any pose) to end the episode;
 # landing_completed pays once, on that step, more the closer the pose is.
-LANDING_HOLD_TIME = 0.5
+LANDING_HOLD_TIME = 0.2
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
 # Every joint's airborne std in the pose reward, in rad (m for prismatic
 # joints): large enough that the posture is effectively free in flight.
 AIRBORNE_JOINT_STD = 1e4
 # (environment steps, settled joint speed limit in rad/s, settled hold time in
-# s): control points every 500 PPO iterations of 24 steps, linearly
-# interpolated in between (constant after the last). The speed limit tightens
-# down to JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s) while
-# the hold grows from 0 to LANDING_HOLD_TIME; control-point holds are rounded to
-# the 0.02 s control step (0, 8, 17, 25 steps).
+# s): control points in PPO iterations of 24 steps, linearly interpolated in
+# between (constant after the last). The loosest stage holds unchanged for the
+# first 150 iterations; by iteration 1,100 the speed limit has tightened down to
+# JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s) while the hold
+# has grown from 0 to LANDING_HOLD_TIME (10 control steps of 0.02 s).
 SETTLE_STAGES = (
   (0, 0.5, 0.0),
-  (500 * 24, 0.25, 0.16),
-  (1_000 * 24, 0.15, 0.34),
-  (1_500 * 24, 0.1, LANDING_HOLD_TIME),
+  (150 * 24, 0.5, 0.0),
+  (800 * 24, 0.1, LANDING_HOLD_TIME),
 )
 
 # Frames of each observation term given to the critic.
@@ -202,7 +203,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=120.0,
+        weight=200.0,
         params={"command_name": "jump_height"},
       ),
     }
@@ -223,6 +224,8 @@ def configure_vertical_jump(
   )
   cfg.episode_length_s = 25.0
   cfg.terminations.pop("fell_over", None)  # Replaced by per-axis attitude limits.
+  # A vertical jump on a plane: horizontal_drift already bounds the travel.
+  cfg.terminations.pop("out_of_terrain_bounds", None)
   cfg.terminations.update(
     {
       "time_out": TerminationTermCfg(func=time_out, time_out=True),
