@@ -212,6 +212,8 @@
             <site name="imu" pos="0.071 -0.0014 0.0261" quat="0 0.7071067811865476 -0.7071067811865475 0"/>
             <site name="pelvis_2_link" pos="0 0 0" quat="1.0 0 0 0"/>
             <site name="torso_link" pos="0 0 0.0061" quat="1.0 0 0 0"/>
+            <!-- Between the front/rear upper RGBD cameras in x, centred in y, at their height. -->
+            <site name="torso_up_cameras_frame" pos="0 0 0.41929529865494314" quat="1.0 0 0 0"/>
             <site name="torso_front_up_rgbd_camera_bottom_screw_frame" pos="0.1056 0 0.41376999999999997" quat="0.9659256678396476 0 0.2588196364430847 0"/>
             <site name="torso_front_up_rgbd_camera_link" pos="0.1210298760453117 0.0175 0.41929529865494314" quat="0.9659256678396476 0 0.2588196364430847 0"/>
             <site name="torso_front_up_rgbd_camera_depth_frame" pos="0.1210298760453117 0.0175 0.41929529865494314" quat="0.9659256678396476 0 0.2588196364430847 0"/>

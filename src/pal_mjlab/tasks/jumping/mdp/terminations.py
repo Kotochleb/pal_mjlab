@@ -40,7 +40,8 @@ def bad_touchdown(
 ) -> torch.Tensor:
   """Fail only at touchdown on an inaccurate apex or excessively low base.
 
-  Both the apex and min_base_height are world-frame base-link heights.
+  Both the apex and min_base_height are world-frame heights of the command's
+  jump frame.
   """
   term = _jump(env, command_name)
   base_height = term.height

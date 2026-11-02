@@ -40,8 +40,8 @@ def match_joint_values(
 class JumpHeightCommand(CommandTerm):
   """One jump per episode; the scalar input becomes zero after touchdown.
 
-  Heights (targets, apex, measured) are the base link's world-frame z; the
-  ground plane is z = 0. State is
+  Heights (targets, apex, measured) are the world-frame z of cfg.height_site_name
+  (the base link without one); the ground plane is z = 0. State is
   refreshed before rewards/terminations, not by the command manager (which runs
   after rewards in mjlab). The step guard makes all consumers share one update.
   """
@@ -55,6 +55,12 @@ class JumpHeightCommand(CommandTerm):
     if self.gravity <= 0:
       raise ValueError("Vertical jumping requires downward gravity.")
     self.height_range = cfg.height_range
+    self.height_site_id: int | None = None
+    if cfg.height_site_name is not None:
+      site_ids, _ = self.robot.find_sites(cfg.height_site_name, preserve_order=True)
+      if len(site_ids) != 1:
+        raise ValueError(f"height_site_name must match one site: {cfg.height_site_name!r}")
+      self.height_site_id = site_ids[0]
     # Settled joint speed limit; a curriculum may lower it during training.
     self.settle_joint_speed = cfg.settle_joint_speed
     # Seconds SETTLED must hold to finish the jump; a curriculum may raise it.
@@ -129,8 +135,17 @@ class JumpHeightCommand(CommandTerm):
 
   @property
   def height(self) -> torch.Tensor:
-    """World-frame z of the base link; the apex is its maximum in flight."""
-    return self.robot.data.root_link_pos_w[:, 2]
+    """World-frame z of the jump frame; the apex is its maximum in flight."""
+    if self.height_site_id is None:
+      return self.robot.data.root_link_pos_w[:, 2]
+    return self.robot.data.site_pos_w[:, self.height_site_id, 2]
+
+  @property
+  def vertical_velocity(self) -> torch.Tensor:
+    """World-frame z velocity of the jump frame."""
+    if self.height_site_id is None:
+      return self.robot.data.root_link_lin_vel_w[:, 2]
+    return self.robot.data.site_lin_vel_w[:, self.height_site_id, 2]
 
   def _sample_targets(self, env_ids: torch.Tensor) -> torch.Tensor:
     return torch.empty(len(env_ids), device=self.device).uniform_(*self.height_range)
@@ -201,7 +216,7 @@ class JumpHeightCommand(CommandTerm):
     # flight. Settling (JumpHeightCommand.settled) then finishes the jump.
     touchdown = flying & both_feet
     self.just_touchdown[touchdown] = True
-    apex = flying & ~self.apex_reached & ((velocity[:, 2] <= 0) | touchdown)
+    apex = flying & ~self.apex_reached & ((self.vertical_velocity <= 0) | touchdown)
     self.just_apex[apex] = True
     self.apex_reached[apex] = True
     self.phase[touchdown] = LANDED
@@ -289,12 +304,16 @@ class JumpHeightCommandCfg(CommandTermCfg):
   contact_sensor_name: str = "feet_ground_contact"
   # An episode owns its target; never change the goal during a jump.
   resampling_time_range: tuple[float, float] = (math.inf, math.inf)
-  # World-frame base-link apex heights, in metres.
+  # World-frame apex heights of the jump frame, in metres.
   height_range: tuple[float, float] = (1.0, 1.1)
+  # Site whose world z is the jump height (targets, apex, measured); None
+  # measures the base link.
+  height_site_name: str | None = None
   # Olympus Lab's jump state machine threshold.
   takeoff_velocity: float = 0.75
   min_air_time: float = 0.04
-  # Lowest world-frame apex that counts as a jump (rewarded by jump_height).
+  # Lowest world-frame apex of the jump frame that counts as a jump (rewarded
+  # by jump_height).
   min_jump_height: float = 0.96
   # Landing is complete once settled: pose within settle_pose_std of default
   # (RMS over settle_joint_names), every such joint slower than

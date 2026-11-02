@@ -75,7 +75,7 @@ def estimated_jump_height(
   laplace_scale: float = 0.05,
 ) -> torch.Tensor:
   term = _jump(env, command_name)
-  vz = term.robot.data.root_link_lin_vel_w[:, 2]
+  vz = term.vertical_velocity
   estimated = term.height + vz.clamp_min(0).square() / (2 * term.gravity)
   ascending = (term.phase == FLIGHT) & ~term.apex_reached & (vz > 0)
   return height_kernel(estimated - term.target_height, std, laplace_scale) * ascending
@@ -84,8 +84,8 @@ def estimated_jump_height(
 class height_variable_posture:
   """exp(-mean((q-q_default)^2/std(height)^2)), with per-joint tolerances.
 
-  Interpolate ground/airborne stds using the measured world-frame base height,
-  clamped at both ends of height_range (world z). This preserves the robot's own default configuration and lets it crouch
+  Interpolate ground/airborne stds using the jump frame's measured world-frame
+  height, clamped at both ends of height_range (world z). This preserves the robot's own default configuration and lets it crouch
   and extend near the ground. Targets and passive linkage joints are unchanged.
   """
 

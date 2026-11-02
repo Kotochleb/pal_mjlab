@@ -60,26 +60,32 @@ log directory, so copy the tracking run there (or pass `--wandb-run-path`).
 
 ## Commands, observations, and episodes
 
-Jump height means the **world-frame z of the base link at its apex**, in
-metres; the plane terrain is the world z = 0 plane. Kangaroo Full stands with its
-base at 0.93 m, so a 1.278 m command asks for a 0.348 m rise. It does not mean
-foot clearance or a rise above standing. Targets, the measured apex
-(`peak_height`, the base's maximum world z in flight), the ballistic estimate,
-the posture blend, and the touchdown checks all use this world-frame height.
+Jump height means the **world-frame z of the jump frame at its apex**, in
+metres; the plane terrain is the world z = 0 plane. The jump frame is the
+`torso_up_cameras_frame` site (on `pelvis_2_link`, between the front and rear
+upper RGBD cameras in x, at y = 0 and at their height). Targets, the measured
+apex (`peak_height`, the frame's maximum world z in flight), the ballistic
+estimate, the posture blend and the touchdown checks all use it. The frame sits
+0.4849 m above the base link with both pelvis joints at zero, so Kangaroo Full
+stands with it at about 1.415 m; the hardcoded heights (`HEIGHT_STAGES`,
+`MIN_JUMP_HEIGHT`, `POSTURE_BLEND_HEIGHTS`), formerly base-link heights, are
+0.485 m higher, rounded to 5 mm. Jump tracking targets the frame's apex in the
+reference motion, from its tracked `pelvis_2_link` poses.
 
-The actor observes exactly what the full-model tracking actor does
+The actor observes what the full-model tracking actor does
 (`full_model_tracking_actor_observations` in
-`tasks/tracking/kangaroo_full/env_cfgs.py`, shared by both tasks): `command`,
-`base_ang_vel`, `joint_pos`, `joint_vel`, `actions`, `imu_projected_gravity`,
-`base_lin_acc`, with the tracking noise, ordering, and no history. Only the
-`command` term differs: it is a single scalar containing the sampled world-frame
-apex until
-touchdown, then zero to request settling, so no extra phase observation is
-needed. The target used for rewards remains fixed for the episode. The critic
-keeps the flat-velocity observation terms with the same scalar command, plus
-the privileged `base_height` (world-frame base-link z, the frame targets and
-apex are measured in), and stacks the last `OBSERVATION_HISTORY = 10` frames of
-every term, flattened.
+`tasks/tracking/kangaroo_full/env_cfgs.py`): `command`, `base_ang_vel`,
+`joint_pos`, `joint_vel`, `actions`, `imu_projected_gravity`, `base_lin_acc`,
+with the tracking noise and ordering, followed by the velocity-env
+`base_lin_vel` (IMU velocimeter) and the world-frame `base_height_world`, each
+with ±3 cm (cm/s) noise. The `command` term is a single scalar containing the
+sampled world-frame apex until touchdown, then zero to request settling, so no
+extra phase observation is needed. The target used for rewards remains fixed
+for the episode. The critic keeps the flat-velocity observation terms with the
+same scalar command, plus the privileged `jump_frame_height` (the jump frame's
+world z, which targets and apex use) and a clean `base_height_world`. Actor and
+critic both stack the last `OBSERVATION_HISTORY = 10` frames of every term,
+flattened, in this task and in jump tracking (`configure_jump_observations`).
 
 Touchdown (FLIGHT → LANDED) requires **both** feet in contact; a single-foot
 touch keeps the jump in flight. An episode contains one jump and ends once the
@@ -98,8 +104,8 @@ that step (sparse; see Rewards).
 Initial spawn drops cannot
 count as takeoff: ordinary episodes must first establish contact, then lose all
 foot contacts with positive vertical speed. Apex rewards require a minimum
-flight duration and a minimum world-frame apex (`min_jump_height`, 0.96 m:
-standing height + `MIN_JUMP_RISE`), and cannot be collected again by bouncing. External
+flight duration and a minimum world-frame apex (`min_jump_height`,
+`MIN_JUMP_HEIGHT = 1.445` m: 3 cm above the standing jump frame), and cannot be collected again by bouncing. External
 push events are removed.
 
 Every episode, in training and play, starts standing still at the nominal
@@ -124,8 +130,8 @@ The existing illegal-ground-contact termination remains; the velocity task's
 fall-angle check is removed. A second takeoff after landing, attitude, and
 time spent in stance are not terminal (`walking_before_jump`,
 `idle_before_jump` and `excessive_attitude` remain in `mdp` but are not
-configured). Horizontal drift is measured from the environment origin. Heights are world-frame base-link z; apex
-error compares the measured and commanded world-frame apex. Takeoff detection uses the reference's 0.75 m/s upward
+configured). Horizontal drift is measured from the environment origin. Apex error compares the measured and commanded
+world-frame apex of the jump frame. Takeoff detection uses the reference's 0.75 m/s upward
 speed threshold. Idle time accumulates across separate pauses in stance and
 clears on takeoff, matching the reference. All counters and event flags reset
 per environment.
@@ -140,27 +146,42 @@ Targets are uniform within the current range and are sampled only on reset.
 
 | Environment steps | Height range (m) | PPO iteration with 24-step rollouts |
 | --- | --- | --- |
-| 0 | 1.230–1.330 | 0 |
-| 24,000 | 1.130–1.430 | 1,000 |
-| 48,000 | 1.205–1.480 | 2,000 |
-| 72,000 | 1.280–1.530 | 3,000 |
-| 96,000 | 1.355–1.580 | 4,000 |
-| 120,000 | 1.430–1.630 | 5,000 |
-| 144,000 | 1.505–1.680 | 6,000 |
-| 168,000 | 1.580–1.730 | 7,000 |
-| 192,000 | 1.655–1.780 | 8,000 |
-| 216,000 | 1.730–1.830 | 9,000 |
-| 240,000 | 1.805–1.880 | 10,000 |
-| 264,000 | 1.855–1.930 | 11,000 |
-| 288,000 | 1.905–1.980 | 12,000 |
-| 312,000 | 1.925–2.000 | 13,000 |
+| 0 | 1.715–1.815 | 0 |
+| 19,200 | 1.715–1.815 | 800 |
+| 43,200 | 1.715–1.915 | 1,800 |
+| 67,200 | 1.715–1.965 | 2,800 |
+| 91,200 | 1.765–2.015 | 3,800 |
+| 115,200 | 1.840–2.065 | 4,800 |
+| 139,200 | 1.915–2.115 | 5,800 |
+| 163,200 | 1.990–2.165 | 6,800 |
+| 187,200 | 2.065–2.215 | 7,800 |
+| 211,200 | 2.140–2.265 | 8,800 |
+| 235,200 | 2.215–2.315 | 9,800 |
+| 259,200 | 2.290–2.365 | 10,800 |
+| 283,200 | 2.340–2.415 | 11,800 |
+| 307,200 | 2.390–2.465 | 12,800 |
+| 331,200 | 2.440–2.515 | 13,800 |
+| 355,200 | 2.490–2.565 | 14,800 |
+| 379,200 | 2.540–2.615 | 15,800 |
+| 403,200 | 2.590–2.665 | 16,800 |
+| 427,200 | 2.640–2.715 | 17,800 |
+| 451,200 | 2.690–2.765 | 18,800 |
+| 475,200 | 2.740–2.815 | 19,800 |
+| 499,200 | 2.790–2.865 | 20,800 |
+| 523,200 | 2.840–2.915 | 21,800 |
+| 547,200 | 2.890–2.965 | 22,800 |
+| 571,200 | 2.910–2.985 | 23,800 |
 
-Ranges are world-frame base apex heights. The first two stages are the
-world-frame apex of the reference motion `motions/jump_ocp_solution_mjlab.npz`
-(`base_link` peaks at 1.278 m), rounded to 1.280 m, ± 5 cm, then ± 15 cm. Each later stage raises the
-upper bound 5 cm and narrows the range 2.5 cm, so the lower bound rises 7.5 cm,
-until the range is 7.5 cm wide at iteration 10,000. That 7.5 cm range then keeps
-rising 5 cm per stage, with the last stage capped at a 2 m upper bound.
+Ranges are world-frame jump-frame apex heights. The starting range is the
+apex of the reference motion `motions/jump_ocp_solution_mjlab.npz` (`base_link`
+peaks at 1.278 m, the jump frame about 0.485 m higher), rounded to 1.765 m, ± 5 cm,
+held constant for the first 800 iterations. The lower bound then stays at
+1.715 m while the upper bound rises
+10 cm by iteration 1,800 and 5 cm more by iteration 2,800. Each later stage
+raises the upper bound 5 cm and narrows the range 2.5 cm, so the lower bound
+rises 7.5 cm, until the range is 7.5 cm wide at iteration 10,800. That 7.5 cm
+range then keeps rising 5 cm per stage, with the last stage (iteration 23,800) capped at a
+2.985 m upper bound (2.5 m at the base link).
 Play samples the last stage.
 
 Tune `cfg.curriculum["jump_height"].params["stages"]` for training and
@@ -195,7 +216,8 @@ uses the configured simulation gravity and is disabled on descent.
 
 `pose` is `exp(-mean((q-q_default)^2 / std(h)^2))`. Each joint's std interpolates
 linearly from `std_ground` to `std_airborne` across `height_range`, the
-world-frame base heights 0.93–0.98 m (standing height + `POSTURE_BLEND_RISE`),
+world-frame jump-frame heights 1.415–1.465 m (`POSTURE_BLEND_HEIGHTS`, the first
+5 cm above standing),
 clamped outside that interval. The defaults reuse the flat task's looser running and
 tighter walking tolerances, respectively. Tune those dictionaries and
 `height_range` in `cfg.rewards["pose"].params`. Joint order is resolved before

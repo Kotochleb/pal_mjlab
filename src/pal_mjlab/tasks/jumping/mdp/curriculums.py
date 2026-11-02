@@ -20,7 +20,7 @@ def jump_height_curriculum(
   """Update only the sampling bounds; active targets stay fixed until reset.
 
   Each stage is (environment step, minimum apex, maximum apex): world-frame
-  base-link heights in metres. Both bounds are linearly interpolated between
+  heights of the command's jump frame in metres. Both bounds are linearly interpolated between
   consecutive control points and held at the last one's values after it.
   mjlab's runner checkpoints common_step_counter, preserving this schedule.
   """

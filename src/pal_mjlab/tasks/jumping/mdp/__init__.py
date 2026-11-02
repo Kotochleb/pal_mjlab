@@ -2,7 +2,8 @@ from .commands import JumpHeightCommand as JumpHeightCommand
 from .commands import JumpHeightCommandCfg as JumpHeightCommandCfg
 from .curriculums import jump_height_curriculum as jump_height_curriculum
 from .curriculums import settle_curriculum as settle_curriculum
-from .observations import base_height as base_height
+from .observations import base_height_world as base_height_world
+from .observations import jump_frame_height as jump_frame_height
 from .rewards import estimated_jump_height as estimated_jump_height
 from .rewards import feet_slip as feet_slip
 from .rewards import ground_force_l2 as ground_force_l2

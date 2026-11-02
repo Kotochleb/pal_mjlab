@@ -3,7 +3,7 @@
 from copy import deepcopy
 
 from mjlab.envs import ManagerBasedRlEnvCfg
-from mjlab.envs.mdp import time_out
+from mjlab.envs.mdp import builtin_sensor, time_out
 from mjlab.managers import (
   CurriculumTermCfg,
   ObservationTermCfg,
@@ -11,6 +11,7 @@ from mjlab.managers import (
   SceneEntityCfg,
   TerminationTermCfg,
 )
+from mjlab.utils.noise import UniformNoiseCfg as Unoise
 
 from pal_mjlab.robots import (
   ActuatorModel,
@@ -27,40 +28,61 @@ from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
   pal_kangaroo_full_flat_env_cfg,
 )
 
-# All jump heights are the base link's world-frame z (ground plane at z = 0).
+# All jump heights are the world-frame z of JUMP_FRAME (ground plane at z = 0):
+# a site between the front and rear upper torso cameras in x, at y = 0 and at
+# their height, on pelvis_2_link.
+# With both pelvis joints at zero it sits 0.4849 m above the base link
+# (-0.0455 pelvis_base_link + 0.052 pelvis_1_link + 0.0591 pelvis_2_link, turned
+# vertical by pelvis_1_link's +90 deg about y, + 0.4193 the site): every height
+# below that was a base-link height is that 0.485 m higher, rounded to 5 mm.
+JUMP_FRAME = "torso_up_cameras_frame"
 
-# (environment steps, minimum apex, maximum apex), world-frame metres; Kangaroo
-# Full stands with its base at 0.93 m. Training starts at the world-frame apex of
-# motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45), rounded to
-# 1.280 m, +-5 cm. The lower bound never drops below that start (1.230 m) while
-# the upper bound rises 10 cm by iteration 1,000, then 5 cm per 1,000 iterations.
-# From iteration 2,000 the range narrows 2.5 cm per 1,000 iterations, so the
-# lower bound rises 7.5 cm, until the range is 7.5 cm wide (iteration 10,000).
-# The 7.5 cm range then keeps rising 5 cm per 1,000 iterations, capped at a 2 m
-# upper bound. Bounds end in 0 or 5 mm. Control points every 1,000 PPO
-# iterations of 24 steps, up to 13,000, linearly interpolated in between.
+# (environment steps, minimum apex, maximum apex), world-frame metres of
+# JUMP_FRAME, which stands at 1.415 m. Training starts at the apex of
+# motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45, so about
+# 1.763 m), rounded to 1.765 m, +-5 cm, held constant for the first 800
+# iterations. The lower bound never drops below that start (1.715 m) while the
+# upper bound rises 10 cm by iteration 1,800, then 5 cm per 1,000 iterations.
+# From iteration 2,800 the range narrows 2.5 cm per 1,000 iterations, so the
+# lower bound rises 7.5 cm, until the range is 7.5 cm wide (iteration 10,800).
+# The 7.5 cm range then keeps rising 5 cm per 1,000 iterations, capped at a
+# 2.985 m upper bound (2.5 m at the base link). Bounds end in 0 or 5 mm. After
+# the hold, control points every 1,000 PPO iterations of 24 steps, up to 23,800,
+# linearly interpolated in between.
 HEIGHT_STAGES = (
-  (0, 1.230, 1.330),
-  (1_000 * 24, 1.230, 1.430),
-  (2_000 * 24, 1.230, 1.480),
-  (3_000 * 24, 1.280, 1.530),
-  (4_000 * 24, 1.355, 1.580),
-  (5_000 * 24, 1.430, 1.630),
-  (6_000 * 24, 1.505, 1.680),
-  (7_000 * 24, 1.580, 1.730),
-  (8_000 * 24, 1.655, 1.780),
-  (9_000 * 24, 1.730, 1.830),
-  (10_000 * 24, 1.805, 1.880),
-  (11_000 * 24, 1.855, 1.930),
-  (12_000 * 24, 1.905, 1.980),
-  (13_000 * 24, 1.925, 2.000),
+  (0, 1.715, 1.815),
+  (800 * 24, 1.715, 1.815),
+  (1_800 * 24, 1.715, 1.915),
+  (2_800 * 24, 1.715, 1.965),
+  (3_800 * 24, 1.765, 2.015),
+  (4_800 * 24, 1.840, 2.065),
+  (5_800 * 24, 1.915, 2.115),
+  (6_800 * 24, 1.990, 2.165),
+  (7_800 * 24, 2.065, 2.215),
+  (8_800 * 24, 2.140, 2.265),
+  (9_800 * 24, 2.215, 2.315),
+  (10_800 * 24, 2.290, 2.365),
+  (11_800 * 24, 2.340, 2.415),
+  (12_800 * 24, 2.390, 2.465),
+  (13_800 * 24, 2.440, 2.515),
+  (14_800 * 24, 2.490, 2.565),
+  (15_800 * 24, 2.540, 2.615),
+  (16_800 * 24, 2.590, 2.665),
+  (17_800 * 24, 2.640, 2.715),
+  (18_800 * 24, 2.690, 2.765),
+  (19_800 * 24, 2.740, 2.815),
+  (20_800 * 24, 2.790, 2.865),
+  (21_800 * 24, 2.840, 2.915),
+  (22_800 * 24, 2.890, 2.965),
+  (23_800 * 24, 2.910, 2.985),
 )
 
-# Former rise-based thresholds, now offsets above the robot's nominal standing
-# base height, converted to world z per robot: the posture blend band and the
-# lowest apex that counts as a jump.
-POSTURE_BLEND_RISE = (0.0, 0.05)
-MIN_JUMP_RISE = 0.03
+# JUMP_FRAME's world z with Kangaroo Full standing at its nominal 0.93 m base
+# height is 1.415 m. The posture reward blends from ground to airborne stds over
+# its first 5 cm above that, and the lowest apex that counts as a jump is 3 cm
+# above it.
+POSTURE_BLEND_HEIGHTS = (1.415, 1.465)
+MIN_JUMP_HEIGHT = 1.445
 
 # Final seconds the landed robot must stay settled (both feet down, every
 # joint slower than the settle speed; any pose) to end the episode;
@@ -83,7 +105,7 @@ SETTLE_STAGES = (
   (800 * 24, 0.1, LANDING_HOLD_TIME),
 )
 
-# Frames of each observation term given to the critic.
+# Frames of each observation term given to the actor and the critic.
 OBSERVATION_HISTORY = 10
 
 VELOCITY_REWARDS = (
@@ -97,12 +119,47 @@ VELOCITY_REWARDS = (
 )
 
 
+# Half-width of the uniform error on the actor's base state: 3 cm in height,
+# 3 cm/s per velocity axis.
+BASE_STATE_NOISE = 0.03
+
+
+def configure_jump_observations(cfg: ManagerBasedRlEnvCfg) -> None:
+  """Appends the base linear velocity and world-frame base height to the actor,
+  each +-BASE_STATE_NOISE, and stacks OBSERVATION_HISTORY frames of every term
+  in the actor and the critic (flattened).
+
+  The velocity is built like mjlab's velocity-env ``base_lin_vel`` term (the
+  IMU velocimeter, in the IMU frame), with this noise; the critics already observe
+  it noise-free, so they only gain the clean height. Shared by the free and
+  tracking jump tasks, so both actors keep one layout and the jump runner can
+  still load the tracking-pretrained actor. Call it after the actor group is
+  final: the terms go last, in this order.
+  """
+  actor = cfg.observations["actor"].terms
+  actor["base_lin_vel"] = ObservationTermCfg(
+    func=builtin_sensor,
+    params={"sensor_name": "robot/imu_lin_vel"},
+    noise=Unoise(n_min=-BASE_STATE_NOISE, n_max=BASE_STATE_NOISE),
+  )
+  actor["base_height_world"] = ObservationTermCfg(
+    func=mdp.base_height_world,
+    noise=Unoise(n_min=-BASE_STATE_NOISE, n_max=BASE_STATE_NOISE),
+  )
+  cfg.observations["critic"].terms["base_height_world"] = ObservationTermCfg(
+    func=mdp.base_height_world
+  )
+  for group in ("actor", "critic"):
+    cfg.observations[group].history_length = OBSERVATION_HISTORY
+    cfg.observations[group].flatten_history_dim = True
+
+
 def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> dict:
   """JumpHeightCommandCfg fields shared by every task with this jump state
   machine, from a fresh full-model velocity config: settling on its joints'
   speed alone, for a hold time (both the first curriculum stage's, the last
-  one's in play), the landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std) and the lowest
-  apex that counts as a jump, in world z."""
+  one's in play), the landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std), the jump
+  frame and the lowest apex that counts as a jump, in its world z."""
   pose = cfg.rewards["pose"]
   return {
     "settle_joint_names": tuple(pose.params["asset_cfg"].joint_names),
@@ -113,7 +170,8 @@ def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> 
     "settle_joint_speed": SETTLE_STAGES[-1 if play else 0][1],
     "settle_hold_time": SETTLE_STAGES[-1 if play else 0][2],
     "settle_joint_speed_only": True,
-    "min_jump_height": cfg.scene.entities["robot"].init_state.pos[2] + MIN_JUMP_RISE,
+    "min_jump_height": MIN_JUMP_HEIGHT,
+    "height_site_name": JUMP_FRAME,
   }
 
 
@@ -123,12 +181,13 @@ def configure_vertical_jump(
   """Adapt a fresh flat velocity config into a vertical jump task.
 
   The actor observes exactly what the full-model tracking actor does, with a
-  scalar world-frame apex target (zero after landing) as its command. The critic keeps the
-  velocity task's observations, with that command and stacked history.
+  scalar world-frame apex target (zero after landing) as its command, plus the
+  noisy IMU base velocity and world-frame base height. The critic keeps the
+  velocity task's observations, with that command and the clean base state.
+  Both stack OBSERVATION_HISTORY frames.
   """
   pose = cfg.rewards["pose"]
   foot_slip = cfg.rewards["foot_slip"]
-  standing_height = cfg.scene.entities["robot"].init_state.pos[2]
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
@@ -140,11 +199,11 @@ def configure_vertical_jump(
   cfg.observations["actor"] = actor
   for group in cfg.observations.values():
     group.terms["command"].params = {"command_name": "jump_height"}
-  # Privileged: the world-frame base height the targets and apex are measured in.
-  cfg.observations["critic"].terms["base_height"] = ObservationTermCfg(
-    func=mdp.base_height, params={"command_name": "jump_height"}
+  # Privileged: the jump frame's world-frame height, which targets and apex use.
+  cfg.observations["critic"].terms["jump_frame_height"] = ObservationTermCfg(
+    func=mdp.jump_frame_height, params={"command_name": "jump_height"}
   )
-  cfg.observations["critic"].history_length = OBSERVATION_HISTORY
+  configure_jump_observations(cfg)
 
   cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
   cfg.rewards.update(
@@ -167,7 +226,7 @@ def configure_vertical_jump(
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
           "std_ground": deepcopy(pose.params["std_standing"]),
           "std_airborne": dict.fromkeys(pose.params["std_running"], AIRBORNE_JOINT_STD),
-          "height_range": tuple(standing_height + h for h in POSTURE_BLEND_RISE),
+          "height_range": POSTURE_BLEND_HEIGHTS,
         },
       ),
       "horizontal_velocity": RewardTermCfg(
