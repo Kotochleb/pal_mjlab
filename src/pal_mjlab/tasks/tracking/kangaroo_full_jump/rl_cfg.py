@@ -5,7 +5,6 @@ from mjlab.rl import RslRlOnPolicyRunnerCfg
 from pal_mjlab.tasks.tracking.kangaroo.rl_cfg import (
   pal_kangaroo_tracking_ppo_runner_cfg,
 )
-from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import tensorboard_video_logger
 
 
 def pal_kangaroo_full_jump_tracking_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
@@ -13,5 +12,5 @@ def pal_kangaroo_full_jump_tracking_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   jump runner can load the trained actor."""
   cfg = pal_kangaroo_tracking_ppo_runner_cfg()
   cfg.experiment_name = "kangaroo_full_jump_tracking"
-  cfg.logger = tensorboard_video_logger()  # type: ignore[assignment]
+  cfg.logger = "tensorboard_video_log_writer.TensorboardVideoLogWriter"
   return cfg

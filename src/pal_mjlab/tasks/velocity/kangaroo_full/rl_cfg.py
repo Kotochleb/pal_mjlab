@@ -5,7 +5,6 @@ from mjlab.rl import (
 )
 
 
-
 def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
@@ -42,7 +41,5 @@ def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     save_interval=500,
     num_steps_per_env=24,
     max_iterations=30_000,
-    logger={
-      "class_name": "tensorboard_video_log_writer.TensorboardVideoLogWriter",
-    }
+    logger="tensorboard_video_log_writer.TensorboardVideoLogWriter",
   )
