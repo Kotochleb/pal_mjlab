@@ -219,7 +219,7 @@ def configure_vertical_jump(
     {
       "jump_height": RewardTermCfg(
         func=mdp.jump_height,
-        weight=40.0,
+        weight=30.0,
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "estimated_jump_height": RewardTermCfg(
@@ -261,7 +261,7 @@ def configure_vertical_jump(
       # (hip yaw/roll, ankle roll) are equal and opposite.
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
-        weight=-6.0,
+        weight=-7.0,
         params={
           "asset_cfg": SceneEntityCfg(
             "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
@@ -271,7 +271,7 @@ def configure_vertical_jump(
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=200.0,
+        weight=80.0,
         params={"command_name": "jump_height"},
       ),
     }
