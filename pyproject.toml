@@ -9,7 +9,8 @@ authors = [
 requires-python = ">=3.10,<3.14"
 dependencies = [
     "mjlab>=1.6.0",
-    "moviepy>=2.0"
+    "moviepy>=2.0",
+    "tensorboard-video-log-writer @ git+https://github.com/Kotochleb/tensorboard-video-rsl-rl-logger",
 ]
 
 [build-system]
@@ -47,6 +48,9 @@ select = ["E4", "E7", "E9", "F", "I", "B"]
 
 [project.scripts]
 validate = "pal_mjlab.scripts.validate:main"
+plot-validate = "pal_mjlab.scripts.plot_validate:main"
+replay-validate = "pal_mjlab.scripts.replay_validate:main"
+play-jump = "pal_mjlab.scripts.play_jump:main"
 
 [project.entry-points."mjlab.tasks"]
 pal_mjlab = "pal_mjlab.tasks"

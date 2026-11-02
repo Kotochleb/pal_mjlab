@@ -6,6 +6,7 @@ from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp import builtin_sensor, time_out
 from mjlab.managers import (
   CurriculumTermCfg,
+  EventTermCfg,
   ObservationTermCfg,
   RewardTermCfg,
   SceneEntityCfg,
@@ -107,6 +108,14 @@ SETTLE_STAGES = (
 
 # Frames of each observation term given to the actor and the critic.
 OBSERVATION_HISTORY = 10
+
+# Training only: the share of episodes restarted from a stored falling or landed
+# state of an earlier jump that finished (jump_state_replay), how many such
+# states are kept, and the half-width of the uniform noise (m) on the target
+# apex a restored state comes with.
+REPLAY_PROBABILITY = 0.2
+REPLAY_CAPACITY = 4096
+REPLAY_TARGET_NOISE = 0.005
 
 VELOCITY_REWARDS = (
   "body_ang_vel",
@@ -321,6 +330,18 @@ def configure_vertical_jump(
   # Every episode starts standing still at the nominal pose and heading.
   cfg.events["reset_base"].params["pose_range"] = {}
   cfg.events["reset_base"].params["velocity_range"] = {}
+  if not play:
+    cfg.events["jump_state_replay"] = EventTermCfg(
+      func=mdp.jump_state_replay,
+      mode="step",
+      params={
+        "command_name": "jump_height",
+        "termination_name": "jump_finished",
+        "probability": REPLAY_PROBABILITY,
+        "capacity": REPLAY_CAPACITY,
+        "target_noise": REPLAY_TARGET_NOISE,
+      },
+    )
   return cfg
 
 

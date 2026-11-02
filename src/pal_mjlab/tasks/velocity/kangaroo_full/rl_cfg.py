@@ -4,6 +4,21 @@ from mjlab.rl import (
   RslRlPpoAlgorithmCfg,
 )
 
+# Logger for every Kangaroo Full / Full-Full training: a TensorBoard writer
+# (tensorboard-video-log-writer in pyproject.toml) that also uploads the
+# recorded training videos. mjlab's config type only lists "wandb" and
+# "tensorboard" and complains about the dict, but passes it through to rsl_rl,
+# which resolves the class. Passing --agent.logger on the CLI replaces it.
+TENSORBOARD_VIDEO_LOGGER = {
+  "class_name": "tensorboard_video_log_writer.TensorboardVideoLogWriter",
+}
+
+
+def tensorboard_video_logger() -> dict:
+  """A fresh copy of TENSORBOARD_VIDEO_LOGGER (rsl_rl pops its class_name)."""
+  return dict(TENSORBOARD_VIDEO_LOGGER)
+
+
 def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
   return RslRlOnPolicyRunnerCfg(
     actor=RslRlModelCfg(
@@ -40,4 +55,5 @@ def pal_kangaroo_full_ppo_runner_cfg() -> RslRlOnPolicyRunnerCfg:
     save_interval=500,
     num_steps_per_env=24,
     max_iterations=30_000,
+    logger=tensorboard_video_logger(),  # type: ignore[arg-type]
   )

@@ -21,6 +21,30 @@ if TYPE_CHECKING:
 # JumpHeightCommand.settled). It falls back to LANDED if settling breaks.
 STANCE, FLIGHT, LANDED, SETTLED = range(4)
 
+# Per-env episode state that JumpHeightCommand.snapshot/restore carry over
+# (jump_state_replay); the xy positions are stored relative to the env origin.
+REPLAY_STATE = (
+  "target_height",
+  "phase",
+  "peak_height",
+  "air_time",
+  "landed_time",
+  "takeoff_com_xy",
+  "seen_contact",
+  "apex_reached",
+  "just_apex",
+  "just_takeoff",
+  "just_touchdown",
+  "reset_pos_xy",
+  "reset_yaw",
+  "episode_steps",
+  "idle_steps",
+  "landed_steps",
+  "settled_steps",
+  "contact_lost_steps",
+)
+_ORIGIN_RELATIVE_XY = ("takeoff_com_xy", "reset_pos_xy")
+
 
 def match_joint_values(
   mapping: dict[str, float], names: list[str], key: str
@@ -97,6 +121,8 @@ class JumpHeightCommand(CommandTerm):
     # Consecutive SETTLED steps with exactly one foot off the ground.
     self.contact_lost_steps = torch.zeros_like(self.phase)
     self._last_step = torch.full_like(self.phase, -1)
+    # Episodes started from a replayed snapshot (restore), not from standing.
+    self.replayed = torch.zeros_like(self.seen_contact)
     self._updated_step = -1
     self.metrics = {
       name: torch.zeros_like(self.target_height)
@@ -120,7 +146,8 @@ class JumpHeightCommand(CommandTerm):
     # One |apex - target| per finished episode that reached its apex, logged as
     # a tensor so the logger averages over jumps only; episodes without an
     # apex are left out instead of counting as zero or as a full shortfall.
-    jumped = env_ids[self.apex_reached[env_ids]]
+    # Replayed episodes inherit their apex: leave them out.
+    jumped = env_ids[self.apex_reached[env_ids] & ~self.replayed[env_ids]]
     apex_error = (self.peak_height[jumped] - self.target_height[jumped]).abs()
     extras: dict[str, float | torch.Tensor] = dict(super().reset(env_ids))
     if len(jumped):
@@ -167,6 +194,7 @@ class JumpHeightCommand(CommandTerm):
       self.landed_steps,
       self.settled_steps,
       self.contact_lost_steps,
+      self.replayed,
     ):
       value[env_ids] = 0
     self.takeoff_com_xy[env_ids] = 0
@@ -178,6 +206,27 @@ class JumpHeightCommand(CommandTerm):
     root_pose = data.data.qpos[env_ids][:, data.indexing.free_joint_q_adr]
     self.reset_pos_xy[env_ids] = root_pose[:, :2]
     self.reset_yaw[env_ids] = euler_xyz_from_quat(root_pose[:, 3:7])[2]
+    self._update_command(env_ids)
+
+  def snapshot(self, env_ids: torch.Tensor) -> dict[str, torch.Tensor]:
+    """Copies of the REPLAY_STATE rows of env_ids, xy relative to their origins."""
+    state = {name: getattr(self, name)[env_ids].clone() for name in REPLAY_STATE}
+    origins = self._env.scene.env_origins[env_ids, :2]
+    for name in _ORIGIN_RELATIVE_XY:
+      state[name] -= origins
+    return state
+
+  def restore(self, env_ids: torch.Tensor, state: dict[str, torch.Tensor]) -> None:
+    """Writes snapshot rows into env_ids (after this term's reset) and marks
+    them replayed. Like a reset, the restore step is not a physics step."""
+    origins = self._env.scene.env_origins[env_ids, :2]
+    for name in REPLAY_STATE:
+      value = state[name]
+      if name in _ORIGIN_RELATIVE_XY:
+        value = value + origins
+      getattr(self, name)[env_ids] = value
+    self.replayed[env_ids] = True
+    self._last_step[env_ids] = self._env.common_step_counter
     self._update_command(env_ids)
 
   def update_state(self) -> None:

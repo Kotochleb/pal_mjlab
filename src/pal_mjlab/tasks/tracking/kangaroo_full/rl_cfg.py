@@ -5,6 +5,7 @@ from mjlab.rl import RslRlOnPolicyRunnerCfg
 from pal_mjlab.tasks.tracking.kangaroo.rl_cfg import (
   pal_kangaroo_tracking_ppo_runner_cfg,
 )
+from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import tensorboard_video_logger
 
 
 def pal_kangaroo_full_tracking_ppo_runner_cfg(
@@ -15,4 +16,5 @@ def pal_kangaroo_full_tracking_ppo_runner_cfg(
   cfg.experiment_name = (
     "kangaroo_full_lower_body_tracking" if lower_body else "kangaroo_full_tracking"
   )
+  cfg.logger = tensorboard_video_logger()  # type: ignore[assignment]
   return cfg

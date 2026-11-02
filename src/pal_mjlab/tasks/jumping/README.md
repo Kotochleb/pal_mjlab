@@ -139,6 +139,23 @@ per environment.
 Bad touchdown and horizontal drift are failure conditions, with no separate
 landing-drift cost. The achieved and estimated jump-height rewards remain.
 
+## Replaying landings of finished jumps
+
+In training (not play), `jump_state_replay` (a `step`-mode event) restarts
+`REPLAY_PROBABILITY = 0.2` of episodes from a stored state of an earlier jump
+that ended on `jump_finished`. Each episode keeps one uniformly sampled state
+(reservoir sampling) among its **falling** (in flight after the apex) and
+**landed** (`LANDED`: both feet down, not yet settled) steps; only episodes that
+finish the jump add theirs to the buffer of `REPLAY_CAPACITY = 4096` states,
+which then replaces random entries. A state holds qpos/qvel (root xy relative
+to the env origin), the action history, the jump command's state machine, the
+contact sensors' air/contact timers, and the history of every actor and critic
+observation term, so the restarted episode continues as the original did. Its
+target apex is the stored one plus U(-5 mm, 5 mm) (`REPLAY_TARGET_NOISE`), also
+shifted in the observed command's history. Replayed episodes inherit their apex,
+so they are left out of `apex_height_error`. The buffer starts empty and lives
+in memory only; it is not checkpointed.
+
 ## Height sampling curriculum
 
 Targets are uniform within the current range and are sampled only on reset.
