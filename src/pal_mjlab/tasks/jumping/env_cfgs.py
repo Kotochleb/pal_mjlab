@@ -255,6 +255,7 @@ def configure_vertical_jump(
   )
   cfg.rewards = {name: cfg.rewards[name] for name in kept_rewards}
   posture_std = deepcopy(pose.params["std_standing"])
+  # Used by the (commented-out) joint_symmetry term below.
   symmetry_joints, mirrored_joints = (LEG_SYMMETRY_JOINTS,), (LEG_MIRRORED_JOINTS,)
   if not lower_body:
     # The standing std's regex also matches the arms; take them out of it.
@@ -304,19 +305,20 @@ def configure_vertical_jump(
           "asset_cfg": deepcopy(foot_slip.params["asset_cfg"]),
         },
       ),
+      # Disabled for now (user, 2026-11-03); uncomment to restore.
       # Left/right axes are identical: pitch-like joints match, the others
       # are equal and opposite (LEG_/ARM_MIRRORED_JOINTS).
-      "joint_symmetry": RewardTermCfg(
-        func=mdp.joint_symmetry_l2,
-        weight=-7.0,
-        params={
-          "asset_cfg": SceneEntityCfg("robot", joint_names=symmetry_joints),
-          "mirrored_joints": mirrored_joints,
-        },
-      ),
+      # "joint_symmetry": RewardTermCfg(
+      #   func=mdp.joint_symmetry_l2,
+      #   weight=-7.0,
+      #   params={
+      #     "asset_cfg": SceneEntityCfg("robot", joint_names=symmetry_joints),
+      #     "mirrored_joints": mirrored_joints,
+      #   },
+      # ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
-        weight=80.0,
+        weight=120.0,
         params={"command_name": "jump_height"},
       ),
     }
