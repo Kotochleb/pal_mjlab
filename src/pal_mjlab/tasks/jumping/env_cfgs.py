@@ -10,7 +10,7 @@ from mjlab.managers import (
   EventTermCfg,
   ObservationTermCfg,
   RewardTermCfg,
-  SceneEntityCfg,
+  SceneEntityCfg,  # noqa: F401  (the commented-out joint_symmetry term)
   TerminationTermCfg,
 )
 from mjlab.utils.noise import UniformNoiseCfg as Unoise
@@ -125,8 +125,8 @@ MAX_ROTATION_DEG = 30.0
 # while still in stance (before takeoff): after MAX_STANCE_TIME s in stance, or
 # MAX_IDLE_TIME s in total of standing still there (base slower than the
 # command's idle_speed, 0.1 m/s).
-MAX_STANCE_TIME = 5.0
-MAX_IDLE_TIME = 0.3
+MAX_STANCE_TIME = 2.5
+MAX_IDLE_TIME = 0.5
 # start_orientation reward: weight and kernel std (rad) of the base's rotation
 # from the episode's start; exp(-1) at about 14 deg, ~0 near MAX_ROTATION_DEG.
 START_ORIENTATION_WEIGHT = 1.0
@@ -320,6 +320,12 @@ def configure_vertical_jump(
         func=mdp.landing_completed,
         weight=120.0,
         params={"command_name": "jump_height"},
+      ),
+      # Keeping the touchdown's downward base speed in the first 0.3 s after it.
+      "catch_landing": RewardTermCfg(
+        func=mdp.catch_landing,
+        weight=3.0,
+        params={"command_name": "jump_height", "window": 0.3},
       ),
     }
   )
