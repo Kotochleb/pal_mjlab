@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
+from mjlab.utils.lab_api.math import quat_error_magnitude
 
 from .commands import FLIGHT, LANDED, STANCE, JumpHeightCommand, match_joint_values
 from .terminations import jump_finished
@@ -200,6 +201,17 @@ def feet_slip(
     in_contact.sum().clamp_min(1)
   )
   return (speed.square() * in_contact).sum(dim=-1)
+
+
+def start_orientation(
+  env: ManagerBasedRlEnv, command_name: str, std: float = 0.25
+) -> torch.Tensor:
+  """exp(-(angle / std)^2), angle = the base's rotation (rad, about any axis)
+  from its orientation at the episode start (the command's reset_quat, which
+  replayed states carry over), in every phase."""
+  term = _jump(env, command_name)
+  angle = quat_error_magnitude(term.robot.data.root_link_quat_w, term.reset_quat)
+  return torch.exp(-(angle / std).square())
 
 
 def catch_landing(

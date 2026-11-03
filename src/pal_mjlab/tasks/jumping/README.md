@@ -149,14 +149,15 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | `sideways_takeoff` | Horizontal base speed above 0.75 m/s at takeoff |
 | `horizontal_drift` | Base more than 1 m (`MAX_JUMP_DRIFT`) from the environment origin before landing (stance, flight), more than 3 m (`MAX_LANDED_DRIFT`) once both feet are down |
 | `excessive_rotation` | Base turned more than 30° (`MAX_ROTATION_DEG`), about any axis, from its orientation at the episode start (`reset_quat`, restored with replayed states) |
+| `jumped_again` | A second takeoff after landing (LANDED or SETTLED): one jump per episode |
+| `idle_before_jump` | Only before takeoff (STANCE): more than 5 s in stance (`MAX_STANCE_TIME`), or more than 0.3 s in total standing still there (`MAX_IDLE_TIME`, base slower than 0.1 m/s) |
 | `jump_finished` | In SETTLED for the settle hold time (see above): the task's success, a true terminal state for PPO (`time_out=False`, no value bootstrapped after it); `play-jump` shows it as a success |
 | `time_out` | 8 s episode limit |
 
 The existing illegal-ground-contact termination remains; the velocity task's
-fall-angle check is removed. A second takeoff after landing, attitude, and
-time spent in stance are not terminal (`walking_before_jump`,
-`idle_before_jump` and `excessive_attitude` remain in `mdp` but are not
-configured). Horizontal drift is measured from the environment origin. Apex error compares the measured and commanded
+fall-angle check is removed. Per-axis attitude and walking in stance are not
+terminal (`walking_before_jump` and `excessive_attitude` remain in `mdp` but
+are not configured). Horizontal drift is measured from the environment origin. Apex error compares the measured and commanded
 world-frame apex of the jump frame. Takeoff detection uses the reference's 0.75 m/s upward
 speed threshold. Idle time accumulates across separate pauses in stance and
 clears on takeoff, matching the reference. All counters and event flags reset
@@ -239,22 +240,33 @@ of the step counter, so `JumpOnPolicyRunner` saves it in the checkpoint's
 `infos["curriculum_state"]` and restores it on resume. Loading only the actor
 from a tracking checkpoint starts from the initial range.
 
+## Metrics
+
+On every episode end the jump command logs, besides `apex_height_error`
+(per episode that reached its apex), `Metrics/jump_height/full_jump`: per
+ended episode that started standing (replayed restarts and the initial reset
+are left out), 1 if it went through the whole jump (stance, takeoff, flight,
+both feet down, settled and held for the settle hold time, i.e. ended on
+`jump_finished`), else 0. Its average is the share of episodes doing the full
+jump.
+
 ## PPO
 
 `rl_cfg.py` keeps the full-model velocity PPO except for the credit horizon,
 since the task's value comes in sparse payouts (apex, then landing) seconds
 apart:
 
-- `gamma = 1 - 1/215` (`JUMP_MOTION_FRAMES`): the effective horizon
-  `1 / (1 - gamma)` is the reference jump npz's length, 215 policy steps
-  (4.3 s), instead of 0.99's 100 steps.
+- `gamma = 1 - 1/(1.5 · 215) ≈ 0.9969` (`JUMP_HORIZON_SCALE` ×
+  `JUMP_MOTION_FRAMES`): the effective horizon `1 / (1 - gamma)` is 1.5 times
+  the reference jump npz's length, 322.5 policy steps (6.45 s), instead of
+  0.99's 100 steps.
 - `lam = 0.98` (`JUMP_LAM`), from 0.95.
 - `num_steps_per_env = ITERATION_STEPS = 64` (1.28 s rollouts), from 24. The
   curricula count PPO iterations of this length.
 
 After loading only a pretrained actor (from a tracking checkpoint),
 `JumpOnPolicyRunner` trains only the critic for the first
-`CRITIC_WARMUP_ITERATIONS = 200` PPO updates: the actor's weights, action std
+`CRITIC_WARMUP_ITERATIONS = 50` PPO updates: the actor's weights, action std
 and observation normalizer stay as loaded, and the learning rate stays fixed
 rather than adapting to the (zero) KL. Resumed jump checkpoints skip it.
 
@@ -272,9 +284,9 @@ The additional rewards are:
 | `jump_height` | 45 | Once at measured apex: Gaussian(error, 0.10 m) + 3 × Laplacian(error, 0.05 m) |
 | `estimated_jump_height` | 20 | Same kernel during ascent, using `h + max(vz, 0)^2 / (2g)` |
 | `pose` | 0.1 | Per-joint posture reward, only while a foot touches the ground |
+| `start_orientation` | 1 | `exp(-(angle / 0.25)^2)`, angle = the base's rotation about any axis from its orientation at the episode start (`reset_quat`), in every phase |
 | `horizontal_velocity` | 2 | Suppress horizontal motion (stay in place), inspired by the authors' implementation |
-| `joint_symmetry` | −1 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee: s = +1 for 2, 4, knee (equal), s = −1 for 1, 3, 5 (mirrored) |
-| `catch_landing` | 3 | For 0.3 s after both feet touch down (LANDED or SETTLED): `clip(vz / vz_touchdown, 0, 1)`, 1 while the base keeps sinking as fast as it touched down, less as it brakes, 0 once it stops or rises |
+| `joint_symmetry` | −7 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee (and arm joints 1–4 with arms): s = +1 for legs 2, 4, knee and arms 2, 4 (equal), s = −1 for legs 1, 3, 5 and arms 1, 3 (mirrored) |
 | `landing_completed` | 20 | Once, on the `jump_finished` step (SETTLED held 0.5 s), an impulse (divided by step_dt): `exp(-mean((q-q_default)^2/(2·std_standing)^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent

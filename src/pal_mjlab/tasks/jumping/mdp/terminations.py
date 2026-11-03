@@ -28,7 +28,7 @@ def jump_finished(
   """
   term = _jump(env, command_name)
   if hold_time is None:
-    hold_time = term.settle_hold_time
+    return term.jump_complete
   return (term.phase == SETTLED) & (term.settled_steps >= hold_time / env.step_dt)
 
 
@@ -49,6 +49,14 @@ def bad_touchdown(
   return term.just_touchdown & (
     (height_error > max_height_error) | (base_height < min_base_height)
   )
+
+
+def jumped_again(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
+  """Fail on a second takeoff after landing (from LANDED or SETTLED): one jump
+  per episode. The takeoff test is the command's (no foot in contact, base
+  rising faster than takeoff_velocity), so a single lifted foot is no jump."""
+  term = _jump(env, command_name)
+  return term.just_takeoff & (term.phase >= LANDED)
 
 
 def sideways_takeoff(

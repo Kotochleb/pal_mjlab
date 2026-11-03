@@ -5,7 +5,7 @@ from mjlab.tasks.velocity.rl import VelocityOnPolicyRunner
 
 # PPO updates, after loading only a pretrained actor, during which only the
 # fresh critic learns (see JumpOnPolicyRunner).
-CRITIC_WARMUP_ITERATIONS = 200
+CRITIC_WARMUP_ITERATIONS = 50
 
 
 class JumpOnPolicyRunner(VelocityOnPolicyRunner):

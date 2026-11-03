@@ -121,6 +121,16 @@ MAX_JUMP_DRIFT = 1.0
 MAX_LANDED_DRIFT = 3.0
 # Base rotation (deg, about any axis) from the episode's start that ends it.
 MAX_ROTATION_DEG = 30.0
+# Standing too long before the jump ends the episode (idle_before_jump), only
+# while still in stance (before takeoff): after MAX_STANCE_TIME s in stance, or
+# MAX_IDLE_TIME s in total of standing still there (base slower than the
+# command's idle_speed, 0.1 m/s).
+MAX_STANCE_TIME = 5.0
+MAX_IDLE_TIME = 0.3
+# start_orientation reward: weight and kernel std (rad) of the base's rotation
+# from the episode's start; exp(-1) at about 14 deg, ~0 near MAX_ROTATION_DEG.
+START_ORIENTATION_WEIGHT = 1.0
+START_ORIENTATION_STD = 0.25
 
 # Leg joints the symmetry cost pairs; the pitch-like ones match left to right,
 # the MIRRORED ones (hip yaw/roll, ankle roll) are equal and opposite.
@@ -274,6 +284,12 @@ def configure_vertical_jump(
           "std": posture_std,
         },
       ),
+      # Keep the base's orientation from the episode start, in every phase.
+      "start_orientation": RewardTermCfg(
+        func=mdp.start_orientation,
+        weight=START_ORIENTATION_WEIGHT,
+        params={"command_name": "jump_height", "std": START_ORIENTATION_STD},
+      ),
       "horizontal_velocity": RewardTermCfg(
         func=mdp.horizontal_velocity,
         weight=2.0,
@@ -302,12 +318,6 @@ def configure_vertical_jump(
         func=mdp.landing_completed,
         weight=80.0,
         params={"command_name": "jump_height"},
-      ),
-      # Keeping the touchdown's downward base speed in the first 0.3 s after it.
-      "catch_landing": RewardTermCfg(
-        func=mdp.catch_landing,
-        weight=3.0,
-        params={"command_name": "jump_height", "window": 0.3},
       ),
     }
   )
@@ -380,6 +390,19 @@ def configure_vertical_jump(
       "excessive_rotation": TerminationTermCfg(
         func=mdp.excessive_rotation,
         params={"command_name": "jump_height", "max_angle_deg": MAX_ROTATION_DEG},
+      ),
+      # One jump per episode: a second takeoff after landing is a failure.
+      "jumped_again": TerminationTermCfg(
+        func=mdp.jumped_again,
+        params={"command_name": "jump_height"},
+      ),
+      "idle_before_jump": TerminationTermCfg(
+        func=mdp.idle_before_jump,
+        params={
+          "command_name": "jump_height",
+          "max_stance_time": MAX_STANCE_TIME,
+          "max_idle_time": MAX_IDLE_TIME,
+        },
       ),
     }
   )

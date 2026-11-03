@@ -158,9 +158,17 @@ class JumpHeightCommand(CommandTerm):
     # Replayed episodes inherit their apex: leave them out.
     jumped = env_ids[self.apex_reached[env_ids] & ~self.replayed[env_ids]]
     apex_error = (self.peak_height[jumped] - self.target_height[jumped]).abs()
+    # Per ended episode that started standing (not replayed, and not the
+    # initial reset, which ends no episode): 1 if it went all the way from
+    # stance through takeoff, flight, landing and settling to the finished
+    # jump, else 0. Averaged, the share of such episodes doing the full jump.
+    started = env_ids[(self.episode_steps[env_ids] > 0) & ~self.replayed[env_ids]]
+    full_jump = self.jump_complete[started].float()
     extras: dict[str, float | torch.Tensor] = dict(super().reset(env_ids))
     if len(jumped):
       extras["apex_height_error"] = apex_error
+    if len(started):
+      extras["full_jump"] = full_jump
     return extras
 
   @property
@@ -314,6 +322,13 @@ class JumpHeightCommand(CommandTerm):
       self.settle_pose_std
     )
     return error.square().mean(dim=-1)
+
+  @property
+  def jump_complete(self) -> torch.Tensor:
+    """SETTLED held for the command's settle_hold_time: the jump_finished
+    termination's condition."""
+    hold_steps = self.settle_hold_time / self._env.step_dt
+    return (self.phase == SETTLED) & (self.settled_steps >= hold_steps)
 
   @property
   def settled(self) -> torch.Tensor:
