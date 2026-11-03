@@ -194,11 +194,16 @@ Targets are uniform within the current range and are sampled only on reset.
   The rate is an exponential moving average with a per-episode weight of
   `1 / HEIGHT_SUCCESS_WINDOW` (4,096 episodes). Replayed episodes start after
   takeoff and are left out.
+- **Apex-error gate.** While success is at or above the threshold but the
+  smoothed apex error (`|apex - target|` of finished, non-replayed episodes
+  that reached their apex, same moving average per jump) exceeds
+  `HEIGHT_MAX_APEX_ERROR = 0.05` m, progress holds still: the range neither
+  rises nor backs off.
 
 Play samples the final range. The curriculum logs `min_height`, `max_height`,
-`progress` and `success_rate` under `Curriculum/jump_height/`. Progress is not
+`progress`, `success_rate` and `apex_error` under `Curriculum/jump_height/`. Progress is not
 a function of the step counter, so `JumpOnPolicyRunner` saves it (with the
-success rate) in the checkpoint's `infos["curriculum_state"]` and restores it
+success rate and apex error) in the checkpoint's `infos["curriculum_state"]` and restores it
 on resume. Loading only the actor from a tracking checkpoint starts from the
 initial range.
 

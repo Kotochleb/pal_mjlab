@@ -48,6 +48,8 @@ JUMP_FRAME = "torso_up_cameras_frame"
 # ending on jump_finished): below HEIGHT_SUCCESS_THRESHOLD the range moves back
 # at HEIGHT_BACKOFF_RATIO times the ramp rate, until the rate recovers. The
 # success rate is a moving average over about HEIGHT_SUCCESS_WINDOW episodes.
+# While jumps succeed but the smoothed |apex - target| (same window, jumps
+# only) exceeds HEIGHT_MAX_APEX_ERROR, the range holds still.
 HEIGHT_INITIAL_RANGE = (1.715, 1.815)
 HEIGHT_FINAL_RANGE = (2.800, 3.000)
 HEIGHT_HOLD_STEPS = 1_500 * 24
@@ -55,6 +57,7 @@ HEIGHT_FINAL_STEP = 10_000 * 24
 HEIGHT_SUCCESS_THRESHOLD = 0.5
 HEIGHT_BACKOFF_RATIO = 0.5
 HEIGHT_SUCCESS_WINDOW = 4096
+HEIGHT_MAX_APEX_ERROR = 0.05
 
 # JUMP_FRAME's world z with Kangaroo Full standing at its nominal 0.93 m base
 # height is 1.415 m; the lowest apex that counts as a jump is 3 cm above it.
@@ -269,6 +272,7 @@ def configure_vertical_jump(
           "success_threshold": HEIGHT_SUCCESS_THRESHOLD,
           "backoff_ratio": HEIGHT_BACKOFF_RATIO,
           "success_window": HEIGHT_SUCCESS_WINDOW,
+          "max_apex_error": HEIGHT_MAX_APEX_ERROR,
         },
       ),
       "settle": CurriculumTermCfg(
