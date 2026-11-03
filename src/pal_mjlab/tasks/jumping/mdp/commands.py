@@ -29,6 +29,7 @@ REPLAY_STATE = (
   "peak_height",
   "air_time",
   "landed_time",
+  "touchdown_velocity",
   "takeoff_com_xy",
   "seen_contact",
   "apex_reached",
@@ -37,6 +38,7 @@ REPLAY_STATE = (
   "just_touchdown",
   "reset_pos_xy",
   "reset_yaw",
+  "reset_quat",
   "episode_steps",
   "idle_steps",
   "landed_steps",
@@ -83,7 +85,9 @@ class JumpHeightCommand(CommandTerm):
     if cfg.height_site_name is not None:
       site_ids, _ = self.robot.find_sites(cfg.height_site_name, preserve_order=True)
       if len(site_ids) != 1:
-        raise ValueError(f"height_site_name must match one site: {cfg.height_site_name!r}")
+        raise ValueError(
+          f"height_site_name must match one site: {cfg.height_site_name!r}"
+        )
       self.height_site_id = site_ids[0]
     # Settled joint speed limit; a curriculum may lower it during training.
     self.settle_joint_speed = cfg.settle_joint_speed
@@ -95,6 +99,8 @@ class JumpHeightCommand(CommandTerm):
     self.peak_height = torch.zeros_like(self.target_height)
     self.air_time = torch.zeros_like(self.target_height)
     self.landed_time = torch.zeros_like(self.target_height)
+    # World-frame base z velocity on the touchdown step (both feet down).
+    self.touchdown_velocity = torch.zeros_like(self.target_height)
     self.settle_joint_ids, names = self.robot.find_joints(
       cfg.settle_joint_names, preserve_order=True
     )
@@ -113,6 +119,9 @@ class JumpHeightCommand(CommandTerm):
     self.just_touchdown = torch.zeros_like(self.seen_contact)
     self.reset_pos_xy = torch.zeros((self.num_envs, 2), device=self.device)
     self.reset_yaw = torch.zeros_like(self.target_height)
+    # World-frame base orientation (w, x, y, z) the episode started in.
+    self.reset_quat = torch.zeros((self.num_envs, 4), device=self.device)
+    self.reset_quat[:, 0] = 1
     self.episode_steps = torch.zeros_like(self.phase)
     self.idle_steps = torch.zeros_like(self.phase)
     self.landed_steps = torch.zeros_like(self.phase)
@@ -184,6 +193,7 @@ class JumpHeightCommand(CommandTerm):
       self.peak_height,
       self.air_time,
       self.landed_time,
+      self.touchdown_velocity,
       self.seen_contact,
       self.apex_reached,
       self.just_apex,
@@ -206,6 +216,7 @@ class JumpHeightCommand(CommandTerm):
     root_pose = data.data.qpos[env_ids][:, data.indexing.free_joint_q_adr]
     self.reset_pos_xy[env_ids] = root_pose[:, :2]
     self.reset_yaw[env_ids] = euler_xyz_from_quat(root_pose[:, 3:7])[2]
+    self.reset_quat[env_ids] = root_pose[:, 3:7]
     self._update_command(env_ids)
 
   def snapshot(self, env_ids: torch.Tensor) -> dict[str, torch.Tensor]:
@@ -265,6 +276,7 @@ class JumpHeightCommand(CommandTerm):
     # flight. Settling (JumpHeightCommand.settled) then finishes the jump.
     touchdown = flying & both_feet
     self.just_touchdown[touchdown] = True
+    self.touchdown_velocity[touchdown] = velocity[touchdown, 2]
     apex = flying & ~self.apex_reached & ((self.vertical_velocity <= 0) | touchdown)
     self.just_apex[apex] = True
     self.apex_reached[apex] = True

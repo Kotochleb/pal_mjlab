@@ -13,18 +13,23 @@ if TYPE_CHECKING:
 
 
 class jump_height_curriculum:
-  """Moves the sampled apex range from initial_range to final_range, gated by
-  the jump success rate.
+  """Moves the sampled apex range up in stairs, gated by the jump success rate.
 
-  The range is ``initial + progress * (final - initial)`` (both bounds), with
-  ``progress`` in [0, 1]. It stays 0 for the first ``hold_steps`` environment
-  steps. After that, every environment step changes progress by ``+rate``
-  while the smoothed success rate is at least ``success_threshold`` and by
-  ``-backoff_ratio * rate`` below it, where ``rate = 1 / (final_step -
-  hold_steps)``: without a back-off the final range is reached at
-  ``final_step``. While the success rate is high enough but the smoothed apex
-  error exceeds ``max_apex_error`` (metres), progress holds still instead of
-  rising. Only the bounds change; active targets stay fixed until reset.
+  The range is ``initial_range + offset`` (both bounds, so its width stays).
+  ``offset`` starts at 0 and does not change for the first ``hold_steps``
+  environment steps. From then on the curriculum decides once every
+  ``stair_steps`` steps (the first decision at ``hold_steps``):
+
+  - smoothed success rate below ``success_threshold``: back off by
+    ``step_down`` (never below 0);
+  - otherwise, smoothed apex error within ``max_apex_error`` (or no apex yet):
+    climb by ``step_up``, without the upper bound passing ``max_height``;
+  - otherwise (jumps succeed but miss their target): stay.
+
+  Every move starts a new curriculum *stage* (``stage`` counts them; the
+  replay buffer tags its states with it) and restarts both averages, so the
+  next decision only sees episodes of the current range. Only the bounds
+  change; active targets stay fixed until reset.
 
   The success rate is the share of finished episodes that ended on
   ``termination_name``. Episodes restarted from a replayed state
@@ -35,9 +40,8 @@ class jump_height_curriculum:
   that reached their apex (as the command's apex_height_error metric),
   averaged the same way per jump.
 
-  Progress, the success average and the last step are not derived from
-  common_step_counter: ``state_dict``/``load_state_dict`` carry them through
-  checkpoints (JumpOnPolicyRunner).
+  The state is not derived from common_step_counter: ``state_dict`` /
+  ``load_state_dict`` carry it through checkpoints (JumpOnPolicyRunner).
   """
 
   def __init__(self, cfg: CurriculumTermCfg, env: ManagerBasedRlEnv):
@@ -46,54 +50,63 @@ class jump_height_curriculum:
     self.command_name: str = params["command_name"]
     self.termination_name: str = params.get("termination_name", "jump_finished")
     self.initial_range = tuple(float(v) for v in params["initial_range"])
-    self.final_range = tuple(float(v) for v in params["final_range"])
+    self.max_height = float(params["max_height"])
     self.hold_steps = int(params["hold_steps"])
-    self.final_step = int(params["final_step"])
+    self.stair_steps = int(params["stair_steps"])
+    self.step_up = float(params.get("step_up", 0.05))
+    self.step_down = float(params.get("step_down", 0.01))
     self.success_threshold = float(params.get("success_threshold", 0.5))
-    self.backoff_ratio = float(params.get("backoff_ratio", 0.5))
     self.success_window = float(params.get("success_window", 4096))
     self.max_apex_error = float(params.get("max_apex_error", math.inf))
-    for low, high in (self.initial_range, self.final_range):
-      if not (0 < low <= high < math.inf):
-        raise ValueError("Height ranges must be finite, positive, and ordered.")
-    if any(f < i for i, f in zip(self.initial_range, self.final_range, strict=True)):
-      raise ValueError("The final range must not lie below the initial range.")
-    if not 0 <= self.hold_steps < self.final_step:
-      raise ValueError("hold_steps must be non-negative and before final_step.")
+    low, high = self.initial_range
+    if not (0 < low <= high <= self.max_height < math.inf):
+      raise ValueError(
+        "Heights must be finite, positive, and ordered up to max_height."
+      )
+    if self.hold_steps < 0 or self.stair_steps < 1:
+      raise ValueError("hold_steps must be >= 0 and stair_steps >= 1.")
+    if not (self.step_up > 0 and self.step_down >= 0):
+      raise ValueError("step_up must be positive and step_down non-negative.")
     if not 0 < self.success_threshold < 1:
       raise ValueError("success_threshold must be in (0, 1).")
-    if self.backoff_ratio < 0 or self.success_window < 1:
-      raise ValueError("backoff_ratio must be >= 0 and success_window >= 1.")
+    if self.success_window < 1:
+      raise ValueError("success_window must be >= 1.")
     if not self.max_apex_error > 0:
       raise ValueError("max_apex_error must be positive.")
-    self.rate = 1.0 / (self.final_step - self.hold_steps)
-    self.progress = 0.0
-    # None until the first episode ends.
+    self.max_offset = self.max_height - high
+    self.offset = 0.0
+    self.stage = 0
+    # None until the first episode of the stage ends.
     self.success_rate: float | None = None
-    # None until the first non-replayed episode with an apex ends.
+    # None until the stage's first non-replayed episode with an apex ends.
     self.apex_error: float | None = None
-    self.last_step = env.common_step_counter
+    # Environment step of the next decision.
+    self.next_step = self.hold_steps
+
+  @property
+  def failing(self) -> bool:
+    """Whether the current stage's jumps succeed less than success_threshold."""
+    return self.success_rate is not None and self.success_rate < self.success_threshold
 
   def state_dict(self) -> dict[str, float | int | None]:
     return {
-      "progress": self.progress,
+      "offset": self.offset,
+      "stage": self.stage,
       "success_rate": self.success_rate,
       "apex_error": self.apex_error,
-      "last_step": self.last_step,
+      "next_step": self.next_step,
     }
 
   def load_state_dict(self, state: dict[str, float | int | None]) -> None:
-    self.progress = float(state["progress"])
+    self.offset = float(state["offset"])
+    self.stage = int(state["stage"])
     self.success_rate = state["success_rate"]
-    # Checkpoints from before the apex-error gate lack it.
-    self.apex_error = state.get("apex_error")
-    self.last_step = int(state["last_step"])
+    self.apex_error = state["apex_error"]
+    self.next_step = int(state["next_step"])
 
   def height_range(self) -> tuple[float, float]:
-    low0, high0 = self.initial_range
-    low1, high1 = self.final_range
-    p = self.progress
-    return (low0 + p * (low1 - low0), high0 + p * (high1 - high0))
+    low, high = self.initial_range
+    return (low + self.offset, high + self.offset)
 
   def _smooth(self, average: float | None, batch: torch.Tensor) -> float:
     """EMA with a per-sample weight of 1 / success_window."""
@@ -126,29 +139,39 @@ class jump_height_curriculum:
   def _apex_accurate(self) -> bool:
     return self.apex_error is None or self.apex_error <= self.max_apex_error
 
+  def _decide(self) -> None:
+    if self.success_rate is None:
+      return  # No episode of this stage has ended yet: decide next time.
+    if self.failing:
+      offset = max(0.0, self.offset - self.step_down)
+    elif self._apex_accurate():
+      offset = min(self.max_offset, self.offset + self.step_up)
+    else:
+      offset = self.offset
+    if not math.isclose(offset, self.offset, abs_tol=1e-9):
+      self.offset = offset
+      self.stage += 1
+      self.success_rate = None
+      self.apex_error = None
+
   def __call__(
     self, env: ManagerBasedRlEnv, env_ids: torch.Tensor | slice, **params
   ) -> dict[str, float]:
     del params
     self._update_averages(env_ids)
     step = env.common_step_counter
-    # Steps since the last call, counting only those after the hold.
-    elapsed = max(0, step - max(self.last_step, self.hold_steps))
-    self.last_step = max(self.last_step, step)
-    if elapsed and self.success_rate is not None:
-      if self.success_rate < self.success_threshold:
-        delta = -self.backoff_ratio * elapsed * self.rate
-      elif self._apex_accurate():
-        delta = elapsed * self.rate
-      else:
-        delta = 0.0
-      self.progress = min(1.0, max(0.0, self.progress + delta))
+    if step >= self.next_step:
+      self._decide()
+      # One decision per stair_steps, however far apart the calls are.
+      periods = (step - self.next_step) // self.stair_steps + 1
+      self.next_step += periods * self.stair_steps
     low, high = self.height_range()
     env.command_manager.get_term(self.command_name).height_range = (low, high)
     return {
       "min_height": low,
       "max_height": high,
-      "progress": self.progress,
+      "offset": self.offset,
+      "stage": float(self.stage),
       "success_rate": -1.0 if self.success_rate is None else self.success_rate,
       "apex_error": -1.0 if self.apex_error is None else self.apex_error,
     }

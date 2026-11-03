@@ -4,9 +4,9 @@ import math
 from typing import TYPE_CHECKING
 
 import torch
-from mjlab.utils.lab_api.math import euler_xyz_from_quat
+from mjlab.utils.lab_api.math import euler_xyz_from_quat, quat_error_magnitude
 
-from .commands import SETTLED, STANCE, JumpHeightCommand
+from .commands import LANDED, SETTLED, STANCE, JumpHeightCommand
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -96,9 +96,29 @@ def excessive_attitude(
 
 
 def horizontal_drift(
-  env: ManagerBasedRlEnv, command_name: str, max_distance: float = 0.2
+  env: ManagerBasedRlEnv,
+  command_name: str,
+  max_distance: float = 0.2,
+  max_landed_distance: float | None = None,
 ) -> torch.Tensor:
-  """Limit each horizontal axis relative to the environment origin in all phases."""
+  """Limit the base's horizontal distance from the environment origin.
+
+  max_distance applies before landing (stance and flight); once both feet
+  have touched down (LANDED or SETTLED), max_landed_distance does (the same
+  limit when None).
+  """
   term = _jump(env, command_name)
   displacement = term.robot.data.root_link_pos_w[:, :2] - env.scene.env_origins[:, :2]
-  return (displacement.abs() > max_distance).any(dim=-1)
+  landed_limit = max_distance if max_landed_distance is None else max_landed_distance
+  limit = torch.where(term.phase >= LANDED, landed_limit, max_distance)
+  return displacement.norm(dim=-1) > limit
+
+
+def excessive_rotation(
+  env: ManagerBasedRlEnv, command_name: str, max_angle_deg: float = 30.0
+) -> torch.Tensor:
+  """Fail once the base has turned more than max_angle_deg, about any axis,
+  from the orientation the episode started in."""
+  term = _jump(env, command_name)
+  angle = quat_error_magnitude(term.robot.data.root_link_quat_w, term.reset_quat)
+  return angle > math.radians(max_angle_deg)

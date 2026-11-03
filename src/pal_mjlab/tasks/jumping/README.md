@@ -42,8 +42,29 @@ reference joints. The target is the motion's world-frame base apex (1.278 m) +
 U(−0.1, 0.1) m per episode, zeroed once both feet land, from the same
 `JumpHeightCommand` state machine. Every episode is one pass through the motion
 from its first frame. Actor observations, actions, and actor network equal
-`Mjlab-Jump-Vertical-<variant>`'s. The motion is lower body, so only
-`-Body-LowerBody-` variants exist.
+`Mjlab-Jump-Vertical-<variant>`'s. `-Body-LowerBody-` variants track the
+lower-body motion; `-Body-FullBody-` variants track its copy
+`motions/jump_ocp_solution_mjlab_arms.npz`, whose arm joints stay at their
+Kangaroo Full default positions in every frame, so imitation keeps the arms
+still. That copy is written by
+
+```bash
+uv run python -m pal_mjlab.scripts.add_default_arms_to_motion \
+  --input-file motions/jump_ocp_solution_mjlab.npz \
+  --output-file motions/jump_ocp_solution_mjlab_arms.npz
+```
+
+(joints in `SIMPLE_MODEL_JOINT_ORDER`, bodies re-computed by forward kinematics
+of the simple full-body Kangaroo; torques and contact wrenches copied as-is).
+
+In the free jump the arms are the policy's to use: on `-Body-FullBody-`
+variants the grounded posture reward gives every arm joint a wide
+`ARM_POSE_STD` (0.5 rad, legs and waist keep 0.05 rad), `joint_symmetry` also
+pairs the arms (`arm_*_1`/`_3` equal and opposite, `_2`/`_4` equal), and the
+velocity task's `self_collisions` cost is kept. The landing pose kernel
+(`landing_completed`, settling) is unchanged, so landings still pay most with
+the arms back at their default. `slurm_h100_tracking_jump_arms.bash` runs both
+stages for a full-body variant.
 
 ```bash
 uv run train Mjlab-Tracking-Jump-Pal-Kangaroo-Full-Transmission-Actuator-Femur-Prismatic-Mjcf-Tendons-Body-LowerBody-AnkleObs-AnkleRaw-ActuatorModel-Builtin --env.scene.num-envs 4096
@@ -126,8 +147,9 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | --- | --- |
 | `bad_touchdown` | At touchdown only: apex error above 0.30 m, or base height below 0.20 m above the ground |
 | `sideways_takeoff` | Horizontal base speed above 0.75 m/s at takeoff |
-| `horizontal_drift` | Either horizontal axis more than 0.60 m from the environment origin, in any phase |
-| `jump_finished` | In SETTLED for 0.5 s (see above); a timeout rather than failure |
+| `horizontal_drift` | Base more than 1 m (`MAX_JUMP_DRIFT`) from the environment origin before landing (stance, flight), more than 3 m (`MAX_LANDED_DRIFT`) once both feet are down |
+| `excessive_rotation` | Base turned more than 30° (`MAX_ROTATION_DEG`), about any axis, from its orientation at the episode start (`reset_quat`, restored with replayed states) |
+| `jump_finished` | In SETTLED for the settle hold time (see above): the task's success, a true terminal state for PPO (`time_out=False`, no value bootstrapped after it); `play-jump` shows it as a success |
 | `time_out` | 8 s episode limit |
 
 The existing illegal-ground-contact termination remains; the velocity task's
@@ -161,6 +183,12 @@ before their recording step, or that never reach their drawn transition add
 nothing. Once the buffer is full, a new state
 replaces the lowest-scoring one only if it scores higher. Restarts draw
 uniformly among the best `REPLAY_TOP_FRACTION = 0.25` of the buffer by score.
+Every state is tagged with the height curriculum stage (stair) it was stored
+in. While the curriculum is not failing (stage success rate at least 50 %, or
+not known yet), at least `REPLAY_KEEP_PREVIOUS_FRACTION = 0.5` of the capacity
+stays with states of earlier stages, as long as there are that many: new states
+then only replace earlier-stage states above that share, otherwise
+lower-scoring current-stage ones. While it fails, new states may replace any.
 Episodes that were themselves restarted from the buffer are never stored,
 since their return only covers the part after the restart.
 
@@ -176,36 +204,59 @@ not checkpointed.
 ## Height sampling curriculum
 
 Targets are uniform within the current range and are sampled only on reset.
-`jump_height_curriculum` moves both bounds linearly from
-`HEIGHT_INITIAL_RANGE = (1.715, 1.815)` to `HEIGHT_FINAL_RANGE = (2.800, 3.000)`
-(world-frame jump-frame apex heights):
+`jump_height_curriculum` shifts the whole 10 cm range of world-frame
+jump-frame apex heights in stairs, starting from
+`HEIGHT_INITIAL_RANGE = (1.715, 1.815)`:
 
 - **Hold.** The initial range is the apex of the reference motion
   `motions/jump_ocp_solution_mjlab.npz` (`base_link` peaks at 1.278 m, the jump
   frame about 0.485 m higher), rounded to 1.765 m, ± 5 cm. It is held for
-  `HEIGHT_HOLD_STEPS` (1,500 PPO iterations of 24 steps).
-- **Ramp.** After that, progress rises by `1 / (HEIGHT_FINAL_STEP -
-  HEIGHT_HOLD_STEPS)` per environment step, so with no setbacks the final range
-  is reached at iteration 10,000 (`HEIGHT_FINAL_STEP`).
+  `HEIGHT_HOLD_STEPS` (500 PPO iterations of `ITERATION_STEPS = 64` steps).
+- **Stairs.** From then on the curriculum decides once every
+  `HEIGHT_STAIR_STEPS`, the first decision at the end of the hold. While jumps
+  succeed it climbs `HEIGHT_STEP_UP = 5 cm`, until the upper bound reaches
+  3.0 m (`HEIGHT_FINAL_RANGE`'s top): `HEIGHT_STAIRS = 24` stairs, the last
+  one capped. The interval spreads them so that with no setbacks the top stair
+  (2.900–3.000 m) comes by iteration 20,000 (`HEIGHT_FINAL_STEP`), about 848
+  iterations apart.
 - **Success gate.** While the smoothed success rate (the share of episodes
-  ending on `jump_finished`) is below `HEIGHT_SUCCESS_THRESHOLD = 0.5`,
-  progress instead falls at `HEIGHT_BACKOFF_RATIO = 0.5` times the ramp rate,
-  never below the initial range. It rises again once the rate is back at 50 %.
-  The rate is an exponential moving average with a per-episode weight of
-  `1 / HEIGHT_SUCCESS_WINDOW` (4,096 episodes). Replayed episodes start after
-  takeoff and are left out.
+  ending on `jump_finished`) is below `HEIGHT_SUCCESS_THRESHOLD = 0.5`, each
+  decision instead moves back `HEIGHT_STEP_DOWN = 1 cm`, never below the
+  initial range. The rate is an exponential moving average with a per-episode
+  weight of `1 / HEIGHT_SUCCESS_WINDOW` (4,096 episodes). Replayed episodes
+  start after takeoff and are left out.
 - **Apex-error gate.** While success is at or above the threshold but the
   smoothed apex error (`|apex - target|` of finished, non-replayed episodes
   that reached their apex, same moving average per jump) exceeds
-  `HEIGHT_MAX_APEX_ERROR = 0.05` m, progress holds still: the range neither
-  rises nor backs off.
+  `HEIGHT_MAX_APEX_ERROR = 0.05` m, the range stays.
 
-Play samples the final range. The curriculum logs `min_height`, `max_height`,
-`progress`, `success_rate` and `apex_error` under `Curriculum/jump_height/`. Progress is not
-a function of the step counter, so `JumpOnPolicyRunner` saves it (with the
-success rate and apex error) in the checkpoint's `infos["curriculum_state"]` and restores it
-on resume. Loading only the actor from a tracking checkpoint starts from the
-initial range.
+Every move starts a new stage (`stage` counts them, the replay buffer tags its
+states with it) and restarts both averages, so each decision judges only the
+current stair. Play samples `HEIGHT_FINAL_RANGE = (2.800, 3.000)`. The
+curriculum logs `min_height`, `max_height`, `offset`, `stage`, `success_rate`
+and `apex_error` under `Curriculum/jump_height/`. Its state is not a function
+of the step counter, so `JumpOnPolicyRunner` saves it in the checkpoint's
+`infos["curriculum_state"]` and restores it on resume. Loading only the actor
+from a tracking checkpoint starts from the initial range.
+
+## PPO
+
+`rl_cfg.py` keeps the full-model velocity PPO except for the credit horizon,
+since the task's value comes in sparse payouts (apex, then landing) seconds
+apart:
+
+- `gamma = 1 - 1/215` (`JUMP_MOTION_FRAMES`): the effective horizon
+  `1 / (1 - gamma)` is the reference jump npz's length, 215 policy steps
+  (4.3 s), instead of 0.99's 100 steps.
+- `lam = 0.98` (`JUMP_LAM`), from 0.95.
+- `num_steps_per_env = ITERATION_STEPS = 64` (1.28 s rollouts), from 24. The
+  curricula count PPO iterations of this length.
+
+After loading only a pretrained actor (from a tracking checkpoint),
+`JumpOnPolicyRunner` trains only the critic for the first
+`CRITIC_WARMUP_ITERATIONS = 200` PPO updates: the actor's weights, action std
+and observation normalizer stay as loaded, and the learning rate stays fixed
+rather than adapting to the (zero) KL. Resumed jump checkpoints skip it.
 
 ## Rewards
 
@@ -218,12 +269,12 @@ The additional rewards are:
 
 | Term | Weight | Behavior |
 | --- | --- | --- |
-| `jump_height` | 20 | Once at measured apex: Gaussian(error, 0.10 m) + 3 × Laplacian(error, 0.05 m) |
+| `jump_height` | 45 | Once at measured apex: Gaussian(error, 0.10 m) + 3 × Laplacian(error, 0.05 m) |
 | `estimated_jump_height` | 20 | Same kernel during ascent, using `h + max(vz, 0)^2 / (2g)` |
 | `pose` | 0.1 | Per-joint posture reward, only while a foot touches the ground |
-| `horizontal_velocity` | 1 | Suppress horizontal motion, inspired by the authors' implementation |
-| `ground_force_l2` | −0.05 | Squared foot-ground forces, normalized by 500 N |
+| `horizontal_velocity` | 2 | Suppress horizontal motion (stay in place), inspired by the authors' implementation |
 | `joint_symmetry` | −1 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee: s = +1 for 2, 4, knee (equal), s = −1 for 1, 3, 5 (mirrored) |
+| `catch_landing` | 3 | For 0.3 s after both feet touch down (LANDED or SETTLED): `clip(vz / vz_touchdown, 0, 1)`, 1 while the base keeps sinking as fast as it touched down, less as it brakes, 0 once it stops or rises |
 | `landing_completed` | 20 | Once, on the `jump_finished` step (SETTLED held 0.5 s), an impulse (divided by step_dt): `exp(-mean((q-q_default)^2/(2·std_standing)^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent

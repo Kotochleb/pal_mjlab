@@ -1,5 +1,6 @@
 """Vertical jumping on a plane, using Kangaroo Full's flat-task sensors/actions."""
 
+import math
 from copy import deepcopy
 
 from mjlab.envs import ManagerBasedRlEnvCfg
@@ -38,24 +39,37 @@ from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
 # below that was a base-link height is that 0.485 m higher, rounded to 5 mm.
 JUMP_FRAME = "torso_up_cameras_frame"
 
+# Environment steps per PPO iteration of the jump task (its rl_cfg's
+# num_steps_per_env): the curricula below count PPO iterations in these.
+ITERATION_STEPS = 64
+
 # Sampled target apex range (minimum, maximum), world-frame metres of
 # JUMP_FRAME, which stands at 1.415 m. Training starts at the apex of
 # motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45, so about
-# 1.763 m), rounded to 1.765 m, +-5 cm, held for the first 1,500 PPO iterations
-# of 24 steps (HEIGHT_HOLD_STEPS). Both bounds then move linearly to the final
-# 20 cm range topped at 3.0 m, reached at iteration 10,000 (HEIGHT_FINAL_STEP)
-# if every step succeeds. The ramp is gated by the jump success rate (episodes
-# ending on jump_finished): below HEIGHT_SUCCESS_THRESHOLD the range moves back
-# at HEIGHT_BACKOFF_RATIO times the ramp rate, until the rate recovers. The
-# success rate is a moving average over about HEIGHT_SUCCESS_WINDOW episodes.
-# While jumps succeed but the smoothed |apex - target| (same window, jumps
-# only) exceeds HEIGHT_MAX_APEX_ERROR, the range holds still.
+# 1.763 m), rounded to 1.765 m, +-5 cm, held for the first 500 PPO iterations
+# (HEIGHT_HOLD_STEPS). The whole 10 cm range then moves in stairs:
+# one decision every HEIGHT_STAIR_STEPS, up by HEIGHT_STEP_UP (5 cm) while
+# jumps succeed, never past HEIGHT_FINAL_RANGE's 3.0 m top (HEIGHT_STAIRS = 24
+# stairs, the last one capped), and back by HEIGHT_STEP_DOWN (1 cm) while the
+# jump success rate (episodes ending on jump_finished) is below
+# HEIGHT_SUCCESS_THRESHOLD. The success rate is a moving average over about
+# HEIGHT_SUCCESS_WINDOW episodes of the current stair. While jumps succeed but the smoothed |apex - target| (same
+# window, jumps only) exceeds HEIGHT_MAX_APEX_ERROR, the range stays. Play
+# samples HEIGHT_FINAL_RANGE.
 HEIGHT_INITIAL_RANGE = (1.715, 1.815)
 HEIGHT_FINAL_RANGE = (2.800, 3.000)
-HEIGHT_HOLD_STEPS = 1_500 * 24
-HEIGHT_FINAL_STEP = 10_000 * 24
+HEIGHT_HOLD_STEPS = 500 * ITERATION_STEPS
+HEIGHT_STEP_UP = 0.05
+HEIGHT_STEP_DOWN = 0.01
+# With no setbacks the top stair is reached by PPO iteration 20,000: the first
+# stair is decided when the hold ends, the other HEIGHT_STAIRS - 1 are spread
+# evenly up to HEIGHT_FINAL_STEP (about 848 iterations apart).
+HEIGHT_FINAL_STEP = 20_000 * ITERATION_STEPS
+HEIGHT_STAIRS = math.ceil(
+  (HEIGHT_FINAL_RANGE[1] - HEIGHT_INITIAL_RANGE[1]) / HEIGHT_STEP_UP - 1e-9
+)
+HEIGHT_STAIR_STEPS = (HEIGHT_FINAL_STEP - HEIGHT_HOLD_STEPS) // (HEIGHT_STAIRS - 1)
 HEIGHT_SUCCESS_THRESHOLD = 0.5
-HEIGHT_BACKOFF_RATIO = 0.5
 HEIGHT_SUCCESS_WINDOW = 4096
 HEIGHT_MAX_APEX_ERROR = 0.05
 
@@ -71,7 +85,7 @@ LANDING_HOLD_TIME = 0.2
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
 # (environment steps, settled joint speed limit in rad/s, settled hold time in
-# s): control points in PPO iterations of 24 steps, linearly interpolated in
+# s): control points in PPO iterations (ITERATION_STEPS), linearly interpolated in
 # between (constant after the last). The loosest stage holds unchanged for the
 # first 150 iterations; by iteration 800 the terminal state has tightened half
 # of the way to full tightness (JumpHeightCommandCfg's default settle_joint_speed
@@ -79,8 +93,8 @@ SETTLE_POSE_STD_SCALE = 2.0
 # 0.1 s hold (5 control steps of 0.02 s). Play uses that last stage too.
 SETTLE_STAGES = (
   (0, 0.5, 0.0),
-  (150 * 24, 0.5, 0.0),
-  (800 * 24, 0.3, LANDING_HOLD_TIME / 2),
+  (150 * ITERATION_STEPS, 0.5, 0.0),
+  (800 * ITERATION_STEPS, 0.3, LANDING_HOLD_TIME / 2),
 )
 
 # Frames of each observation term given to the actor and the critic.
@@ -97,6 +111,33 @@ REPLAY_CAPACITY = 4096
 REPLAY_TOP_FRACTION = 0.25
 REPLAY_MAX_OFFSET = 0.3
 REPLAY_TARGET_NOISE = 0.005
+# Share of the replay buffer kept for states stored at earlier height
+# curriculum stairs, while the curriculum is not failing.
+REPLAY_KEEP_PREVIOUS_FRACTION = 0.5
+
+# Base distance (m) from the environment origin that ends the episode: before
+# landing (stance and flight), and once both feet are down.
+MAX_JUMP_DRIFT = 1.0
+MAX_LANDED_DRIFT = 3.0
+# Base rotation (deg, about any axis) from the episode's start that ends it.
+MAX_ROTATION_DEG = 30.0
+
+# Leg joints the symmetry cost pairs; the pitch-like ones match left to right,
+# the MIRRORED ones (hip yaw/roll, ankle roll) are equal and opposite.
+LEG_SYMMETRY_JOINTS = r"leg_(left|right)_([1-5]|knee)_joint"
+LEG_MIRRORED_JOINTS = r"leg_left_[135]_joint"
+# The same for the arms, on full-body robots: shoulder 2 and elbow (4) match,
+# shoulder 1 and 3 are equal and opposite (as their default positions are).
+ARM_SYMMETRY_JOINTS = r"arm_(left|right)_[1-4]_joint"
+ARM_MIRRORED_JOINTS = r"arm_left_[13]_joint"
+# Free jumps with arms: the grounded posture reward's std (rad) for every arm
+# joint, wide so the arms can swing through the countermovement and push-off
+# (the other joints keep the standing 0.05 rad). Landing still settles towards
+# the default arm pose: landing_completed's kernel is the shared settle one.
+ARM_POSE_STD = 0.5
+# Free jumps with arms: velocity-task rewards kept on top of VELOCITY_REWARDS,
+# as swinging arms can hit the torso and legs.
+ARM_VELOCITY_REWARDS = ("self_collisions",)
 
 VELOCITY_REWARDS = (
   "body_ang_vel",
@@ -166,7 +207,7 @@ def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> 
 
 
 def configure_vertical_jump(
-  cfg: ManagerBasedRlEnvCfg, play: bool = False
+  cfg: ManagerBasedRlEnvCfg, *, lower_body: LowerBody, play: bool = False
 ) -> ManagerBasedRlEnvCfg:
   """Adapt a fresh flat velocity config into a vertical jump task.
 
@@ -175,6 +216,10 @@ def configure_vertical_jump(
   noisy IMU base velocity and world-frame base height. The critic keeps the
   velocity task's observations, with that command and the clean base state.
   Both stack OBSERVATION_HISTORY frames.
+
+  ``lower_body`` must match the config's robot. With arms, the policy may use
+  them to jump: they are paired in the symmetry cost, loose (ARM_POSE_STD) in
+  the grounded posture reward, and self-collisions are penalized.
   """
   pose = cfg.rewards["pose"]
   foot_slip = cfg.rewards["foot_slip"]
@@ -195,12 +240,23 @@ def configure_vertical_jump(
   )
   configure_jump_observations(cfg)
 
-  cfg.rewards = {name: cfg.rewards[name] for name in VELOCITY_REWARDS}
+  kept_rewards = (
+    VELOCITY_REWARDS if lower_body else VELOCITY_REWARDS + ARM_VELOCITY_REWARDS
+  )
+  cfg.rewards = {name: cfg.rewards[name] for name in kept_rewards}
+  posture_std = deepcopy(pose.params["std_standing"])
+  symmetry_joints, mirrored_joints = (LEG_SYMMETRY_JOINTS,), (LEG_MIRRORED_JOINTS,)
+  if not lower_body:
+    # The standing std's regex also matches the arms; take them out of it.
+    posture_std = {rf"(?!arm_){pattern}": std for pattern, std in posture_std.items()}
+    posture_std[r"arm_.*"] = ARM_POSE_STD
+    symmetry_joints += (ARM_SYMMETRY_JOINTS,)
+    mirrored_joints += (ARM_MIRRORED_JOINTS,)
   cfg.rewards.update(
     {
       "jump_height": RewardTermCfg(
         func=mdp.jump_height,
-        weight=30.0,
+        weight=45.0,
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "estimated_jump_height": RewardTermCfg(
@@ -215,18 +271,13 @@ def configure_vertical_jump(
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
-          "std": deepcopy(pose.params["std_standing"]),
+          "std": posture_std,
         },
       ),
       "horizontal_velocity": RewardTermCfg(
         func=mdp.horizontal_velocity,
-        weight=1.0,
+        weight=2.0,
         params={"command_name": "jump_height", "std": 0.2},
-      ),
-      "ground_force_l2": RewardTermCfg(
-        func=mdp.ground_force_l2,
-        weight=-0.05,
-        params={"sensor_name": "feet_ground_contact", "force_scale": 500.0},
       ),
       # The velocity task's foot-slip cost on its foot sites, in every phase.
       "foot_slip": RewardTermCfg(
@@ -238,21 +289,25 @@ def configure_vertical_jump(
         },
       ),
       # Left/right axes are identical: pitch-like joints match, the others
-      # (hip yaw/roll, ankle roll) are equal and opposite.
+      # are equal and opposite (LEG_/ARM_MIRRORED_JOINTS).
       "joint_symmetry": RewardTermCfg(
         func=mdp.joint_symmetry_l2,
         weight=-7.0,
         params={
-          "asset_cfg": SceneEntityCfg(
-            "robot", joint_names=(r"leg_(left|right)_([1-5]|knee)_joint",)
-          ),
-          "mirrored_joints": (r"leg_left_[135]_joint",),
+          "asset_cfg": SceneEntityCfg("robot", joint_names=symmetry_joints),
+          "mirrored_joints": mirrored_joints,
         },
       ),
       "landing_completed": RewardTermCfg(
         func=mdp.landing_completed,
         weight=80.0,
         params={"command_name": "jump_height"},
+      ),
+      # Keeping the touchdown's downward base speed in the first 0.3 s after it.
+      "catch_landing": RewardTermCfg(
+        func=mdp.catch_landing,
+        weight=3.0,
+        params={"command_name": "jump_height", "window": 0.3},
       ),
     }
   )
@@ -266,11 +321,12 @@ def configure_vertical_jump(
           "command_name": "jump_height",
           "termination_name": "jump_finished",
           "initial_range": HEIGHT_INITIAL_RANGE,
-          "final_range": HEIGHT_FINAL_RANGE,
+          "max_height": HEIGHT_FINAL_RANGE[1],
           "hold_steps": HEIGHT_HOLD_STEPS,
-          "final_step": HEIGHT_FINAL_STEP,
+          "stair_steps": HEIGHT_STAIR_STEPS,
+          "step_up": HEIGHT_STEP_UP,
+          "step_down": HEIGHT_STEP_DOWN,
           "success_threshold": HEIGHT_SUCCESS_THRESHOLD,
-          "backoff_ratio": HEIGHT_BACKOFF_RATIO,
           "success_window": HEIGHT_SUCCESS_WINDOW,
           "max_apex_error": HEIGHT_MAX_APEX_ERROR,
         },
@@ -288,9 +344,11 @@ def configure_vertical_jump(
   cfg.terminations.update(
     {
       "time_out": TerminationTermCfg(func=time_out, time_out=True),
+      # The task's successful end: a true terminal state (time_out=False), so
+      # PPO does not bootstrap a value after it.
       "jump_finished": TerminationTermCfg(
         func=mdp.jump_finished,
-        time_out=True,
+        time_out=False,
         params={"command_name": "jump_height"},
       ),
       # "bad_touchdown": TerminationTermCfg(
@@ -309,9 +367,19 @@ def configure_vertical_jump(
       #   func=mdp.walking_before_jump,
       #   params={"command_name": "jump_height", "max_distance": 0.2},
       # ),
+      # Distance from the env origin: MAX_JUMP_DRIFT until both feet land,
+      # MAX_LANDED_DRIFT after.
       "horizontal_drift": TerminationTermCfg(
         func=mdp.horizontal_drift,
-        params={"command_name": "jump_height", "max_distance": 0.6},
+        params={
+          "command_name": "jump_height",
+          "max_distance": MAX_JUMP_DRIFT,
+          "max_landed_distance": MAX_LANDED_DRIFT,
+        },
+      ),
+      "excessive_rotation": TerminationTermCfg(
+        func=mdp.excessive_rotation,
+        params={"command_name": "jump_height", "max_angle_deg": MAX_ROTATION_DEG},
       ),
     }
   )
@@ -333,6 +401,8 @@ def configure_vertical_jump(
         "top_fraction": REPLAY_TOP_FRACTION,
         "max_offset": REPLAY_MAX_OFFSET,
         "target_noise": REPLAY_TARGET_NOISE,
+        "curriculum_name": "jump_height",
+        "keep_previous_fraction": REPLAY_KEEP_PREVIOUS_FRACTION,
       },
     )
   return cfg
@@ -357,5 +427,6 @@ def pal_kangaroo_full_vertical_jump_env_cfg(
       ankle_normalized=ankle_normalized,
       actuator_model=actuator_model,
     ),
+    lower_body=lower_body,
     play=play,
   )

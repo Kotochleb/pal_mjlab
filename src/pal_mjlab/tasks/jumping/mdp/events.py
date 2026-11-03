@@ -43,6 +43,14 @@ class jump_state_replay:
   The buffer holds up to ``capacity`` states; once full, a new state replaces
   the lowest-scoring one when it scores higher.
 
+  With ``curriculum_name`` (the jump height curriculum), every state is tagged
+  with the curriculum stage it was stored in. While that curriculum is not
+  failing (its success rate is at least its threshold, or not known yet), at
+  least ``keep_previous_fraction`` of the capacity stays with states of
+  earlier stages, as long as there are that many: new states only replace
+  earlier-stage ones above that share, otherwise current-stage ones. While it
+  fails, new states may replace any state, as without a curriculum.
+
   On reset (``reset``, after every manager has reset), each env restarts with
   probability ``probability`` from a state drawn uniformly among the best
   ``top_fraction`` of the buffer by score, otherwise from the reset events'
@@ -66,6 +74,10 @@ class jump_state_replay:
     self.top_fraction: float = params.get("top_fraction", 0.25)
     self.max_offset: float = params["max_offset"]
     self.target_noise: float = params["target_noise"]
+    self.curriculum_name: str | None = params.get("curriculum_name")
+    self.keep_previous_fraction: float = params.get("keep_previous_fraction", 0.5)
+    if not 0 <= self.keep_previous_fraction <= 1:
+      raise ValueError("keep_previous_fraction must be in [0, 1].")
     if not 0 <= self.probability <= 1:
       raise ValueError("probability must be in [0, 1].")
     if not 0 < self.top_fraction <= 1:
@@ -128,6 +140,13 @@ class jump_state_replay:
     num_envs, device = env.num_envs, env.device
     self._has_pending = torch.zeros(num_envs, dtype=torch.bool, device=device)
     self._scores = torch.full((self.capacity,), -math.inf, device=device)
+    # Curriculum stage each stored state was added in.
+    self._stages = torch.zeros(self.capacity, dtype=torch.long, device=device)
+    self._curriculum = (
+      None
+      if self.curriculum_name is None
+      else env.curriculum_manager.get_term_cfg(self.curriculum_name).func
+    )
     self._max_offset_steps = round(self.max_offset / env.step_dt)
     # Per env: the drawn transition and offset (steps), whether the transition
     # has happened and the steps still to wait after it, whether this episode's
@@ -225,9 +244,17 @@ class jump_state_replay:
         )
       target[name][index] = value
 
+  def _stage(self) -> tuple[int, bool]:
+    """(current curriculum stage, whether earlier-stage states are protected)."""
+    if self._curriculum is None:
+      return 0, False
+    return int(self._curriculum.stage), not self._curriculum.failing
+
   def _insert(self, state: dict[str, torch.Tensor], scores: torch.Tensor) -> None:
-    """Adds scored states: free slots first, then over lower-scoring ones."""
+    """Adds scored states: free slots first, then over lower-scoring ones,
+    keeping the protected share of earlier-stage states (see the class)."""
     device = scores.device
+    stage, protect = self._stage()
     free = min(len(scores), self.capacity - self.size)
     if free:
       slots = torch.arange(self.size, self.size + free, device=device)
@@ -235,13 +262,27 @@ class jump_state_replay:
         self._buffer, slots, {k: v[:free] for k, v in state.items()}, self.capacity
       )
       self._scores[slots] = scores[:free]
+      self._stages[slots] = stage
       self.size += free
     rest = scores[free:]
     if len(rest) == 0:
       return
-    # Keep the best `capacity` of the full buffer and the remaining candidates.
-    keep = torch.zeros(self.capacity + len(rest), dtype=torch.bool, device=device)
-    keep[torch.topk(torch.cat([self._scores, rest]), self.capacity).indices] = True
+    # Keep the best `capacity` of the full buffer and the remaining candidates,
+    # after reserving the best earlier-stage states when protected.
+    total = self.capacity + len(rest)
+    candidates = torch.cat([self._scores, rest])
+    keep = torch.zeros(total, dtype=torch.bool, device=device)
+    if protect:
+      previous = (self._stages < stage).nonzero().squeeze(-1)
+      reserved = min(
+        len(previous), math.ceil(self.keep_previous_fraction * self.capacity)
+      )
+      if reserved:
+        best = torch.topk(self._scores[previous], reserved).indices
+        keep[previous[best]] = True
+    others = (~keep).nonzero().squeeze(-1)
+    chosen = torch.topk(candidates[others], self.capacity - int(keep.sum())).indices
+    keep[others[chosen]] = True
     slots = (~keep[: self.capacity]).nonzero().squeeze(-1)
     incoming = keep[self.capacity :].nonzero().squeeze(-1)
     if len(incoming):
@@ -250,6 +291,7 @@ class jump_state_replay:
         self._buffer, slots, {k: v[rows] for k, v in state.items()}, self.capacity
       )
       self._scores[slots] = scores[rows]
+      self._stages[slots] = stage
 
   def __call__(self, env: ManagerBasedRlEnv, env_ids: torch.Tensor | None, **params):
     del env_ids, params

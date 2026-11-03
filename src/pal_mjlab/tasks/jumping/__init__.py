@@ -13,10 +13,13 @@ for _task in list_tasks():
     continue
   if "-Curriculum-" in _task:
     continue
+  _lower_body = "-Body-LowerBody-" in _task
   register_mjlab_task(
     task_id=_task.replace("Mjlab-Velocity-Flat-", "Mjlab-Jump-Vertical-"),
-    env_cfg=configure_vertical_jump(load_env_cfg(_task)),
-    play_env_cfg=configure_vertical_jump(load_env_cfg(_task, play=True), play=True),
+    env_cfg=configure_vertical_jump(load_env_cfg(_task), lower_body=_lower_body),
+    play_env_cfg=configure_vertical_jump(
+      load_env_cfg(_task, play=True), lower_body=_lower_body, play=True
+    ),
     rl_cfg=pal_kangaroo_full_jump_ppo_runner_cfg(),
     runner_cls=JumpOnPolicyRunner,
   )

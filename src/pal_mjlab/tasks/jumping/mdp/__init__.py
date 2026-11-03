@@ -5,6 +5,7 @@ from .events import jump_state_replay as jump_state_replay
 from .curriculums import settle_curriculum as settle_curriculum
 from .observations import base_height_world as base_height_world
 from .observations import jump_frame_height as jump_frame_height
+from .rewards import catch_landing as catch_landing
 from .rewards import estimated_jump_height as estimated_jump_height
 from .rewards import feet_slip as feet_slip
 from .rewards import ground_force_l2 as ground_force_l2
@@ -16,6 +17,7 @@ from .rewards import landing_completed as landing_completed
 from .rewards import landing_drift_l2 as landing_drift_l2
 from .terminations import bad_touchdown as bad_touchdown
 from .terminations import excessive_attitude as excessive_attitude
+from .terminations import excessive_rotation as excessive_rotation
 from .terminations import horizontal_drift as horizontal_drift
 from .terminations import idle_before_jump as idle_before_jump
 from .terminations import jump_finished as jump_finished

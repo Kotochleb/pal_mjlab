@@ -102,6 +102,20 @@ class JumpSnapshot:
     return [name for name, done in self.terminations.items() if done]
 
 
+# Terminations that end an episode by completing the jump: true terminal states
+# for PPO (not time-outs), but shown as successes.
+SUCCESS_TERMINATIONS = ("jump_finished",)
+
+
+def termination_kind(name: str, time_out: bool) -> tuple[str, str]:
+  """(label, colour) of a termination term: success, time-out or failure."""
+  if name in SUCCESS_TERMINATIONS:
+    return "success", "#2ca02c"
+  if time_out:
+    return "time-out", "#1f77b4"
+  return "failure", "#d62728"
+
+
 def find_jump_command(env: Any) -> tuple[str, JumpHeightCommand]:
   manager = env.command_manager
   for name in manager.active_terms:
@@ -247,7 +261,7 @@ def episode_end_html(snapshot: JumpSnapshot | None) -> str:
   if snapshot is None:
     return '<div style="font-size:0.85em;padding:0 1em;"><em>No episode ended yet.</em></div>'
   kinds = ", ".join(
-    f"{name} ({'time-out' if snapshot.time_outs[name] else 'failure'})"
+    f"{name} ({termination_kind(name, snapshot.time_outs[name])[0]})"
     for name in snapshot.fired
   )
   v = snapshot.values
@@ -266,8 +280,7 @@ def termination_html(
     return ""
   rows = []
   for name, done in snapshot.terminations.items():
-    kind = "time-out" if snapshot.time_outs[name] else "failure"
-    color = "#2ca02c" if snapshot.time_outs[name] else "#d62728"
+    kind, color = termination_kind(name, snapshot.time_outs[name])
     mark = f'<span style="color:{color};">&#9679;</span>' if done else "&#9675;"
     share = f"{100 * counts[name] / episodes:.0f}%" if episodes else "-"
     rows.append(
@@ -299,8 +312,7 @@ def enabled_terminations_html(manager: Any) -> str:
   rows = []
   for name in manager.active_terms:
     cfg = manager.get_term_cfg(name)
-    kind = "time-out" if cfg.time_out else "failure"
-    color = "#2ca02c" if cfg.time_out else "#d62728"
+    kind, color = termination_kind(name, cfg.time_out)
     func = getattr(cfg.func, "__name__", type(cfg.func).__name__)
     params = "<br/>".join(
       f"{key} = {_param_text(value)}"

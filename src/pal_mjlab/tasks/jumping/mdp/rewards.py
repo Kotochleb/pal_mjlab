@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import torch
 from mjlab.managers import RewardTermCfg, SceneEntityCfg
 
-from .commands import FLIGHT, STANCE, JumpHeightCommand, match_joint_values
+from .commands import FLIGHT, LANDED, STANCE, JumpHeightCommand, match_joint_values
 from .terminations import jump_finished
 
 if TYPE_CHECKING:
@@ -200,6 +200,27 @@ def feet_slip(
     in_contact.sum().clamp_min(1)
   )
   return (speed.square() * in_contact).sum(dim=-1)
+
+
+def catch_landing(
+  env: ManagerBasedRlEnv, command_name: str, window: float = 0.3
+) -> torch.Tensor:
+  """Reward keeping the touchdown's downward base speed, for window s after
+  touchdown (both feet down; LANDED or SETTLED).
+
+  vz / vz_touchdown, clipped to [0, 1], with the world-frame base z velocities
+  now and on the touchdown step: 1 while the base still sinks at least as
+  fast as it hit the ground, falling linearly as it brakes, 0 once it stops
+  or rises. A touchdown that was not downward earns nothing.
+  """
+  term = _jump(env, command_name)
+  landing = (term.phase >= LANDED) & (term.landed_time < window)
+  touchdown = term.touchdown_velocity
+  falling = touchdown < 0
+  ratio = term.robot.data.root_link_lin_vel_w[:, 2] / torch.where(
+    falling, touchdown, -1.0
+  )
+  return ratio.clamp(0, 1) * (landing & falling)
 
 
 def landing_drift_l2(env: ManagerBasedRlEnv, command_name: str) -> torch.Tensor:
