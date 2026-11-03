@@ -59,8 +59,8 @@ of the simple full-body Kangaroo; torques and contact wrenches copied as-is).
 
 In the free jump the arms are the policy's to use: on `-Body-FullBody-`
 variants the grounded posture reward gives every arm joint a wide
-`ARM_POSE_STD` (0.5 rad, legs and waist keep 0.05 rad), `joint_symmetry` also
-pairs the arms (`arm_*_1`/`_3` equal and opposite, `_2`/`_4` equal), and the
+`ARM_POSE_STD` (0.5 rad, legs and waist keep 0.05 rad), `joint_symmetry`
+(currently commented out of the config) also pairs the arms (`arm_*_1`/`_3` equal and opposite, `_2`/`_4` equal), and the
 velocity task's `self_collisions` cost is kept. The landing pose kernel
 (`landing_completed`, settling) is unchanged, so landings still pay most with
 the arms back at their default. `slurm_h100_tracking_jump_arms.bash` runs both
@@ -111,16 +111,12 @@ flattened, in this task and in jump tracking (`configure_jump_observations`).
 Touchdown (FLIGHT → LANDED) requires **both** feet in contact; a single-foot
 touch keeps the jump in flight. An episode contains one jump and ends once the
 landed robot has stayed
-**settled** for the settle hold time, or at the episode limit. The settle
-curriculum (`SETTLE_STAGES`) holds a loose terminal state (joints slower than
-0.5 rad/s, no hold) for 150 iterations, then by iteration 800 tightens it only
-halfway to full tightness (0.1 rad/s, `LANDING_HOLD_TIME = 0.2` s): a
-0.3 rad/s limit and a 0.1 s hold, which play also uses. Settled
-(`JumpHeightCommand.settled`) means both feet in contact, posture close to the
-default pose — `exp(-mean((q-q_default)^2/std^2)) ≥ exp(-1)`, i.e. RMS error
-within twice `std_standing` (2 × 0.05 = 0.1, `SETTLE_POSE_STD_SCALE`) over the posture reward's actuated joints — every
-such joint slower than 0.2 rad/s (`SETTLE_JOINT_SPEED`), and the base slower than 0.05 m/s and
-0.1 rad/s (`settle_*` fields of `JumpHeightCommandCfg`). The hold counter
+**settled** for the settle hold time, or at the episode limit. Settled
+(`JumpHeightCommand.settled`) means both feet in contact and every one of the
+posture reward's actuated joints slower than 0.5 rad/s (`SETTLE_JOINT_SPEED`),
+in any pose and at any base speed. The hold time is 0 s (`SETTLE_HOLD_TIME`), so
+the first settled step ends the episode. There is no settle curriculum: these
+bounds stay the same throughout training and in play. The hold counter
 (`settled_steps`) restarts whenever any condition breaks. The state machine is
 STANCE → FLIGHT → LANDED → SETTLED: SETTLED, the last state, is entered from
 LANDED while settled and falls back to LANDED when settling breaks.
@@ -150,7 +146,7 @@ apex tolerance widened to 0.30 m. Parameters live in `cfg.terminations`.
 | `horizontal_drift` | Base more than 1 m (`MAX_JUMP_DRIFT`) from the environment origin before landing (stance, flight), more than 3 m (`MAX_LANDED_DRIFT`) once both feet are down |
 | `excessive_rotation` | Base turned more than 30° (`MAX_ROTATION_DEG`), about any axis, from its orientation at the episode start (`reset_quat`, restored with replayed states) |
 | `jumped_again` | A second takeoff after landing (LANDED or SETTLED): one jump per episode |
-| `idle_before_jump` | Only before takeoff (STANCE): more than 5 s in stance (`MAX_STANCE_TIME`), or more than 0.3 s in total standing still there (`MAX_IDLE_TIME`, base slower than 0.1 m/s) |
+| `idle_before_jump` | Only before takeoff (STANCE): more than 2.5 s in stance without taking off (`MAX_STANCE_TIME`), or more than 0.5 s in total standing still there (`MAX_IDLE_TIME`, base slower than 0.1 m/s) |
 | `jump_finished` | In SETTLED for the settle hold time (see above): the task's success, a true terminal state for PPO (`time_out=False`, no value bootstrapped after it); `play-jump` shows it as a success |
 | `time_out` | 8 s episode limit |
 
@@ -286,8 +282,9 @@ The additional rewards are:
 | `pose` | 0.1 | Per-joint posture reward, only while a foot touches the ground |
 | `start_orientation` | 1 | `exp(-(angle / 0.25)^2)`, angle = the base's rotation about any axis from its orientation at the episode start (`reset_quat`), in every phase |
 | `horizontal_velocity` | 2 | Suppress horizontal motion (stay in place), inspired by the authors' implementation |
-| `joint_symmetry` | −7 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee (and arm joints 1–4 with arms): s = +1 for legs 2, 4, knee and arms 2, 4 (equal), s = −1 for legs 1, 3, 5 and arms 1, 3 (mirrored) |
-| `landing_completed` | 20 | Once, on the `jump_finished` step (SETTLED held 0.5 s), an impulse (divided by step_dt): `exp(-mean((q-q_default)^2/(2·std_standing)^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
+| `joint_symmetry` | −7, **commented out for now** | Σ (q_left − s·q_right)² over leg joints 1–5 and knee (and arm joints 1–4 with arms): s = +1 for legs 2, 4, knee and arms 2, 4 (equal), s = −1 for legs 1, 3, 5 and arms 1, 3 (mirrored) |
+| `catch_landing` | 3 | For 0.3 s after both feet touch down (LANDED or SETTLED): `clip(vz / vz_touchdown, 0, 1)`, 1 while the base keeps sinking as fast as it touched down, less as it brakes, 0 once it stops or rises |
+| `landing_completed` | 120 | Once, on the `jump_finished` step, an impulse (divided by step_dt): `exp(-mean((q-q_default)^2/(2·std_standing)^2))`, from e⁻¹ at the pose tolerance to 1 at the reference |
 
 The apex reward compensates for mjlab's `dt` scaling so its payout is independent
 of policy frequency; all continuous rewards remain rates. The ballistic estimate

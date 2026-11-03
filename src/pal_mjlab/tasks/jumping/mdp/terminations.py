@@ -24,7 +24,7 @@ def jump_finished(
   """Truncate once the machine has stayed in its last state, SETTLED, for hold_time.
 
   Settled is JumpHeightCommand.settled. hold_time defaults to the command's
-  settle_hold_time, which the settle curriculum raises during training.
+  settle_hold_time.
   """
   term = _jump(env, command_name)
   if hold_time is None:

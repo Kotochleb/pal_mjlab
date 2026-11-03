@@ -2,7 +2,6 @@ from .commands import JumpHeightCommand as JumpHeightCommand
 from .commands import JumpHeightCommandCfg as JumpHeightCommandCfg
 from .curriculums import jump_height_curriculum as jump_height_curriculum
 from .events import jump_state_replay as jump_state_replay
-from .curriculums import settle_curriculum as settle_curriculum
 from .observations import base_height_world as base_height_world
 from .observations import jump_frame_height as jump_frame_height
 from .rewards import catch_landing as catch_landing

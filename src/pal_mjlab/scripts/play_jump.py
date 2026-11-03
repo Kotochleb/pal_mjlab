@@ -14,11 +14,8 @@ auto-reset, so the step that ends an episode shows the state it ended in.
 
   uv run play-jump Mjlab-Jump-Vertical-<variant> --wandb-run-path <run>
   uv run play-jump Mjlab-Jump-Vertical-<variant> --checkpoint-file model.pt
-  uv run play-jump Mjlab-Jump-Vertical-<variant> --settle-stage 1 ...
 
-Every episode's jump target is PLAY_TARGET_HEIGHT. Settling uses one stage of
-the training settle curriculum (SETTLE_STAGES), the last one unless
---settle-stage picks another (Python indexing, so -1 is the last).
+Every episode's jump target is PLAY_TARGET_HEIGHT. Settling is as in training.
 """
 
 from __future__ import annotations
@@ -37,7 +34,6 @@ from mjlab.scripts.play import PlayConfig, run_play
 from mjlab.tasks.registry import list_tasks, load_env_cfg
 from mjlab.viewer.viser.term_plotter import ViserTermPlotter
 from mjlab.viewer.viser.viewer import ViserPlayViewer
-from pal_mjlab.tasks.jumping.env_cfgs import SETTLE_STAGES
 from pal_mjlab.tasks.jumping.mdp.commands import (
   FLIGHT,
   LANDED,
@@ -430,25 +426,6 @@ class JumpViserPlayViewer(ViserPlayViewer):
     self._clear_jump_panels()
 
 
-@dataclass(frozen=True)
-class PlayJumpConfig(PlayConfig):
-  settle_stage: int = -1
-  """Index into SETTLE_STAGES (joint speed limit, hold time) used to settle."""
-
-
-def apply_settle_stage(cfg: Any, stage: int) -> tuple[float, float]:
-  """Set the jump command's settle speed limit and hold time to SETTLE_STAGES[stage]."""
-  if not -len(SETTLE_STAGES) <= stage < len(SETTLE_STAGES):
-    raise ValueError(
-      f"settle_stage must index the {len(SETTLE_STAGES)} SETTLE_STAGES, got {stage}."
-    )
-  _, speed, hold_time = SETTLE_STAGES[stage]
-  command = cfg.commands["jump_height"]
-  command.settle_joint_speed = speed
-  command.settle_hold_time = hold_time
-  return speed, hold_time
-
-
 def main() -> None:
   maybe_print_top_level_help("play-jump")
   import mjlab.tasks  # noqa: F401
@@ -461,9 +438,9 @@ def main() -> None:
     config=mjlab.TYRO_FLAGS,
   )
   args = tyro.cli(
-    PlayJumpConfig,
+    PlayConfig,
     args=remaining_args,
-    default=PlayJumpConfig(),
+    default=PlayConfig(),
     prog=sys.argv[0] + f" {chosen_task}",
     config=mjlab.TYRO_FLAGS,
   )
@@ -472,11 +449,6 @@ def main() -> None:
   def load_play_env_cfg(task_id: str, play: bool = False):
     cfg = load_env_cfg(task_id, play=play)
     cfg.commands["jump_height"].height_range = (PLAY_TARGET_HEIGHT,) * 2
-    speed, hold_time = apply_settle_stage(cfg, args.settle_stage)
-    print(
-      f"[play-jump] settle stage {args.settle_stage}: joint speed < {speed} rad/s"
-      f" held {hold_time} s"
-    )
     return cfg
 
   # run_play loads the env config by module-global name.

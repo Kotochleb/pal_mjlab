@@ -55,7 +55,7 @@ def configure_full_model_jump_tracking(
   JUMP_ARMS_MOTION_FILE, so the tracking rewards hold the arms at their default
   pose throughout the jump; the free-jump task then lets them move.
   """
-  jump_params = jump_state_machine_params(cfg, play=play)
+  jump_params = jump_state_machine_params(cfg)
   cfg = configure_full_model_tracking(
     cfg, femur_closure=femur_closure, lower_body=lower_body, play=play
   )

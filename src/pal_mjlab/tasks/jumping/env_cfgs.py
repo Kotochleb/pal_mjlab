@@ -77,25 +77,14 @@ HEIGHT_MAX_APEX_ERROR = 0.05
 # height is 1.415 m; the lowest apex that counts as a jump is 3 cm above it.
 MIN_JUMP_HEIGHT = 1.445
 
-# Seconds the landed robot must stay settled (both feet down, every joint
-# slower than the settle speed; any pose) to end the episode at full settle
-# tightness; landing_completed pays once, on that step, more the closer the
-# pose is. Training (SETTLE_STAGES) only goes halfway to it.
-LANDING_HOLD_TIME = 0.2
+# The landed robot is settled with both feet down and every joint slower than
+# SETTLE_JOINT_SPEED (rad/s; any pose). Staying so for SETTLE_HOLD_TIME s ends the
+# episode, in training and in play: with no hold, on the first settled step.
+# landing_completed pays once, on that step, more the closer the pose is.
+SETTLE_JOINT_SPEED = 0.5
+SETTLE_HOLD_TIME = 0.0
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
-# (environment steps, settled joint speed limit in rad/s, settled hold time in
-# s): control points in PPO iterations (ITERATION_STEPS), linearly interpolated in
-# between (constant after the last). The loosest stage holds unchanged for the
-# first 150 iterations; by iteration 800 the terminal state has tightened half
-# of the way to full tightness (JumpHeightCommandCfg's default settle_joint_speed
-# of 0.1 rad/s and a LANDING_HOLD_TIME hold): a 0.3 rad/s speed limit and a
-# 0.1 s hold (5 control steps of 0.02 s). Play uses that last stage too.
-SETTLE_STAGES = (
-  (0, 0.5, 0.0),
-  (150 * ITERATION_STEPS, 0.5, 0.0),
-  (800 * ITERATION_STEPS, 0.3, LANDING_HOLD_TIME / 2),
-)
 
 # Frames of each observation term given to the actor and the critic.
 OBSERVATION_HISTORY = 10
@@ -195,11 +184,10 @@ def configure_jump_observations(cfg: ManagerBasedRlEnvCfg) -> None:
     cfg.observations[group].flatten_history_dim = True
 
 
-def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> dict:
+def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg) -> dict:
   """JumpHeightCommandCfg fields shared by every task with this jump state
   machine, from a fresh full-model velocity config: settling on its joints'
-  speed alone, for a hold time (both the first curriculum stage's, the last
-  one's in play), the landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std), the jump
+  speed alone, for a hold time, the landing pose kernel (SETTLE_POSE_STD_SCALE x its standing std), the jump
   frame and the lowest apex that counts as a jump, in its world z."""
   pose = cfg.rewards["pose"]
   return {
@@ -208,8 +196,8 @@ def jump_state_machine_params(cfg: ManagerBasedRlEnvCfg, play: bool = False) -> 
       pattern: SETTLE_POSE_STD_SCALE * std
       for pattern, std in pose.params["std_standing"].items()
     },
-    "settle_joint_speed": SETTLE_STAGES[-1 if play else 0][1],
-    "settle_hold_time": SETTLE_STAGES[-1 if play else 0][2],
+    "settle_joint_speed": SETTLE_JOINT_SPEED,
+    "settle_hold_time": SETTLE_HOLD_TIME,
     "settle_joint_speed_only": True,
     "min_jump_height": MIN_JUMP_HEIGHT,
     "height_site_name": JUMP_FRAME,
@@ -236,7 +224,7 @@ def configure_vertical_jump(
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
       height_range=HEIGHT_FINAL_RANGE if play else HEIGHT_INITIAL_RANGE,
-      **jump_state_machine_params(cfg, play=play),
+      **jump_state_machine_params(cfg),
     )
   }
   actor = full_model_tracking_actor_observations(cfg)
@@ -348,10 +336,6 @@ def configure_vertical_jump(
           "success_window": HEIGHT_SUCCESS_WINDOW,
           "max_apex_error": HEIGHT_MAX_APEX_ERROR,
         },
-      ),
-      "settle": CurriculumTermCfg(
-        func=mdp.settle_curriculum,
-        params={"command_name": "jump_height", "stages": SETTLE_STAGES},
       ),
     }
   )
