@@ -65,10 +65,10 @@ metres; the plane terrain is the world z = 0 plane. The jump frame is the
 `torso_up_cameras_frame` site (on `pelvis_2_link`, between the front and rear
 upper RGBD cameras in x, at y = 0 and at their height). Targets, the measured
 apex (`peak_height`, the frame's maximum world z in flight), the ballistic
-estimate, the posture blend and the touchdown checks all use it. The frame sits
+estimate and the touchdown checks all use it. The frame sits
 0.4849 m above the base link with both pelvis joints at zero, so Kangaroo Full
-stands with it at about 1.415 m; the hardcoded heights (`HEIGHT_STAGES`,
-`MIN_JUMP_HEIGHT`, `POSTURE_BLEND_HEIGHTS`), formerly base-link heights, are
+stands with it at about 1.415 m; the hardcoded heights (`HEIGHT_INITIAL_RANGE`,
+`HEIGHT_FINAL_RANGE`, `MIN_JUMP_HEIGHT`), formerly base-link heights, are
 0.485 m higher, rounded to 5 mm. Jump tracking targets the frame's apex in the
 reference motion, from its tracked `pelvis_2_link` poses.
 
@@ -90,7 +90,11 @@ flattened, in this task and in jump tracking (`configure_jump_observations`).
 Touchdown (FLIGHT → LANDED) requires **both** feet in contact; a single-foot
 touch keeps the jump in flight. An episode contains one jump and ends once the
 landed robot has stayed
-**settled** for `LANDING_HOLD_TIME = 0.5` s, or at 8 s. Settled
+**settled** for the settle hold time, or at the episode limit. The settle
+curriculum (`SETTLE_STAGES`) holds a loose terminal state (joints slower than
+0.5 rad/s, no hold) for 150 iterations, then by iteration 800 tightens it only
+halfway to full tightness (0.1 rad/s, `LANDING_HOLD_TIME = 0.2` s): a
+0.3 rad/s limit and a 0.1 s hold, which play also uses. Settled
 (`JumpHeightCommand.settled`) means both feet in contact, posture close to the
 default pose — `exp(-mean((q-q_default)^2/std^2)) ≥ exp(-1)`, i.e. RMS error
 within twice `std_standing` (2 × 0.05 = 0.1, `SETTLE_POSE_STD_SCALE`) over the posture reward's actuated joints — every
@@ -99,7 +103,7 @@ such joint slower than 0.2 rad/s (`SETTLE_JOINT_SPEED`), and the base slower tha
 (`settled_steps`) restarts whenever any condition breaks. The state machine is
 STANCE → FLIGHT → LANDED → SETTLED: SETTLED, the last state, is entered from
 LANDED while settled and falls back to LANDED when settling breaks.
-`jump_finished` fires after 0.5 s in it, and `landing_completed` pays once, on
+`jump_finished` fires after the hold time in it, and `landing_completed` pays once, on
 that step (sparse; see Rewards).
 Initial spawn drops cannot
 count as takeoff: ordinary episodes must first establish contact, then lose all
@@ -139,74 +143,64 @@ per environment.
 Bad touchdown and horizontal drift are failure conditions, with no separate
 landing-drift cost. The achieved and estimated jump-height rewards remain.
 
-## Replaying landings of finished jumps
+## Replaying states of the best finished jumps
 
 In training (not play), `jump_state_replay` (a `step`-mode event) restarts
 `REPLAY_PROBABILITY = 0.2` of episodes from a stored state of an earlier jump
-that ended on `jump_finished`. Each episode keeps one uniformly sampled state
-(reservoir sampling) among its **falling** (in flight after the apex) and
-**landed** (`LANDED`: both feet down, not yet settled) steps; only episodes that
-finish the jump add theirs to the buffer of `REPLAY_CAPACITY = 4096` states,
-which then replaces random entries. A state holds qpos/qvel (root xy relative
-to the env origin), the action history, the jump command's state machine, the
-contact sensors' air/contact timers, and the history of every actor and critic
-observation term, so the restarted episode continues as the original did. Its
-target apex is the stored one plus U(-5 mm, 5 mm) (`REPLAY_TARGET_NOISE`), also
-shifted in the observed command's history. Replayed episodes inherit their apex,
-so they are left out of `apex_height_error`. The buffer starts empty and lives
-in memory only; it is not checkpointed.
+that ended on `jump_finished`. Every env records at most one state per
+episode: on reset it draws one of the jump's state transitions uniformly
+(takeoff, apex, touchdown with both feet down, or settling) and a uniform
+offset of 0 to `REPLAY_MAX_OFFSET = 0.3` s (0–15 steps), and records the state
+that many steps after the first time that transition happens. A state that is
+not full is discarded: one whose observation histories still hold backfilled
+frames, or one taken on the step its episode ends (a restart would end at
+once). When an episode finishes the jump, its recorded state joins the buffer
+of `REPLAY_CAPACITY = 4096` states, scored with the episode's return (the sum
+of every reward term's episode sum). Episodes that end any other way, that end
+before their recording step, or that never reach their drawn transition add
+nothing. Once the buffer is full, a new state
+replaces the lowest-scoring one only if it scores higher. Restarts draw
+uniformly among the best `REPLAY_TOP_FRACTION = 0.25` of the buffer by score.
+Episodes that were themselves restarted from the buffer are never stored,
+since their return only covers the part after the restart.
+
+A state holds qpos/qvel (root xy relative to the env origin), the action
+history, the jump command's state machine, the contact sensors' air/contact
+timers, and the history of every actor and critic observation term, so the
+restarted episode continues as the original did. Its target apex is the stored
+one plus U(-5 mm, 5 mm) (`REPLAY_TARGET_NOISE`), also shifted in the observed
+command's history. Replayed episodes inherit their apex, so they are left out
+of `apex_height_error`. The buffer starts empty and lives in memory only; it is
+not checkpointed.
 
 ## Height sampling curriculum
 
 Targets are uniform within the current range and are sampled only on reset.
-`HEIGHT_STAGES` in `env_cfgs.py` defines a time-based expansion:
+`jump_height_curriculum` moves both bounds linearly from
+`HEIGHT_INITIAL_RANGE = (1.715, 1.815)` to `HEIGHT_FINAL_RANGE = (2.800, 3.000)`
+(world-frame jump-frame apex heights):
 
-| Environment steps | Height range (m) | PPO iteration with 24-step rollouts |
-| --- | --- | --- |
-| 0 | 1.715–1.815 | 0 |
-| 19,200 | 1.715–1.815 | 800 |
-| 43,200 | 1.715–1.915 | 1,800 |
-| 67,200 | 1.715–1.965 | 2,800 |
-| 91,200 | 1.765–2.015 | 3,800 |
-| 115,200 | 1.840–2.065 | 4,800 |
-| 139,200 | 1.915–2.115 | 5,800 |
-| 163,200 | 1.990–2.165 | 6,800 |
-| 187,200 | 2.065–2.215 | 7,800 |
-| 211,200 | 2.140–2.265 | 8,800 |
-| 235,200 | 2.215–2.315 | 9,800 |
-| 259,200 | 2.290–2.365 | 10,800 |
-| 283,200 | 2.340–2.415 | 11,800 |
-| 307,200 | 2.390–2.465 | 12,800 |
-| 331,200 | 2.440–2.515 | 13,800 |
-| 355,200 | 2.490–2.565 | 14,800 |
-| 379,200 | 2.540–2.615 | 15,800 |
-| 403,200 | 2.590–2.665 | 16,800 |
-| 427,200 | 2.640–2.715 | 17,800 |
-| 451,200 | 2.690–2.765 | 18,800 |
-| 475,200 | 2.740–2.815 | 19,800 |
-| 499,200 | 2.790–2.865 | 20,800 |
-| 523,200 | 2.840–2.915 | 21,800 |
-| 547,200 | 2.890–2.965 | 22,800 |
-| 571,200 | 2.910–2.985 | 23,800 |
+- **Hold.** The initial range is the apex of the reference motion
+  `motions/jump_ocp_solution_mjlab.npz` (`base_link` peaks at 1.278 m, the jump
+  frame about 0.485 m higher), rounded to 1.765 m, ± 5 cm. It is held for
+  `HEIGHT_HOLD_STEPS` (1,500 PPO iterations of 24 steps).
+- **Ramp.** After that, progress rises by `1 / (HEIGHT_FINAL_STEP -
+  HEIGHT_HOLD_STEPS)` per environment step, so with no setbacks the final range
+  is reached at iteration 10,000 (`HEIGHT_FINAL_STEP`).
+- **Success gate.** While the smoothed success rate (the share of episodes
+  ending on `jump_finished`) is below `HEIGHT_SUCCESS_THRESHOLD = 0.5`,
+  progress instead falls at `HEIGHT_BACKOFF_RATIO = 0.5` times the ramp rate,
+  never below the initial range. It rises again once the rate is back at 50 %.
+  The rate is an exponential moving average with a per-episode weight of
+  `1 / HEIGHT_SUCCESS_WINDOW` (4,096 episodes). Replayed episodes start after
+  takeoff and are left out.
 
-Ranges are world-frame jump-frame apex heights. The starting range is the
-apex of the reference motion `motions/jump_ocp_solution_mjlab.npz` (`base_link`
-peaks at 1.278 m, the jump frame about 0.485 m higher), rounded to 1.765 m, ± 5 cm,
-held constant for the first 800 iterations. The lower bound then stays at
-1.715 m while the upper bound rises
-10 cm by iteration 1,800 and 5 cm more by iteration 2,800. Each later stage
-raises the upper bound 5 cm and narrows the range 2.5 cm, so the lower bound
-rises 7.5 cm, until the range is 7.5 cm wide at iteration 10,800. That 7.5 cm
-range then keeps rising 5 cm per stage, with the last stage (iteration 23,800) capped at a
-2.985 m upper bound (2.5 m at the base link).
-Play samples the last stage.
-
-Tune `cfg.curriculum["jump_height"].params["stages"]` for training and
-`cfg.commands["jump_height"].height_range` for play. The schedule uses global
-environment steps, independent of environment count. The existing runner saves
-and restores that counter; the curriculum resumes at the corresponding stage.
-Unlike the reference implementation's success-based initialization curriculum,
-this schedule directly expands command height while retaining easy commands.
+Play samples the final range. The curriculum logs `min_height`, `max_height`,
+`progress` and `success_rate` under `Curriculum/jump_height/`. Progress is not
+a function of the step counter, so `JumpOnPolicyRunner` saves it (with the
+success rate) in the checkpoint's `infos["curriculum_state"]` and restores it
+on resume. Loading only the actor from a tracking checkpoint starts from the
+initial range.
 
 ## Rewards
 
@@ -221,7 +215,7 @@ The additional rewards are:
 | --- | --- | --- |
 | `jump_height` | 20 | Once at measured apex: Gaussian(error, 0.10 m) + 3 × Laplacian(error, 0.05 m) |
 | `estimated_jump_height` | 20 | Same kernel during ascent, using `h + max(vz, 0)^2 / (2g)` |
-| `pose` | 1 | Height-dependent per-joint posture reward |
+| `pose` | 0.1 | Per-joint posture reward, only while a foot touches the ground |
 | `horizontal_velocity` | 1 | Suppress horizontal motion, inspired by the authors' implementation |
 | `ground_force_l2` | −0.05 | Squared foot-ground forces, normalized by 500 N |
 | `joint_symmetry` | −1 | Σ (q_left − s·q_right)² over leg joints 1–5 and knee: s = +1 for 2, 4, knee (equal), s = −1 for 1, 3, 5 (mirrored) |
@@ -231,15 +225,13 @@ The apex reward compensates for mjlab's `dt` scaling so its payout is independen
 of policy frequency; all continuous rewards remain rates. The ballistic estimate
 uses the configured simulation gravity and is disabled on descent.
 
-`pose` is `exp(-mean((q-q_default)^2 / std(h)^2))`. Each joint's std interpolates
-linearly from `std_ground` to `std_airborne` across `height_range`, the
-world-frame jump-frame heights 1.415–1.465 m (`POSTURE_BLEND_HEIGHTS`, the first
-5 cm above standing),
-clamped outside that interval. The defaults reuse the flat task's looser running and
-tighter walking tolerances, respectively. Tune those dictionaries and
-`height_range` in `cfg.rewards["pose"].params`. Joint order is resolved before
-building the std tensors; passive linkage/screw joints follow the existing
-posture selection.
+`pose` (`grounded_posture`) is `exp(-mean((q-q_default)^2 / std^2))` with the
+flat task's per-joint `std_standing` tolerances, paid only on steps where at
+least one foot is in contact (the jump command's `feet_ground_contact`
+sensor). Airborne steps get no posture reward at all, so flight carries no
+posture signal. Tune `std` in `cfg.rewards["pose"].params`. Joint order is
+resolved before building the std tensor; passive linkage/screw joints follow
+the existing posture selection.
 
 `joint_symmetry` builds its left/right index pairs and mirror mask once at
 init from joint names (`_left_` → `_right_`); `mirrored_joints` selects the

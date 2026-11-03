@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 import re
 from typing import TYPE_CHECKING
 
@@ -81,12 +80,12 @@ def estimated_jump_height(
   return height_kernel(estimated - term.target_height, std, laplace_scale) * ascending
 
 
-class height_variable_posture:
-  """exp(-mean((q-q_default)^2/std(height)^2)), with per-joint tolerances.
+class grounded_posture:
+  """exp(-mean((q-q_default)^2/std^2)) while touching the ground, else 0.
 
-  Interpolate ground/airborne stds using the jump frame's measured world-frame
-  height, clamped at both ends of height_range (world z). This preserves the robot's own default configuration and lets it crouch
-  and extend near the ground. Targets and passive linkage joints are unchanged.
+  Paid only on steps where at least one foot is in contact (the jump command's
+  contact sensor), with per-joint tolerances ``std``; airborne steps get no
+  posture reward at all. Targets and passive linkage joints are unchanged.
   """
 
   def __init__(self, cfg: RewardTermCfg, env: ManagerBasedRlEnv):
@@ -99,35 +98,28 @@ class height_variable_posture:
       else [robot.joint_names[i] for i in self.joint_ids]
     )
     if not names:
-      raise ValueError("Height posture reward requires at least one joint.")
-    self.stds = [
-      torch.tensor(match_joint_values(cfg.params[key], names, key), device=env.device)
-      for key in ("std_ground", "std_airborne")
-    ]
-    low, high = cfg.params["height_range"]
-    if not (math.isfinite(low) and math.isfinite(high) and low < high):
-      raise ValueError("Posture height_range must be finite and strictly increasing.")
+      raise ValueError("Grounded posture reward requires at least one joint.")
+    self.std = torch.tensor(
+      match_joint_values(cfg.params["std"], names, "std"), device=env.device
+    )
 
   def __call__(
     self,
     env: ManagerBasedRlEnv,
     command_name: str,
     asset_cfg: SceneEntityCfg,
-    std_ground: dict[str, float],
-    std_airborne: dict[str, float],
-    height_range: tuple[float, float],
+    std: dict[str, float],
   ) -> torch.Tensor:
-    del std_ground, std_airborne
+    del std
     term = _jump(env, command_name)
-    low, high = height_range
-    blend = ((term.height - low) / (high - low)).clamp(0, 1).unsqueeze(-1)
-    std = torch.lerp(self.stds[0], self.stds[1], blend)
+    sensor = env.scene[term.cfg.contact_sensor_name]
+    grounded = (sensor.data.found > 0).any(dim=-1)
     robot = env.scene[asset_cfg.name]
     error = (
       robot.data.joint_pos[:, self.joint_ids]
       - robot.data.default_joint_pos[:, self.joint_ids]
     )
-    return torch.exp(-(error / std).square().mean(dim=-1))
+    return torch.exp(-(error / self.std).square().mean(dim=-1)) * grounded
 
 
 class joint_symmetry_l2:

@@ -12,9 +12,24 @@ class JumpOnPolicyRunner(VelocityOnPolicyRunner):
   ``Mjlab-Tracking-Jump-*``, whose critic observes the reference motion. Only
   its actor (weights, observation normalizer, action std) is loaded; training
   starts at iteration 0 with a fresh critic and optimizer and with this env's
-  own step counter, so the height curriculum starts at its first stage. Any
-  other checkpoint resumes as usual.
+  own step counter, so the height curriculum starts from its initial range.
+  Any other checkpoint resumes as usual, including the state of curriculum
+  terms that keep one (``state_dict``/``load_state_dict``), such as the
+  success-gated height curriculum's progress.
   """
+
+  def _stateful_curricula(self) -> dict:
+    manager = self.env.unwrapped.curriculum_manager
+    terms = {}
+    for name in getattr(manager, "active_terms", []):
+      func = manager.get_term_cfg(name).func
+      if callable(getattr(func, "state_dict", None)):
+        terms[name] = func
+    return terms
+
+  def save(self, path: str, infos=None) -> None:
+    state = {name: t.state_dict() for name, t in self._stateful_curricula().items()}
+    super().save(path, {**(infos or {}), "curriculum_state": state})
 
   def load(
     self,
@@ -24,7 +39,12 @@ class JumpOnPolicyRunner(VelocityOnPolicyRunner):
     map_location: str | None = None,
   ) -> dict:
     if load_cfg is not None or self._critic_fits(path, map_location):
-      return super().load(path, load_cfg, strict, map_location)
+      infos = super().load(path, load_cfg, strict, map_location)
+      saved = (infos or {}).get("curriculum_state", {})
+      for name, term in self._stateful_curricula().items():
+        if name in saved:
+          term.load_state_dict(saved[name])
+      return infos
     print(
       f"[INFO] {path}: critic does not fit this task; loading only its actor "
       "as a pretrained policy."

@@ -38,83 +38,61 @@ from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
 # below that was a base-link height is that 0.485 m higher, rounded to 5 mm.
 JUMP_FRAME = "torso_up_cameras_frame"
 
-# (environment steps, minimum apex, maximum apex), world-frame metres of
+# Sampled target apex range (minimum, maximum), world-frame metres of
 # JUMP_FRAME, which stands at 1.415 m. Training starts at the apex of
 # motions/jump_ocp_solution_mjlab.npz (base_link 1.278 m, frame 45, so about
-# 1.763 m), rounded to 1.765 m, +-5 cm, held constant for the first 800
-# iterations. The lower bound never drops below that start (1.715 m) while the
-# upper bound rises 10 cm by iteration 1,800, then 5 cm per 1,000 iterations.
-# From iteration 2,800 the range narrows 2.5 cm per 1,000 iterations, so the
-# lower bound rises 7.5 cm, until the range is 7.5 cm wide (iteration 10,800).
-# The 7.5 cm range then keeps rising 5 cm per 1,000 iterations, capped at a
-# 2.985 m upper bound (2.5 m at the base link). Bounds end in 0 or 5 mm. After
-# the hold, control points every 1,000 PPO iterations of 24 steps, up to 23,800,
-# linearly interpolated in between.
-HEIGHT_STAGES = (
-  (0, 1.715, 1.815),
-  (800 * 24, 1.715, 1.815),
-  (1_800 * 24, 1.715, 1.915),
-  (2_800 * 24, 1.715, 1.965),
-  (3_800 * 24, 1.765, 2.015),
-  (4_800 * 24, 1.840, 2.065),
-  (5_800 * 24, 1.915, 2.115),
-  (6_800 * 24, 1.990, 2.165),
-  (7_800 * 24, 2.065, 2.215),
-  (8_800 * 24, 2.140, 2.265),
-  (9_800 * 24, 2.215, 2.315),
-  (10_800 * 24, 2.290, 2.365),
-  (11_800 * 24, 2.340, 2.415),
-  (12_800 * 24, 2.390, 2.465),
-  (13_800 * 24, 2.440, 2.515),
-  (14_800 * 24, 2.490, 2.565),
-  (15_800 * 24, 2.540, 2.615),
-  (16_800 * 24, 2.590, 2.665),
-  (17_800 * 24, 2.640, 2.715),
-  (18_800 * 24, 2.690, 2.765),
-  (19_800 * 24, 2.740, 2.815),
-  (20_800 * 24, 2.790, 2.865),
-  (21_800 * 24, 2.840, 2.915),
-  (22_800 * 24, 2.890, 2.965),
-  (23_800 * 24, 2.910, 2.985),
-)
+# 1.763 m), rounded to 1.765 m, +-5 cm, held for the first 1,500 PPO iterations
+# of 24 steps (HEIGHT_HOLD_STEPS). Both bounds then move linearly to the final
+# 20 cm range topped at 3.0 m, reached at iteration 10,000 (HEIGHT_FINAL_STEP)
+# if every step succeeds. The ramp is gated by the jump success rate (episodes
+# ending on jump_finished): below HEIGHT_SUCCESS_THRESHOLD the range moves back
+# at HEIGHT_BACKOFF_RATIO times the ramp rate, until the rate recovers. The
+# success rate is a moving average over about HEIGHT_SUCCESS_WINDOW episodes.
+HEIGHT_INITIAL_RANGE = (1.715, 1.815)
+HEIGHT_FINAL_RANGE = (2.800, 3.000)
+HEIGHT_HOLD_STEPS = 1_500 * 24
+HEIGHT_FINAL_STEP = 10_000 * 24
+HEIGHT_SUCCESS_THRESHOLD = 0.5
+HEIGHT_BACKOFF_RATIO = 0.5
+HEIGHT_SUCCESS_WINDOW = 4096
 
 # JUMP_FRAME's world z with Kangaroo Full standing at its nominal 0.93 m base
-# height is 1.415 m. The posture reward blends from ground to airborne stds over
-# its first 5 cm above that, and the lowest apex that counts as a jump is 3 cm
-# above it.
-POSTURE_BLEND_HEIGHTS = (1.415, 1.465)
+# height is 1.415 m; the lowest apex that counts as a jump is 3 cm above it.
 MIN_JUMP_HEIGHT = 1.445
 
-# Final seconds the landed robot must stay settled (both feet down, every
-# joint slower than the settle speed; any pose) to end the episode;
-# landing_completed pays once, on that step, more the closer the pose is.
+# Seconds the landed robot must stay settled (both feet down, every joint
+# slower than the settle speed; any pose) to end the episode at full settle
+# tightness; landing_completed pays once, on that step, more the closer the
+# pose is. Training (SETTLE_STAGES) only goes halfway to it.
 LANDING_HOLD_TIME = 0.2
 # landing_completed's pose kernel std, relative to the standing pose reward's.
 SETTLE_POSE_STD_SCALE = 2.0
-# Every joint's airborne std in the pose reward, in rad (m for prismatic
-# joints): large enough that the posture is effectively free in flight.
-AIRBORNE_JOINT_STD = 1e4
 # (environment steps, settled joint speed limit in rad/s, settled hold time in
 # s): control points in PPO iterations of 24 steps, linearly interpolated in
 # between (constant after the last). The loosest stage holds unchanged for the
-# first 150 iterations; by iteration 1,100 the speed limit has tightened down to
-# JumpHeightCommandCfg's default settle_joint_speed (0.1 rad/s) while the hold
-# has grown from 0 to LANDING_HOLD_TIME (10 control steps of 0.02 s).
+# first 150 iterations; by iteration 800 the terminal state has tightened half
+# of the way to full tightness (JumpHeightCommandCfg's default settle_joint_speed
+# of 0.1 rad/s and a LANDING_HOLD_TIME hold): a 0.3 rad/s speed limit and a
+# 0.1 s hold (5 control steps of 0.02 s). Play uses that last stage too.
 SETTLE_STAGES = (
   (0, 0.5, 0.0),
   (150 * 24, 0.5, 0.0),
-  (800 * 24, 0.1, LANDING_HOLD_TIME),
+  (800 * 24, 0.3, LANDING_HOLD_TIME / 2),
 )
 
 # Frames of each observation term given to the actor and the critic.
 OBSERVATION_HISTORY = 10
 
-# Training only: the share of episodes restarted from a stored falling or landed
-# state of an earlier jump that finished (jump_state_replay), how many such
-# states are kept, and the half-width of the uniform noise (m) on the target
+# Training only: the share of episodes restarted from a stored state of an
+# earlier jump that finished (jump_state_replay), how many such states are kept,
+# the best share of them (by episode return) that restarts sample from, the
+# maximum random delay (s) after the drawn state transition at which an episode
+# records its state, and the half-width of the uniform noise (m) on the target
 # apex a restored state comes with.
 REPLAY_PROBABILITY = 0.2
 REPLAY_CAPACITY = 4096
+REPLAY_TOP_FRACTION = 0.25
+REPLAY_MAX_OFFSET = 0.3
 REPLAY_TARGET_NOISE = 0.005
 
 VELOCITY_REWARDS = (
@@ -199,7 +177,7 @@ def configure_vertical_jump(
   foot_slip = cfg.rewards["foot_slip"]
   cfg.commands = {
     "jump_height": mdp.JumpHeightCommandCfg(
-      height_range=HEIGHT_STAGES[-1][1:] if play else HEIGHT_STAGES[0][1:],
+      height_range=HEIGHT_FINAL_RANGE if play else HEIGHT_INITIAL_RANGE,
       **jump_state_machine_params(cfg, play=play),
     )
   }
@@ -228,14 +206,13 @@ def configure_vertical_jump(
         params={"command_name": "jump_height", "std": 0.1, "laplace_scale": 0.05},
       ),
       "pose": RewardTermCfg(
-        func=mdp.height_variable_posture,
+        # Only while a foot touches the ground; nothing in the air.
+        func=mdp.grounded_posture,
         weight=0.1,
         params={
           "command_name": "jump_height",
           "asset_cfg": deepcopy(pose.params["asset_cfg"]),
-          "std_ground": deepcopy(pose.params["std_standing"]),
-          "std_airborne": dict.fromkeys(pose.params["std_running"], AIRBORNE_JOINT_STD),
-          "height_range": POSTURE_BLEND_HEIGHTS,
+          "std": deepcopy(pose.params["std_standing"]),
         },
       ),
       "horizontal_velocity": RewardTermCfg(
@@ -282,7 +259,17 @@ def configure_vertical_jump(
     else {
       "jump_height": CurriculumTermCfg(
         func=mdp.jump_height_curriculum,
-        params={"command_name": "jump_height", "stages": HEIGHT_STAGES},
+        params={
+          "command_name": "jump_height",
+          "termination_name": "jump_finished",
+          "initial_range": HEIGHT_INITIAL_RANGE,
+          "final_range": HEIGHT_FINAL_RANGE,
+          "hold_steps": HEIGHT_HOLD_STEPS,
+          "final_step": HEIGHT_FINAL_STEP,
+          "success_threshold": HEIGHT_SUCCESS_THRESHOLD,
+          "backoff_ratio": HEIGHT_BACKOFF_RATIO,
+          "success_window": HEIGHT_SUCCESS_WINDOW,
+        },
       ),
       "settle": CurriculumTermCfg(
         func=mdp.settle_curriculum,
@@ -339,6 +326,8 @@ def configure_vertical_jump(
         "termination_name": "jump_finished",
         "probability": REPLAY_PROBABILITY,
         "capacity": REPLAY_CAPACITY,
+        "top_fraction": REPLAY_TOP_FRACTION,
+        "max_offset": REPLAY_MAX_OFFSET,
         "target_noise": REPLAY_TARGET_NOISE,
       },
     )
