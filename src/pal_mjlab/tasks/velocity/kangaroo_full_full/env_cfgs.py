@@ -30,6 +30,7 @@ from pal_mjlab.tasks.velocity.kangaroo_full import mdp
 from pal_mjlab.tasks.velocity.kangaroo_full.env_cfgs import (
   ANKLE_FEMUR_JOINT_PAIRS,
   LEG_LENGTH_FROM_KNEE_JOINTS,
+  configure_actuator_space,
   configure_flat_high_speed,
 )
 from pal_mjlab.tasks.velocity.kangaroo_full.mdp.dr.actuator_friction import (
@@ -290,6 +291,32 @@ def pal_kangaroo_full_full_flat_env_cfg(
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return configure_lp_acrl(cfg, curriculum, play=play)
+
+
+def pal_kangaroo_full_full_flat_actuator_space_env_cfg(
+  play: bool = False,
+  lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
+) -> ManagerBasedRlEnvCfg:
+  """Flat walking with an actor that observes actuators only (see
+  ``configure_actuator_space``). The screws here are joints, whose defaults
+  already are the stance."""
+  cfg = pal_kangaroo_full_full_flat_env_cfg(
+    play=play,
+    transmission="actuator",
+    lower_body=lower_body,
+    actuator_model=actuator_model,
+    curriculum=curriculum,
+  )
+  model = get_kangaroo_full_full_model(
+    transmission="actuator", lower_body=lower_body, actuator_model=actuator_model
+  )
+  return configure_actuator_space(
+    cfg,
+    lower_body=model["lower_body"],
+    reference_positions={},
+  )
 
 
 def pal_kangaroo_full_full_flat_high_speed_env_cfg(

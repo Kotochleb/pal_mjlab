@@ -1,6 +1,9 @@
 import math
+import re
 from dataclasses import replace
+from typing import Mapping
 
+import torch
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.envs.mdp.actions import JointPositionActionCfg, TendonLengthActionCfg
 from mjlab.managers.event_manager import EventTermCfg
@@ -14,6 +17,7 @@ from mjlab.terrains.config import (
   pyramid_stairs,
   pyramid_stairs_inv,
 )
+from mjlab.utils.noise import UniformNoiseCfg as Unoise
 
 from pal_mjlab.robots import (
   FEMUR_JOINT_REF,
@@ -29,6 +33,14 @@ from pal_mjlab.robots import (
   Transmission,
   get_kangaroo_full_model,
   simple_model_action_names,
+)
+from pal_mjlab.robots.pal_kangaroo_full.actuator_space import (
+  ACTUATOR_ORDER,
+  LOWER_BODY_ACTUATOR_ORDER,
+)
+from pal_mjlab.robots.pal_kangaroo_full.kangaroo_full_constants import (
+  INIT_STATE,
+  load_transmission_maps,
 )
 from pal_mjlab.tasks.velocity.kangaroo.env_cfgs import (
   configure_kangaroo_rough_env,
@@ -469,6 +481,163 @@ def pal_kangaroo_full_flat_env_cfg(
     twist_cmd.ranges.ang_vel_z = (-0.7, 0.7)
 
   return configure_lp_acrl(cfg, curriculum, play=play)
+
+
+# Actor noise half-widths as (leg screw, direct-drive joint), from the
+# KangarooFullEnv-JointToAct branch of pal-robotics/pal_mjlab.
+ACTUATOR_OBS_NOISE: dict[str, tuple[float, float]] = {
+  "pos": (0.001, 0.01),
+  "vel": (0.05, 0.5),
+}
+# Encoder bias half-widths per actuator, from the same branch.
+ACTUATOR_ENCODER_BIAS: dict[str, float] = {
+  r"leg_(left|right)_1_actuator": 0.0006,
+  r"leg_(left|right)_[23]_actuator": 0.0007,
+  r"leg_(left|right)_[45]_actuator": 0.0004,
+  r"leg_(left|right)_length_actuator": 0.00133,
+  r"(pelvis|arm)_.*_joint": 0.015,
+}
+
+
+def configure_actuator_space(
+  cfg: ManagerBasedRlEnvCfg,
+  lower_body: bool,
+  reference_positions: Mapping[str, float],
+) -> ManagerBasedRlEnvCfg:
+  """Makes a flat "actuator" transmission cfg's actor observe actuators only,
+  on either full model.
+
+  The actor's joint terms read screws instead, and the passive femur and knee
+  joints drop out. Its noise is ``ACTUATOR_OBS_NOISE`` and its encoder bias
+  ``ACTUATOR_ENCODER_BIAS``. Its ``actions`` term already is actuator space
+  under this transmission. The critic keeps its joint terms and gains the
+  actuator ones, and rewards are left untouched.
+
+  ``reference_positions`` overrides the zero of relative readings wherever the
+  entity's default joint position is not the stance.
+  """
+  names = LOWER_BODY_ACTUATOR_ORDER if lower_body else ACTUATOR_ORDER
+  reader_params = {
+    "asset_cfg": SceneEntityCfg("robot"),
+    "reference_positions": dict(reference_positions),
+  }
+
+  # -- Encoder bias.
+  del cfg.events["leg_length_encoder_bias"]
+  cfg.events["encoder_bias"] = EventTermCfg(
+    mode="startup",
+    func=mdp.actuator_encoder_bias,
+    params={
+      **reader_params,
+      "bias_half_ranges": {
+        name: next(
+          half_range
+          for expr, half_range in ACTUATOR_ENCODER_BIAS.items()
+          if re.fullmatch(expr, name)
+        )
+        for name in names
+      },
+    },
+  )
+  for name in ("hip_z_pos", "hip_xy_pos", "ankle_pos"):
+    action = cfg.actions[name]
+    if isinstance(action, TendonLengthActionCfg):
+      cfg.actions[name] = mdp.ActuatorBiasedTendonLengthActionCfg(
+        entity_name=action.entity_name,
+        actuator_names=action.actuator_names,
+        preserve_order=action.preserve_order,
+        scale=action.scale,
+        offset=action.offset,
+      )
+
+  # -- Observations.
+  def _actuator_term(
+    mode: str, noisy: bool = False, biased: bool = False
+  ) -> ObservationTermCfg:
+    noise = None
+    if noisy:
+      screw, direct_drive = ACTUATOR_OBS_NOISE[mode]
+      half_widths = tuple(
+        screw if name.startswith("leg_") else direct_drive for name in names
+      )
+      noise = Unoise(n_min=tuple(-x for x in half_widths), n_max=half_widths)
+    params = {**reader_params, "actuator_names": names, "mode": mode}
+    if biased:
+      params["biased"] = True
+    return ObservationTermCfg(func=mdp.actuator_state, params=params, noise=noise)
+
+  actor_terms: dict = {}
+  for key, term in cfg.observations["actor"].terms.items():
+    if key == "joint_pos":
+      actor_terms["actuator_pos"] = _actuator_term(
+        "pos", noisy=True, biased=term.params.get("biased", False)
+      )
+    elif key == "joint_vel":
+      actor_terms["actuator_vel"] = _actuator_term("vel", noisy=True)
+    else:
+      actor_terms[key] = term
+  cfg.observations["actor"].terms = actor_terms
+
+  critic_terms: dict = {}
+  for key, term in cfg.observations["critic"].terms.items():
+    critic_terms[key] = term
+    if key == "joint_vel":
+      critic_terms["actuator_pos"] = _actuator_term("pos")
+      critic_terms["actuator_vel"] = _actuator_term("vel")
+  cfg.observations["critic"].terms = critic_terms
+  return cfg
+
+
+def pal_kangaroo_full_flat_actuator_space_env_cfg(
+  play: bool = False,
+  femur_closure: FemurClosure = "prismatic",
+  mjcf: MjcfVariant = "tendons",
+  lower_body: LowerBody = False,
+  actuator_model: ActuatorModel = "builtin",
+  curriculum: Curriculum = "default",
+) -> ManagerBasedRlEnvCfg:
+  """Flat walking with an actor that observes actuators only.
+
+  Only the "actuator" transmission acts in that space too, so it is the only
+  one offered, and there is no ankle observation variant to choose.
+  """
+  cfg = pal_kangaroo_full_flat_env_cfg(
+    play=play,
+    transmission="actuator",
+    femur_closure=femur_closure,
+    mjcf=mjcf,
+    lower_body=lower_body,
+    actuator_model=actuator_model,
+    curriculum=curriculum,
+  )
+  model = get_kangaroo_full_model(
+    transmission="actuator",
+    femur_closure=femur_closure,
+    mjcf=mjcf,
+    lower_body=lower_body,
+    actuator_model=actuator_model,
+  )
+  # This model's INIT_STATE leaves the leg-length screw at zero, the fully
+  # extended leg, and its stance is stated as a leg length instead.
+  leg_length = load_transmission_maps().leg_length
+  stance_screws = {
+    f"leg_{side}_length_actuator": float(
+      leg_length.slider_of_distance(
+        torch.tensor(INIT_STATE.joint_pos[f"leg_{side}_length_joint"])
+      )
+    )
+    for side in ("left", "right")
+  }
+  return configure_actuator_space(
+    cfg,
+    lower_body=model["lower_body"],
+    reference_positions={
+      **stance_screws,
+      **model["hip_z_tendon_action"]["offset"],
+      **model["hip_xy_tendon_action"]["offset"],
+      **model["ankle_tendon_action"]["offset"],
+    },
+  )
 
 
 # Steps are env steps (common_step_counter); iterations * num_steps_per_env.

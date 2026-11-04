@@ -7,6 +7,7 @@ from pal_mjlab.tasks.velocity.kangaroo_full.rl_cfg import (
 from pal_mjlab.tasks.velocity.lp_acrl_runner import LpAcrlVelocityOnPolicyRunner
 
 from .env_cfgs import (
+  pal_kangaroo_full_full_flat_actuator_space_env_cfg,
   pal_kangaroo_full_full_flat_env_cfg,
   pal_kangaroo_full_full_flat_high_speed_env_cfg,
   pal_kangaroo_full_full_rough_env_cfg,
@@ -84,3 +85,32 @@ for _terrain, _env_cfg_fn, _curriculum_variants in (
                 else VelocityOnPolicyRunner
               ),
             )
+
+# Flat walking with an actor that observes actuators only -- see
+# pal_kangaroo_full's __init__.py.
+for _body_name, _lower_body in _BODY_VARIANTS.items():
+  for _actuator_model_name, _actuator_model in _ACTUATOR_MODEL_VARIANTS.items():
+    _variant = {"lower_body": _lower_body, "actuator_model": _actuator_model}
+    for _curriculum_name, _curriculum in _CURRICULUM_VARIANTS.items():
+      _curriculum_suffix = f"-Curriculum-{_curriculum_name}" if _curriculum_name else ""
+      register_mjlab_task(
+        task_id=(
+          "Mjlab-Velocity-FlatActuatorSpace-Pal-Kangaroo-Full-Full"
+          "-Transmission-Actuator"
+          f"-Body-{_body_name}"
+          f"-ActuatorModel-{_actuator_model_name}"
+          f"{_curriculum_suffix}"
+        ),
+        env_cfg=pal_kangaroo_full_full_flat_actuator_space_env_cfg(
+          curriculum=_curriculum, **_variant
+        ),
+        play_env_cfg=pal_kangaroo_full_full_flat_actuator_space_env_cfg(
+          play=True, curriculum=_curriculum, **_variant
+        ),
+        rl_cfg=pal_kangaroo_full_ppo_runner_cfg(),
+        runner_cls=(
+          LpAcrlVelocityOnPolicyRunner
+          if _curriculum == "lp_acrl"
+          else VelocityOnPolicyRunner
+        ),
+      )

@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 
 import torch
 from mjlab.actuator.actuator import TransmissionType
-from mjlab.envs.mdp.actions import JointPositionAction, JointPositionActionCfg
+from mjlab.envs.mdp.actions import (
+  JointPositionAction,
+  JointPositionActionCfg,
+  TendonLengthAction,
+  TendonLengthActionCfg,
+)
 
 if TYPE_CHECKING:
   from mjlab.envs import ManagerBasedRlEnv
@@ -141,3 +146,37 @@ class MappedLegLengthPositionActionCfg(OrderedJointPositionActionCfg):
 
   def build(self, env: ManagerBasedRlEnv) -> MappedLegLengthPositionAction:
     return MappedLegLengthPositionAction(self, env)
+
+
+class ActuatorBiasedTendonLengthAction(TendonLengthAction):
+  """``TendonLengthAction`` that treats its targets as encoder readings.
+
+  The stock joint action subtracts the encoder bias from its target; the
+  tendon one has no bias to subtract. This takes it from the
+  ``actuator_encoder_bias`` event, so a target means the same thing as the
+  biased position the policy observes on either kind of actuator.
+  """
+
+  def __init__(self, cfg: ActuatorBiasedTendonLengthActionCfg, env: ManagerBasedRlEnv):
+    super().__init__(cfg=cfg, env=env)
+    bias_event = env.event_manager.get_term_cfg("encoder_bias").func
+    self._bias = bias_event.bias
+    self._bias_cols = torch.as_tensor(
+      [bias_event.names.index(name) for name in self._target_names],
+      dtype=torch.long,
+      device=self.device,
+    )
+
+  def apply_actions(self) -> None:
+    self._entity.set_tendon_len_target(
+      self._processed_actions - self._bias[:, self._bias_cols],
+      tendon_ids=self._target_ids,
+    )
+
+
+@dataclass(kw_only=True)
+class ActuatorBiasedTendonLengthActionCfg(TendonLengthActionCfg):
+  """``TendonLengthActionCfg`` whose targets are encoder readings."""
+
+  def build(self, env: ManagerBasedRlEnv) -> ActuatorBiasedTendonLengthAction:
+    return ActuatorBiasedTendonLengthAction(self, env)
